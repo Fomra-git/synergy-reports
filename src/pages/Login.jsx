@@ -51,11 +51,19 @@ export default function Login() {
       <div className="login-orb login-orb-2" />
 
       <div className="login-card">
-        <div className="login-logo" style={{ justifyContent: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '32px' }}>
           {config?.logoBase64 ? (
-             <img src={config.logoBase64} alt="App Logo" style={{ maxHeight: '48px', maxWidth: '48px' }} />
+             <img 
+               src={config.logoBase64} 
+               alt="App Logo" 
+               style={{ 
+                 maxHeight: '100px', 
+                 maxWidth: '240px', 
+                 objectFit: 'contain' 
+               }} 
+             />
           ) : (
-             <div className="login-logo-icon">
+             <div className="login-logo-icon" style={{ width: '64px', height: '64px' }}>
                <FileSpreadsheet size={32} />
              </div>
           )}

@@ -33,11 +33,20 @@ export default function Layout() {
   return (
     <div className="app-container">
       <aside className="sidebar">
-        <div className="login-logo" style={{ marginBottom: '40px', justifyContent: 'center' }}>
+        <div style={{ padding: '24px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px', minHeight: '100px' }}>
           {config?.logoBase64 ? (
-             <img src={config.logoBase64} alt="App Logo" style={{ maxHeight: '80px', maxWidth: '100%' }} />
+             <img 
+               src={config.logoBase64} 
+               alt={`${config.appName || 'App'} Logo`} 
+               style={{ 
+                 maxHeight: '80px', 
+                 maxWidth: '180px', 
+                 objectFit: 'contain',
+                 filter: isDark ? 'none' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' 
+               }} 
+             />
           ) : (
-             <div className="login-logo-icon" style={{ width: '60px', height: '60px' }}>
+             <div className="login-logo-icon" style={{ width: '64px', height: '64px' }}>
                <FileSpreadsheet size={32} />
              </div>
           )}
