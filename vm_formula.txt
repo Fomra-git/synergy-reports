@@ -1,0 +1,18 @@
+import SearchableDropdown from '../components/SearchableDropdown';
+import MultiSelectDropdown from '../components/MultiSelectDropdown';
+import FormulaBuilder from '../components/FormulaBuilder';
+
+export default function VisualExcelMapping() {
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [masterHeaders, setMasterHeaders] = useState([]);
+  const [masterUniqueValues, setMasterUniqueValues] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeSidebarTab, setActiveSidebarTab] = useState('columns'); // columns, general, filters, report
+  
+  // Mapping Modal State
+  const [showModal, setShowModal] = useState(false);
+  const [activeCell, setActiveCell] = useState(null); // { colIndex, colLetter }
