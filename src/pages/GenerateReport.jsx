@@ -498,7 +498,14 @@ export default function GenerateReport() {
         finalAOA.push(columnHeaders);
         
         reportData.forEach(item => {
-           finalAOA.push(columnHeaders.map(h => item.data[h]));
+           finalAOA.push(columnHeaders.map(h => {
+              const val = item.data[h];
+              // SANITIZE DATA: Ensure we only pass primitives to Excel to avoid layout artifacts
+              if (val === null || val === undefined) return '';
+              if (Array.isArray(val)) return val.length > 0 ? val.join(', ') : '';
+              if (typeof val === 'object') return ''; // Don't render raw objects
+              return val;
+           }));
         });
 
         // --- ADD SUMMARY / TOTALS FOOTER ---
@@ -660,7 +667,11 @@ export default function GenerateReport() {
                      if (ws[cellAddress]) {
                         if (typeof ws[cellAddress] !== 'object') ws[cellAddress] = { v: ws[cellAddress], t: 's' };
                         if (!ws[cellAddress].s) ws[cellAddress].s = {};
-                        ws[cellAddress].s.alignment = { vertical: 'center', horizontal: 'center' };
+                        ws[cellAddress].s.alignment = { 
+                           vertical: 'center', 
+                           horizontal: 'center',
+                           wrapText: false
+                        };
                      }
                   }
 
@@ -695,8 +706,11 @@ export default function GenerateReport() {
                   }
                });
             }
+             
+             // --- ENFORCE COMPACT ROW HEIGHTS FOR ALL ROWS ---
+             ws['!rows'] = finalAOA.map(() => ({ hpt: 16 }));
 
-            XLSX.utils.book_append_sheet(wb, ws, 'Data Report');
+             XLSX.utils.book_append_sheet(wb, ws, 'Data Report');
         }
         
         if (pivotRows.length > 0) {

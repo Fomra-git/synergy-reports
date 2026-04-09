@@ -875,21 +875,34 @@ export default function VisualExcelMapping() {
                </div>
 
 
-                <div className="form-group">
-                  <label>Processing Rule</label>
-                  <select 
-                    value={modalData.type}
-                    onChange={e => setModalData(prev => ({ ...prev, type: e.target.value }))}
-                    style={{ color: 'var(--text-main)', background: 'var(--input-bg)' }}
-                  >
-                    <option value="direct">Direct Mapping (1-to-1)</option>
-                    <option value="serial">Serial Number (Row Index)</option>
-                    <option value="count">Occurrence Count (Running Total)</option>
-                    <option value="math">Mathematical Formula</option>
-                    <option value="condition_count">Conditional Count (Dashboard Summary)</option>
-                     <option value="time_diff">Time Difference</option>
-                  </select>
-                </div>
+               <div className="form-group">
+                 <label>Processing Rule</label>
+                 <select 
+                   value={modalData.type}
+                   onChange={e => setModalData(prev => ({ ...prev, type: e.target.value }))}
+                   style={{ color: 'var(--text-main)', background: 'var(--input-bg)' }}
+                 >
+                   <option value="direct">Direct Mapping (1-to-1)</option>
+                   <option value="serial">Serial Number (Row Index)</option>
+                   <option value="count">Occurrence Count (Running Total)</option>
+                   <option value="math">Mathematical Formula</option>
+                   <option value="condition_count">Conditional Count (Dashboard Summary)</option>
+                    <option value="time_diff">Time Difference</option>
+                 </select>
+               </div>
+
+               {modalData.type === 'direct' && (
+                 <div className="form-group" style={{ marginTop: '4px' }}>
+                    <label>Source Column (from Master)</label>
+                    <SearchableDropdown 
+                      options={masterHeaders} 
+                      value={modalData.source} 
+                      onChange={val => setModalData(prev => ({ ...prev, source: val }))}
+                      placeholder="Select header..."
+                      zIndex={1100} 
+                    />
+                 </div>
+               )}
 
 {/* DISPLAY OPTIONS */}
                     <div style={{ background: 'var(--glass-subtle)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border)', marginBottom: '8px' }}>
