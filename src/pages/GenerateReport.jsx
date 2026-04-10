@@ -508,39 +508,71 @@ export default function GenerateReport() {
            });
         }
 
-        // 3. PHASE 3: CALCULATED AGGREGATIONS (GLOBAL MAP-REDUCE)
-        const groupAggMappings = template.mappings.filter(m => m.groupAggType && m.groupAggType !== 'none' && m.target);
+        // 3. PHASE 3: CALCULATED AGGREGATIONS (GLOBAL MULTI-PIVOT ENGINE)
+        const groupAggMappings = template.mappings.filter(m => (m.groupAggType && m.groupAggType !== 'none' && m.target) || m.type === 'multi_agg' || m.type === 'pivot_agg');
         if (groupAggMappings.length > 0) {
            groupAggMappings.forEach(m => {
-              const targetCol = m.target;
-              const aggType = m.groupAggType;
+              const aggType = m.groupAggType || 'sum';
               const boundCols = m.groupAggBy ? [m.groupAggBy] : template.mappings.slice(0, template.mappings.indexOf(m)).filter(map => map.enableMerging && map.target).map(map => map.target);
-              if (boundCols.length === 0) return;
+              if (boundCols.length === 0 && m.type !== 'pivot_agg') return;
+              
+              const primaryBoundCols = boundCols.length > 0 ? boundCols : (m.pivotSplitCol ? [m.pivotSplitCol] : []);
 
               // PASS 1: Accumulate Global Totals
               const globalTotals = {};
               reportData.forEach(item => {
-                 const groupKey = boundCols.map(c => String(item.data[c] || '').trim().toLowerCase()).join('|');
+                 const groupKey = primaryBoundCols.map(c => String(item.data[c] || '').trim().toLowerCase()).join('|');
                  if (!globalTotals[groupKey]) {
-                    globalTotals[groupKey] = { vals: [] };
+                    globalTotals[groupKey] = { rows: [] };
                  }
-                 globalTotals[groupKey].vals.push(parseSafeNum(item.data[targetCol]));
+                 globalTotals[groupKey].rows.push(item);
               });
 
-              // PASS 2: Calculate and Distribute Results
-              reportData.forEach(item => {
-                 const groupKey = boundCols.map(c => String(item.data[c] || '').trim().toLowerCase()).join('|');
-                 const g = globalTotals[groupKey];
-                 if (!g.result) {
+              // PASS 2: Calculate Metrics for each Group
+              Object.values(globalTotals).forEach(group => {
+                 if (m.type === 'multi_agg' && m.multiMetrics) {
+                    m.multiMetrics.forEach(mtrc => {
+                       const vals = group.rows.map(r => parseSafeNum(r.data[m.source]));
+                       let res = 0;
+                       if (mtrc.type === 'sum') res = vals.reduce((a, b) => a + b, 0);
+                       else if (mtrc.type === 'count') res = vals.length;
+                       else if (mtrc.type === 'avg') res = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                       else if (mtrc.type === 'min') res = Math.min(...vals);
+                       else if (mtrc.type === 'max') res = Math.max(...vals);
+                       const final = mtrc.type === 'count' ? Math.round(res) : Number(res.toFixed(2));
+                       group.rows.forEach(r => {
+                          if (!r.multiData) r.multiData = {};
+                          r.multiData[`${m.tag}_${mtrc.type}`] = final;
+                       });
+                    });
+                 } else if (m.type === 'pivot_agg' && m.pivotSplitCol) {
+                    // Category-based splitting (Dynamic Pivot)
+                    const splits = {};
+                    group.rows.forEach(r => {
+                       const cat = String(r.data[m.pivotSplitCol] || '').trim() || '(Blank)';
+                       if (!splits[cat]) splits[cat] = [];
+                       splits[cat].push(parseSafeNum(r.data[m.source]));
+                    });
+                    Object.entries(splits).forEach(([cat, vals]) => {
+                       let res = vals.reduce((a, b) => a + b, 0); // Default Sum for Pivot
+                       const final = Number(res.toFixed(2));
+                       group.rows.forEach(r => {
+                          if (!r.pivotData) r.pivotData = {};
+                          r.pivotData[`${m.tag}_${cat}`] = final;
+                       });
+                    });
+                 } else {
+                    // Standard Single Aggregation
+                    const vals = group.rows.map(r => parseSafeNum(r.data[m.target]));
                     let res = 0;
-                    if (aggType === 'sum') res = g.vals.reduce((a, b) => a + b, 0);
-                    else if (aggType === 'count') res = g.vals.length;
-                    else if (aggType === 'avg') res = g.vals.length ? g.vals.reduce((a, b) => a + b, 0) / g.vals.length : 0;
-                    else if (aggType === 'min') res = Math.min(...g.vals);
-                    else if (aggType === 'max') res = Math.max(...g.vals);
-                    g.result = aggType === 'count' ? Math.round(res) : Number(res.toFixed(2));
+                    if (aggType === 'sum') res = vals.reduce((a, b) => a + b, 0);
+                    else if (aggType === 'count') res = vals.length;
+                    else if (aggType === 'avg') res = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                    else if (aggType === 'min') res = Math.min(...vals);
+                    else if (aggType === 'max') res = Math.max(...vals);
+                    const final = aggType === 'count' ? Math.round(res) : Number(res.toFixed(2));
+                    group.rows.forEach(r => r.data[m.target] = final);
                  }
-                 item.data[targetCol] = g.result;
               });
            });
         }
@@ -612,15 +644,54 @@ export default function GenerateReport() {
         finalAOA.push(columnHeaders);
         
         reportData.forEach(item => {
-           finalAOA.push(columnHeaders.map(h => {
-              const val = item.data[h];
-              // SANITIZE DATA: Ensure we only pass primitives to Excel to avoid layout artifacts
-              if (val === null || val === undefined) return '';
-              if (Array.isArray(val)) return val.length > 0 ? val.join(', ') : '';
-              if (typeof val === 'object') return ''; // Don't render raw objects
-              return val;
-           }));
+        // --- PHASE 6: COLUMN EXPANSION & FINAL GRID ---
+        const columnHeaders = [];
+        const mappingRegistry = []; // To track which column comes from which mapping/metric
+
+        template.mappings.forEach(m => {
+           if (!m.target && m.type !== 'multi_agg' && m.type !== 'pivot_agg') return;
+           
+           if (m.type === 'multi_agg' && m.multiMetrics) {
+              m.multiMetrics.forEach(mtrc => {
+                 columnHeaders.push(mtrc.label);
+                 mappingRegistry.push({ type: 'multi', tag: m.tag, sub: mtrc.type });
+              });
+           } else if (m.type === 'pivot_agg') {
+              // Find all unique pivot categories across the whole reportData for this mapping
+              const allCats = new Set();
+              reportData.forEach(r => {
+                 if (r.pivotData) {
+                    Object.keys(r.pivotData).forEach(k => {
+                       if (k.startsWith(`${m.tag}_`)) {
+                          allCats.add(k.replace(`${m.tag}_`, ''));
+                       }
+                    });
+                 }
+              });
+              Array.from(allCats).sort().forEach(cat => {
+                 columnHeaders.push(`${m.target || 'Pivot'} - ${cat}`);
+                 mappingRegistry.push({ type: 'pivot', tag: m.tag, sub: cat });
+              });
+           } else {
+              columnHeaders.push(m.target);
+              mappingRegistry.push({ type: 'standard', target: m.target });
+           }
         });
+
+        if (columnHeaders.length > 0) {
+           finalAOA.push(columnHeaders);
+           reportData.forEach(item => {
+              finalAOA.push(mappingRegistry.map(reg => {
+                 let val = '';
+                 if (reg.type === 'multi') val = (item.multiData && item.multiData[`${reg.tag}_${reg.sub}`]) !== undefined ? item.multiData[`${reg.tag}_${reg.sub}`] : '';
+                 else if (reg.type === 'pivot') val = (item.pivotData && item.pivotData[`${reg.tag}_${reg.sub}`]) !== undefined ? item.pivotData[`${reg.tag}_${reg.sub}`] : 0;
+                 else val = item.data[reg.target] !== undefined ? item.data[reg.target] : '';
+                 
+                 if (typeof val === 'object') return ''; // Don't render raw objects
+                 return val;
+              }));
+           });
+        }
 
         // --- ADD SUMMARY / TOTALS FOOTER ---
         const footerCalculations = template.mappings.filter(m => m.totalType && m.totalType !== 'none' && m.target);
