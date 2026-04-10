@@ -88,8 +88,14 @@ export default function GenerateReport() {
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
 
-      // Use defval to ensure every object has every column key (prevents undefined math)
-      const masterData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+      // --- ROBUST HEADER NORMALIZATION ---
+      // Read only the first row to get names
+      const headerRow = XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0] || [];
+      const cleanHeaders = headerRow.map(h => String(h || "").trim());
+      
+      // Use the cleaned headers to parse the data
+      // range: 1 ensures we start reading data from row 1, using cleanHeaders as keys for row 0
+      const masterData = XLSX.utils.sheet_to_json(worksheet, { header: cleanHeaders, range: 1, defval: "" });
 
       // --- MASTER DATA NORMALIZATION: JSON-LAYER UN-MERGE ---
       if (worksheet['!merges'] && masterData.length > 0) {
