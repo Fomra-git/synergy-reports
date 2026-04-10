@@ -209,21 +209,15 @@ export default function GenerateReport() {
         // 1. Apply Global Pre-Filters (New Sidebar Engine)
         let filteredMasterData = [...masterData];
         
+        const displayUniqueFilters = [];
         if (template.isGlobalFilterEnabled !== false && template.globalFilters && template.globalFilters.length > 0) {
            template.globalFilters.forEach(globalFilter => {
               if (!globalFilter.conditionCol) return;
-              
               if (globalFilter.operator === 'unique') {
-                  const seen = new Set();
-                  filteredMasterData = filteredMasterData.filter(row => {
-                     const val = row[globalFilter.conditionCol];
-                     if (val === undefined || val === null || val === '') return true;
-                     const stringVal = String(val).trim().toLowerCase();
-                     if (seen.has(stringVal)) return false;
-                     seen.add(stringVal);
-                     return true;
-                  });
+                  // Save these for LATE execution (Phase 4)
+                  displayUniqueFilters.push(globalFilter);
               } else {
+                  // Apply Exclusion Filters NOW (Phase 1)
                   filteredMasterData = filteredMasterData.filter(row => evaluateCondition(row, globalFilter));
               }
            });
@@ -612,6 +606,25 @@ export default function GenerateReport() {
                     const result = new Function(`return ${expression}`)();
                     newRow[mapping.target] = isNaN(result) || !isFinite(result) ? 'Error' : Number(result.toFixed(4));
                   } catch(e) { newRow[mapping.target] = 'Err: Syntax'; }
+               });
+            });
+         }
+
+         // --- PHASE 4: DISPLAY FILTERS (DEDUPLICATION) ---
+         // Now that Totals and Math are calculated on the FULL dataset,
+         // we can safely remove redundant rows for display.
+         if (displayUniqueFilters.length > 0) {
+            displayUniqueFilters.forEach(filter => {
+               const seen = new Set();
+               const colToFilter = filter.conditionCol;
+               // We filter reportData directly. We keep the FIRST occurrence of each unique value.
+               reportData = reportData.filter(item => {
+                  const val = item.raw[colToFilter]; // Check unique values against raw data
+                  if (val === undefined || val === null || val === '') return true;
+                  const stringVal = String(val).trim().toLowerCase();
+                  if (seen.has(stringVal)) return false;
+                  seen.add(stringVal);
+                  return true;
                });
             });
          }
