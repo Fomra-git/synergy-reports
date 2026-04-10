@@ -206,42 +206,31 @@ export default function GenerateReport() {
           return evalRule(row[mapping.conditionCol], mapping.operator, mapping.conditionVals);
         };
 
-        // 1. Apply Global Pre-Filters (New Sidebar Engine)
+        // 1. PHASE 1: PRE-FILTERING (EXCLUSION)
         let filteredMasterData = [...masterData];
-        
         const displayUniqueFilters = [];
+        
         if (template.isGlobalFilterEnabled !== false && template.globalFilters && template.globalFilters.length > 0) {
            template.globalFilters.forEach(globalFilter => {
               if (!globalFilter.conditionCol) return;
               if (globalFilter.operator === 'unique') {
-                  // Save these for LATE execution (Phase 4)
                   displayUniqueFilters.push(globalFilter);
               } else {
-                  // Apply Exclusion Filters NOW (Phase 1)
                   filteredMasterData = filteredMasterData.filter(row => evaluateCondition(row, globalFilter));
               }
            });
         }
 
-        // 2. Apply Legacy Mappings (Backwards Compatibility for templates using the old condition columns)
         const legacyConditionMappings = template.mappings.filter(m => m.type === 'condition' && m.conditionCol);
         if (legacyConditionMappings.length > 0) {
-          filteredMasterData = filteredMasterData.filter(row => {
-            return legacyConditionMappings.every(mapping => evaluateCondition(row, mapping));
-          });
+           filteredMasterData = filteredMasterData.filter(row => legacyConditionMappings.every(m => evaluateCondition(row, m)));
         }
-        
-        // Pre-compute Aggregate Metric Counts
+
         const metricCounts = {};
-        template.mappings.forEach((mapping, idx) => {
-          if (mapping.type === 'condition_count' && mapping.conditionCol) {
-             let matchedCount = 0;
-             // Count against the universally pre-filtered dataset, not the raw dataset!
-             filteredMasterData.forEach(row => {
-               if (evaluateCondition(row, mapping)) matchedCount++;
-             });
-             metricCounts[idx] = matchedCount;
-          }
+        template.mappings.forEach((m, idx) => {
+           if (m.type === 'condition_count' && m.conditionCol) {
+              metricCounts[idx] = filteredMasterData.filter(row => evaluateCondition(row, m)).length;
+           }
         });
         
         // Render 1 row automatically if it's purely a Summary Dashboard or user forced Summary Mode
@@ -506,46 +495,48 @@ export default function GenerateReport() {
            });
         }
 
-        // --- GROUP-LEVEL AGGREGATION ENGINE (SUM BY PATIENT) ---
+        // 3. PHASE 3: CALCULATED AGGREGATIONS (SUMS)
         const groupAggMappings = template.mappings.filter(m => m.groupAggType && m.groupAggType !== 'none' && m.target);
         if (groupAggMappings.length > 0) {
            groupAggMappings.forEach(m => {
               const targetCol = m.target;
-              const aggType = m.groupAggType;
-              const mIdx = template.mappings.findIndex(map => map.tag === m.tag);
-              
-              // NEW: Respect the specifically selected Grouping Column if provided
-              let boundCols = [];
-              if (m.groupAggBy) {
-                 boundCols = [m.groupAggBy];
-              } else {
-                 // Fallback: All merged columns to the left
-                 boundCols = template.mappings.slice(0, mIdx).filter(map => map.enableMerging && map.target).map(map => map.target);
-              }
+              const boundCols = m.groupAggBy ? [m.groupAggBy] : template.mappings.slice(0, template.mappings.indexOf(m)).filter(map => map.enableMerging && map.target).map(map => map.target);
+              if (boundCols.length === 0) return;
+
+              // CRITICAL: CLUSTER SORT for contiguous aggregation
+              reportData.sort((a, b) => {
+                 for (const col of boundCols) {
+                    const vA = String(a.data[col] || '').trim().toLowerCase();
+                    const vB = String(b.data[col] || '').trim().toLowerCase();
+                    if (vA !== vB) return vA.localeCompare(vB, undefined, { numeric: true });
+                 }
+                 return 0;
+              });
 
               let i = 0;
               while (i < reportData.length) {
                  let j = i;
-                 const groupValues = [];
-                 const isSameGroup = (idxA, idxB) => boundCols.every(col => String(reportData[idxA].data[col] || '') === String(reportData[idxB].data[col] || ''));
-                 while (j < reportData.length && isSameGroup(i, j)) {
-                    groupValues.push(parseSafeNum(reportData[j].data[targetCol]));
+                 const vals = [];
+                 const isSame = (a, b) => boundCols.every(c => String(reportData[a].data[c] || '').trim().toLowerCase() === String(reportData[b].data[c] || '').trim().toLowerCase());
+                 while (j < reportData.length && isSame(i, j)) {
+                    vals.push(parseSafeNum(reportData[j].data[targetCol]));
                     j++;
                  }
-                 let result = 0;
-                 if (aggType === 'sum') result = groupValues.reduce((a, b) => a + b, 0);
-                 else if (aggType === 'count') result = groupValues.length;
-                 else if (aggType === 'avg') result = groupValues.length ? groupValues.reduce((a, b) => a + b, 0) / groupValues.length : 0;
-                 else if (aggType === 'min') result = Math.min(...groupValues);
-                 else if (aggType === 'max') result = Math.max(...groupValues);
+                 let res = 0;
+                 if (m.groupAggType === 'sum') res = vals.reduce((a, b) => a + b, 0);
+                 else if (m.groupAggType === 'count') res = vals.length;
+                 else if (m.groupAggType === 'avg') res = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                 else if (m.groupAggType === 'min') res = Math.min(...vals);
+                 else if (m.groupAggType === 'max') res = Math.max(...vals);
 
-                 for (let k = i; k < j; k++) reportData[k].data[targetCol] = aggType === 'count' ? Math.round(result) : Number(result.toFixed(2));
+                 const final = m.groupAggType === 'count' ? Math.round(res) : Number(res.toFixed(2));
+                 for (let k = i; k < j; k++) reportData[k].data[targetCol] = final;
                  i = j;
               }
            });
         }
 
-        // POST-SORTING RECALCULATION FOR GROUPED COUNTS (Improved Fix)
+        // POST-SORTING RECALCULATION FOR GROUPED COUNTS (Legacy Fix)
         const groupedCountMappings = template.mappings.filter(m => m.type === 'count' && m.isGroupedCount && m.source && m.target);
         if (groupedCountMappings.length > 0) {
            groupedCountMappings.forEach(m => {
@@ -553,81 +544,49 @@ export default function GenerateReport() {
               const sourceCol = m.source;
               let i = 0;
               while (i < reportData.length) {
-                 // The group identity is based on the ORIGINAL RAW value of the source column
-                  const baseVal = String(reportData[i].raw[sourceCol] || '').trim();
-                 let j = i;
-                 let groupMatches = 0;
-
-                 // Find the end of the contiguous block and count valid rows
-                 while (j < reportData.length && String(reportData[j].raw[sourceCol] || '').trim() === baseVal) {
-                    // CRITICAL FIX: Evaluate conditions against the ORIGINAL RAW master row
-                    if (evaluateCondition(reportData[j].raw, m)) {
-                       groupMatches++;
-                    }
-                    j++;
-                 }
-
-                 // Overwrite the count value for all mapped results in this group
-                 for (let k = i; k < j; k++) {
-                    reportData[k].data[targetCol] = groupMatches;
-                 }
-                 i = j;
+                  const baseVal = String(reportData[i].raw[sourceCol] || '').trim().toLowerCase();
+                  let j = i;
+                  let groupMatches = 0;
+                  while (j < reportData.length && String(reportData[j].raw[sourceCol] || '').trim().toLowerCase() === baseVal) {
+                     if (evaluateCondition(reportData[j].raw, m)) groupMatches++;
+                     j++;
+                  }
+                  for (let k = i; k < j; k++) reportData[k].data[targetCol] = groupMatches;
+                  i = j;
               }
            });
         }
 
-                 // --- PHASE 3: POST-AGGREGATION FORMULA RECALCULATION ---
-          // Safety Lock: We skip columns that were already processed by the Aggregation Engine (Ph 2)
-          const lateMathMappings = template.mappings.filter(m => 
-             m.type === 'math' && 
-             m.formula && 
-             m.formula.includes('{') && 
-             m.target &&
-             (!m.groupAggType || m.groupAggType === 'none')
-          );
-         if (lateMathMappings.length > 0) {
-            reportData.forEach(item => {
-               lateMathMappings.forEach(mapping => {
-                  let expression = mapping.formula;
-                  const row = item.raw, newRow = item.data;
-                  const masterMatches = expression.match(/\[(.*?)\]/g);
-                  if (masterMatches) masterMatches.forEach(match => {
-                    const colName = match.replace(/\[|\]/g, ''), innerVal = row[colName];
-                    expression = expression.split(match).join(isNaN(Number(innerVal)) ? 0 : Number(innerVal));
-                  });
-                  const tmplMatches = expression.match(/\{(.*?)\}/g);
-                  if (tmplMatches) tmplMatches.forEach(match => {
-                    const colName = match.replace(/\{|\}/g, ''), innerVal = newRow[colName];
-                    expression = expression.split(match).join((innerVal !== undefined && innerVal !== null && !isNaN(Number(innerVal))) ? Number(innerVal) : 0);
-                  });
-                  const funcMap = { 'ABS(': 'Math.abs(', 'ROUND(': 'Math.round(', 'CEIL(': 'Math.ceil(', 'FLOOR(': 'Math.floor(', 'MAX(': 'Math.max(', 'MIN(': 'Math.min(' };
-                  Object.entries(funcMap).forEach(([key, val]) => expression = expression.split(key).join(val));
-                  try {
-                    const result = new Function(`return ${expression}`)();
-                    newRow[mapping.target] = isNaN(result) || !isFinite(result) ? 'Error' : Number(result.toFixed(4));
-                  } catch(e) { newRow[mapping.target] = 'Err: Syntax'; }
-               });
-            });
-         }
+        // 4. PHASE 4: POST-AGGREGATIONS FORMULAS (BALANCES)
+        const lateMaths = template.mappings.filter(m => m.type === 'math' && m.formula && m.formula.includes('{') && m.target && (!m.groupAggType || m.groupAggType === 'none'));
+        if (lateMaths.length > 0) {
+           reportData.forEach(item => {
+              lateMaths.forEach(mapping => {
+                 let expr = mapping.formula;
+                 (expr.match(/\[(.*?)\]/g) || []).forEach(m => expr = expr.split(m).join(parseSafeNum(item.raw[m.replace(/[\[\]]/g, '')])));
+                 (expr.match(/\{(.*?)\}/g) || []).forEach(m => expr = expr.split(m).join(parseSafeNum(item.data[m.replace(/[\{\}]/g, '')])));
+                 const funcMap = { 'ABS(': 'Math.abs(', 'ROUND(': 'Math.round(', 'CEIL(': 'Math.ceil(', 'FLOOR(': 'Math.floor(', 'MAX(': 'Math.max(', 'MIN(': 'Math.min(' };
+                 Object.entries(funcMap).forEach(([k, v]) => expr = expr.split(k).join(v));
+                 try {
+                    const res = new Function(`return ${expr}`)();
+                    item.data[mapping.target] = isNaN(res) || !isFinite(res) ? 'Error' : Number(res.toFixed(4));
+                 } catch(e) { item.data[mapping.target] = 'Err: Syntax'; }
+              });
+           });
+        }
 
-         // --- PHASE 4: DISPLAY FILTERS (DEDUPLICATION) ---
-         // Now that Totals and Math are calculated on the FULL dataset,
-         // we can safely remove redundant rows for display.
-         if (displayUniqueFilters.length > 0) {
-            displayUniqueFilters.forEach(filter => {
-               const seen = new Set();
-               const colToFilter = filter.conditionCol;
-               // We filter reportData directly. We keep the FIRST occurrence of each unique value.
-               reportData = reportData.filter(item => {
-                  const val = item.raw[colToFilter]; // Check unique values against raw data
-                  if (val === undefined || val === null || val === '') return true;
-                  const stringVal = String(val).trim().toLowerCase();
-                  if (seen.has(stringVal)) return false;
-                  seen.add(stringVal);
-                  return true;
-               });
-            });
-         }
+        // 5. PHASE 5: DISPLAY FILTERS (DEDUPLICATION)
+        if (displayUniqueFilters.length > 0) {
+           displayUniqueFilters.forEach(filter => {
+              const seen = new Set();
+              reportData = reportData.filter(item => {
+                 const val = String(item.raw[filter.conditionCol] || '').trim().toLowerCase();
+                 if (!val || seen.has(val)) return false;
+                 seen.add(val);
+                 return true;
+              });
+           });
+        }
 
 // --- FLATTEN DATA FOR FINAL OUTPUT ---
         // Insert Top Merged Header
