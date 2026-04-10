@@ -484,7 +484,15 @@ export default function GenerateReport() {
               const targetCol = m.target;
               const aggType = m.groupAggType;
               const mIdx = template.mappings.findIndex(map => map.tag === m.tag);
-              const boundCols = template.mappings.slice(0, mIdx).filter(map => map.enableMerging && map.target).map(map => map.target);
+              
+              // NEW: Respect the specifically selected Grouping Column if provided
+              let boundCols = [];
+              if (m.groupAggBy) {
+                 boundCols = [m.groupAggBy];
+              } else {
+                 // Fallback: All merged columns to the left
+                 boundCols = template.mappings.slice(0, mIdx).filter(map => map.enableMerging && map.target).map(map => map.target);
+              }
 
               let i = 0;
               while (i < reportData.length) {
@@ -499,6 +507,9 @@ export default function GenerateReport() {
                  if (aggType === 'sum') result = groupValues.reduce((a, b) => a + b, 0);
                  else if (aggType === 'count') result = groupValues.length;
                  else if (aggType === 'avg') result = groupValues.length ? groupValues.reduce((a, b) => a + b, 0) / groupValues.length : 0;
+                 else if (aggType === 'min') result = Math.min(...groupValues);
+                 else if (aggType === 'max') result = Math.max(...groupValues);
+
                  for (let k = i; k < j; k++) reportData[k].data[targetCol] = aggType === 'count' ? Math.round(result) : Number(result.toFixed(2));
                  i = j;
               }

@@ -1061,6 +1061,25 @@ export default function VisualExcelMapping() {
                                  <option value="min">Minimum Value in group</option>
                                  <option value="max">Maximum Value in group</option>
                                </select>
+
+                               {(modalData.groupAggType && modalData.groupAggType !== 'none') && (
+                                 <div style={{ marginTop: '4px' }}>
+                                   <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Grouped By (Level):</label>
+                                   <select 
+                                     value={modalData.groupAggBy || ''}
+                                     onChange={e => setModalData(prev => ({ ...prev, groupAggBy: e.target.value }))}
+                                     style={{ width: '100%', padding: '8px', fontSize: '12px', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-main)' }}
+                                   >
+                                     <option value="">Default (All Merged Cols to Left)</option>
+                                     {template.mappings
+                                       .filter(m => m.enableMerging && m.target)
+                                       .map(m => (
+                                         <option key={m.tag} value={m.target}>{m.target}</option>
+                                       ))
+                                     }
+                                   </select>
+                                 </div>
+                               )}
                             </div>
 
                             <p style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>* Whitespace will be automatically trimmed after replacement.</p>
