@@ -1071,7 +1071,7 @@ export default function VisualExcelMapping() {
                                      style={{ width: '100%', padding: '8px', fontSize: '12px', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-main)' }}
                                    >
                                      <option value="">Default (All Merged Cols to Left)</option>
-                                     {template.mappings
+                                     {formData.mappings
                                        .filter(m => m.enableMerging && m.target)
                                        .map(m => (
                                          <option key={m.tag} value={m.target}>{m.target}</option>
