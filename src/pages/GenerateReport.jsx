@@ -370,7 +370,7 @@ export default function GenerateReport() {
                 masterMatches.forEach(match => {
                   const colName = match.replace(/\[|\]/g, '');
                   const innerVal = row[colName];
-                  const numVal = isNaN(Number(innerVal)) ? 0 : Number(innerVal);
+                  const numVal = parseSafeNum(innerVal);
                   expression = expression.split(match).join(numVal);
                 });
               }
@@ -380,7 +380,7 @@ export default function GenerateReport() {
                 tmplMatches.forEach(match => {
                   const colName = match.replace(/\{|\}/g, '');
                   const innerVal = newRow[colName];
-                  const numVal = (innerVal !== undefined && innerVal !== null && !isNaN(Number(innerVal))) ? Number(innerVal) : 0;
+                  const numVal = parseSafeNum(innerVal);
                   expression = expression.split(match).join(numVal);
                 });
               }
