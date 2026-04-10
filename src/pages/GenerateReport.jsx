@@ -133,7 +133,7 @@ export default function GenerateReport() {
              if (template.headerConfig.type === 'custom' && template.headerConfig.text) {
                   topReportHeader = template.headerConfig.text;
              } else if (template.headerConfig.type === 'mapped' && template.headerConfig.sourceCol && masterData.length > 0) {
-                  topReportHeader = masterData[0][template.headerConfig.sourceCol];
+                 topReportHeader = getMasterValue(masterData[0], template.headerConfig.sourceCol);
              }
         }
         
@@ -146,6 +146,21 @@ export default function GenerateReport() {
             const cleaned = String(val).replace(/[^0-9.-]/g, '');
             const num = parseFloat(cleaned);
             return isNaN(num) ? 0 : num;
+         };
+
+         // --- ROBUST HEADER LOOKUP (Strips quotes, spaces, and handles case-insensitivity) ---
+         const getMasterValue = (row, source) => {
+           if (!source || !row) return '';
+           // Try direct match first for performance
+           if (row[source] !== undefined && row[source] !== null) return row[source];
+           
+           const cleanSource = String(source).trim().replace(/["']/g, '').toLowerCase();
+           const matchingKey = Object.keys(row).find(k => {
+              const cleanKey = String(k).trim().replace(/["']/g, '').toLowerCase();
+              return cleanKey === cleanSource;
+           });
+           
+           return matchingKey ? row[matchingKey] : '';
          };
 
          const evaluateCondition = (row, mapping) => {
@@ -182,11 +197,11 @@ export default function GenerateReport() {
           if (mapping.rules && mapping.rules.length > 0) {
             return mapping.rules.every(rule => {
               if (!rule.conditionCol) return true;
-              return evalRule(row[rule.conditionCol], rule.operator, rule.conditionVals);
+              return evalRule(getMasterValue(row, rule.conditionCol), rule.operator, rule.conditionVals);
             });
           }
           if (!mapping.conditionCol) return true;
-          return evalRule(row[mapping.conditionCol], mapping.operator, mapping.conditionVals);
+          return evalRule(getMasterValue(row, mapping.conditionCol), mapping.operator, mapping.conditionVals);
         };
 
         let filteredMasterData = [...masterData];
@@ -249,7 +264,8 @@ export default function GenerateReport() {
             const aggCols = pivotCols.filter(c => c.type === 'aggregation');
 
             filteredMasterData.forEach(row => {
-               const groupVal = row[activeRowField] !== undefined && row[activeRowField] !== null ? String(row[activeRowField]) : '(Blank)';
+               const rawGroupVal = getMasterValue(row, activeRowField);
+               const groupVal = rawGroupVal !== undefined && rawGroupVal !== null && rawGroupVal !== '' ? String(rawGroupVal) : '(Blank)';
                if (!pivotMap[groupVal]) {
                  pivotMap[groupVal] = {
                    rows: [],
@@ -290,14 +306,14 @@ export default function GenerateReport() {
                   if (col.type === 'grouping') {
                     val = groupVal;
                   } else if (col.type === 'property') {
-                    val = group.firstRow[col.source] || '';
+                    val = getMasterValue(group.firstRow, col.source);
                   } else if (col.type === 'aggregation') {
                     val = group.aggregations[col.id];
                   } else if (col.type === 'formula') {
                     let expr = col.formula || '';
                     (expr.match(/\[(.*?)\]/g) || []).forEach(m => {
                        const header = m.replace(/[\[\]]/g, '');
-                       expr = expr.split(m).join(parseSafeNum(group.firstRow[header]));
+                       expr = expr.split(m).join(parseSafeNum(getMasterValue(group.firstRow, header)));
                     });
                     (expr.match(/\{(.*?)\}/g) || []).forEach(m => {
                        const colName = m.replace(/[\{\}]/g, '');
@@ -341,8 +357,8 @@ export default function GenerateReport() {
             countMaps[m.source] = {};
             filteredMasterData.forEach(row => {
               if (!evaluateCondition(row, m)) return;
-              const val = row[m.source];
-              if (val !== undefined && val !== null) countMaps[m.source][val] = (countMaps[m.source][val] || 0) + 1;
+              const val = getMasterValue(row, m.source);
+              if (val !== undefined && val !== null && val !== '') countMaps[m.source][val] = (countMaps[m.source][val] || 0) + 1;
             });
           });
 
@@ -357,9 +373,13 @@ export default function GenerateReport() {
               if (!mapping.target) return;
               let val = '';
               const type = mapping.type || 'direct';
-              if (type === 'direct' && mapping.source) val = row[mapping.source] !== undefined ? row[mapping.source] : '';
+              if (type === 'direct' && mapping.source) val = getMasterValue(row, mapping.source);
               else if (type === 'serial') val = index + 1;
-              else if (type === 'count' && mapping.source) val = row[mapping.source] !== undefined && row[mapping.source] !== null ? countMaps[mapping.source][row[mapping.source]] : 0;
+              else if (type === 'count' && mapping.source) {
+                // countMaps is built with raw mapping.source as key, we should lookup robustly too?
+                // Actually countMaps is built using row[m.source] which we should also normalize.
+                val = getMasterValue(row, mapping.source) !== '' ? countMaps[mapping.source][getMasterValue(row, mapping.source)] : 0;
+              }
               else if (type === 'time_diff' && mapping.colA && mapping.colB) {
                  const parseTimeToMins = (raw) => {
                     if (raw === undefined || raw === null || raw === '') return null;

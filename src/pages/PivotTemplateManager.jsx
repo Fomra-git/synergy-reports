@@ -143,7 +143,7 @@ export default function PivotTemplateManager() {
       const worksheet = workbook.Sheets[firstSheetName];
       const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
       if (rows.length === 0) return;
-      const headers = (rows[0] || []).map(h => String(h || "").trim());
+      const headers = (rows[0] || []).map(h => String(h || "").trim().replace(/["']/g, ''));
       setMasterHeaders(headers.filter(h => h));
 
       // Extract unique values for filters
