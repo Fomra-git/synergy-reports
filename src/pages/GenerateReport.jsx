@@ -88,29 +88,45 @@ export default function GenerateReport() {
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
 
-      // --- MASTER DATA NORMALIZATION: FORCED UN-MERGE ---
-      // SheetJS sheet_to_json only sees the first cell of a merge. 
-      // We manually propagate the value (v) and type (t) to every cell in the range.
-      if (worksheet['!merges']) {
-        worksheet['!merges'].forEach(range => {
-          const startCol = range.s.c, endCol = range.e.c;
-          const startRow = range.s.r, endRow = range.e.r;
-          
-          const firstCell = worksheet[XLSX.utils.encode_cell({ r: startRow, c: startCol })];
-          if (firstCell && firstCell.v !== undefined) {
-            for (let r = startRow; r <= endRow; r++) {
-              for (let c = startCol; c <= endCol; c++) {
-                 const addr = XLSX.utils.encode_cell({ r, c });
-                 if (!worksheet[addr]) worksheet[addr] = { ...firstCell };
-                 else worksheet[addr].v = firstCell.v; // Force value update
-              }
-            }
-          }
-        });
-      }
-
       // Use defval to ensure every object has every column key (prevents undefined math)
       const masterData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+      // --- MASTER DATA NORMALIZATION: JSON-LAYER UN-MERGE ---
+      // We repair the data array directly by following the !merges metadata.
+      if (worksheet['!merges'] && masterData.length > 0) {
+         // Map masterData keys to their original column indices
+         const headers = Object.keys(masterData[0]);
+         
+         worksheet['!merges'].forEach(range => {
+            const { s, e } = range;
+            // Iterate every column in the merge range
+            for (let c = s.c; c <= e.c; c++) {
+               const headerName = headers[c]; 
+               if (!headerName) continue;
+
+               // Find the original value from the start of the merge
+               // sheet_to_json offset: row 0 in masterData corresponds to Excel Row 2 (if header is row 1)
+               // SheetJS s.r is 0-indexed. If header is row 1 (index 0), then index 1 is masterData[0].
+               const firstDataRowIdx = s.r - 1;
+               if (firstDataRowIdx < 0) continue; 
+               
+               const sourceRow = masterData[firstDataRowIdx];
+               if (!sourceRow) return;
+               const val = sourceRow[headerName];
+               if (val === undefined || val === null || val === "") return;
+
+               // Propagate value to all subsequent rows in the merge
+               for (let r = s.r; r <= e.r; r++) {
+                  const targetRowIdx = r - 1;
+                  if (targetRowIdx >= 0 && targetRowIdx < masterData.length) {
+                     if (masterData[targetRowIdx][headerName] === "") {
+                        masterData[targetRowIdx][headerName] = val;
+                     }
+                  }
+               }
+            }
+         });
+      }
       
       const zip = new JSZip();
       
@@ -492,65 +508,66 @@ export default function GenerateReport() {
            });
         }
 
-        // 3. PHASE 3: CALCULATED AGGREGATIONS (SUMS)
+        // 3. PHASE 3: CALCULATED AGGREGATIONS (GLOBAL MAP-REDUCE)
         const groupAggMappings = template.mappings.filter(m => m.groupAggType && m.groupAggType !== 'none' && m.target);
         if (groupAggMappings.length > 0) {
            groupAggMappings.forEach(m => {
               const targetCol = m.target;
+              const aggType = m.groupAggType;
               const boundCols = m.groupAggBy ? [m.groupAggBy] : template.mappings.slice(0, template.mappings.indexOf(m)).filter(map => map.enableMerging && map.target).map(map => map.target);
               if (boundCols.length === 0) return;
 
-              // CRITICAL: CLUSTER SORT for contiguous aggregation
-              reportData.sort((a, b) => {
-                 for (const col of boundCols) {
-                    const vA = String(a.data[col] || '').trim().toLowerCase();
-                    const vB = String(b.data[col] || '').trim().toLowerCase();
-                    if (vA !== vB) return vA.localeCompare(vB, undefined, { numeric: true });
+              // PASS 1: Accumulate Global Totals
+              const globalTotals = {};
+              reportData.forEach(item => {
+                 const groupKey = boundCols.map(c => String(item.data[c] || '').trim().toLowerCase()).join('|');
+                 if (!globalTotals[groupKey]) {
+                    globalTotals[groupKey] = { vals: [] };
                  }
-                 return 0;
+                 globalTotals[groupKey].vals.push(parseSafeNum(item.data[targetCol]));
               });
 
-              let i = 0;
-              while (i < reportData.length) {
-                 let j = i;
-                 const vals = [];
-                 const isSame = (a, b) => boundCols.every(c => String(reportData[a].data[c] || '').trim().toLowerCase() === String(reportData[b].data[c] || '').trim().toLowerCase());
-                 while (j < reportData.length && isSame(i, j)) {
-                    vals.push(parseSafeNum(reportData[j].data[targetCol]));
-                    j++;
+              // PASS 2: Calculate and Distribute Results
+              reportData.forEach(item => {
+                 const groupKey = boundCols.map(c => String(item.data[c] || '').trim().toLowerCase()).join('|');
+                 const g = globalTotals[groupKey];
+                 if (!g.result) {
+                    let res = 0;
+                    if (aggType === 'sum') res = g.vals.reduce((a, b) => a + b, 0);
+                    else if (aggType === 'count') res = g.vals.length;
+                    else if (aggType === 'avg') res = g.vals.length ? g.vals.reduce((a, b) => a + b, 0) / g.vals.length : 0;
+                    else if (aggType === 'min') res = Math.min(...g.vals);
+                    else if (aggType === 'max') res = Math.max(...g.vals);
+                    g.result = aggType === 'count' ? Math.round(res) : Number(res.toFixed(2));
                  }
-                 let res = 0;
-                 if (m.groupAggType === 'sum') res = vals.reduce((a, b) => a + b, 0);
-                 else if (m.groupAggType === 'count') res = vals.length;
-                 else if (m.groupAggType === 'avg') res = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-                 else if (m.groupAggType === 'min') res = Math.min(...vals);
-                 else if (m.groupAggType === 'max') res = Math.max(...vals);
-
-                 const final = m.groupAggType === 'count' ? Math.round(res) : Number(res.toFixed(2));
-                 for (let k = i; k < j; k++) reportData[k].data[targetCol] = final;
-                 i = j;
-              }
+                 item.data[targetCol] = g.result;
+              });
            });
         }
 
-        // POST-SORTING RECALCULATION FOR GROUPED COUNTS (Legacy Fix)
+        // POST-SORTING RECALCULATION FOR GROUPED COUNTS (Map-Based Fix)
         const groupedCountMappings = template.mappings.filter(m => m.type === 'count' && m.isGroupedCount && m.source && m.target);
         if (groupedCountMappings.length > 0) {
            groupedCountMappings.forEach(m => {
               const targetCol = m.target;
               const sourceCol = m.source;
-              let i = 0;
-              while (i < reportData.length) {
-                  const baseVal = String(reportData[i].raw[sourceCol] || '').trim().toLowerCase();
-                  let j = i;
-                  let groupMatches = 0;
-                  while (j < reportData.length && String(reportData[j].raw[sourceCol] || '').trim().toLowerCase() === baseVal) {
-                     if (evaluateCondition(reportData[j].raw, m)) groupMatches++;
-                     j++;
-                  }
-                  for (let k = i; k < j; k++) reportData[k].data[targetCol] = groupMatches;
-                  i = j;
-              }
+              const countMap = {};
+
+              // Pass 1: Global Counting (Immune to sorting)
+              reportData.forEach(item => {
+                 const val = String(item.raw[sourceCol] || '').trim().toLowerCase();
+                 if (!val) return;
+                 if (!countMap[val]) countMap[val] = 0;
+                 if (evaluateCondition(item.raw, m)) {
+                    countMap[val]++;
+                 }
+              });
+
+              // Pass 2: Distribute
+              reportData.forEach(item => {
+                 const val = String(item.raw[sourceCol] || '').trim().toLowerCase();
+                 item.data[targetCol] = countMap[val] || 0;
+              });
            });
         }
 
