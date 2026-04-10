@@ -17,7 +17,8 @@ import {
   Filter,
   LayoutGrid,
   Upload,
-  Calculator
+  Calculator,
+  BarChart
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -855,7 +856,7 @@ export default function VisualExcelMapping() {
       {/* CONFIG MODAL */}
       {showModal && (
         <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-content glass" style={{ width: '540px', padding: '32px', background: 'var(--bg-card)', animation: 'fadeIn 0.3s ease-out', maxHeight: '90vh', overflowY: 'auto', color: 'var(--text-main)' }}>
+          <div className="modal-content glass" style={{ width: '850px', padding: '32px', background: 'var(--bg-card)', animation: 'fadeIn 0.3s ease-out', maxHeight: '90vh', overflowY: 'auto', color: 'var(--text-main)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
               <div>
                 <h3 style={{ fontSize: '20px', fontWeight: '700' }}>Configure Column {activeCell?.colLetter}</h3>
@@ -1016,7 +1017,53 @@ export default function VisualExcelMapping() {
                                  />
                               </div>
                            </div>
-                           <p style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>* Whitespace will be automatically trimmed after replacement.</p>
+                           
+                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', background: 'var(--glass-bg)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                              <input 
+                                type="checkbox"
+                                checked={modalData.simplifyDate || false}
+                                onChange={e => setModalData(prev => ({ ...prev, simplifyDate: e.target.checked }))}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                              />
+                              <div>
+                                 <p style={{ fontSize: '12px', fontWeight: '600' }}>Simplify Date (Extract Date Part)</p>
+                                 <p style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Removes Day names and Time (e.g. 'Friday, Feb 27 - 2026 , 9:30 AM' becomes 'Feb 27 - 2026').</p>
+                              </div>
+                           </div>
+
+                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', background: 'var(--glass-bg)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                              <input 
+                                type="checkbox"
+                                checked={modalData.simplifyTime || false}
+                                onChange={e => setModalData(prev => ({ ...prev, simplifyTime: e.target.checked }))}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                              />
+                              <div>
+                                 <p style={{ fontSize: '12px', fontWeight: '600' }}>Simplify Time (Extract Time Part)</p>
+                                 <p style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Extracts the time (e.g. 'Friday, Feb 27 - 2026 , 9:30 AM' becomes '9:30 AM').</p>
+                              </div>
+                           </div>
+                           
+                           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', background: 'var(--glass-subtle)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                               <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--secondary)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <BarChart size={14} /> Group-Level Aggregation
+                               </label>
+                               <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Calculate values across a merged group (e.g. Total Patient Fee).</p>
+                               <select 
+                                 value={modalData.groupAggType || 'none'}
+                                 onChange={e => setModalData(prev => ({ ...prev, groupAggType: e.target.value }))}
+                                 style={{ padding: '8px', fontSize: '12px', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-main)' }}
+                               >
+                                 <option value="none">None (Show individual rows)</option>
+                                 <option value="sum">Sum (Add all values in group)</option>
+                                 <option value="count">Count (Number of items in group)</option>
+                                 <option value="avg">Average (Mean of group)</option>
+                                 <option value="min">Minimum Value in group</option>
+                                 <option value="max">Maximum Value in group</option>
+                               </select>
+                            </div>
+
+                            <p style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>* Whitespace will be automatically trimmed after replacement.</p>
                        </div>
                     </div>
 

@@ -384,7 +384,27 @@ export default function GenerateReport() {
               val = metricCounts[mappingIndex] || 0;
             }
 
-            // --- APPLY TEXT TRANSFORMS (Cleaning) ---
+            // --- APPLY TEXT TRANSFORMS (Cleaning & Temporal Normalization) ---
+            if (mapping.simplifyDate && val !== null && val !== undefined) {
+               try {
+                  const match = String(val).match(/^.*?, (.*? - \d{4}) ,.*$/);
+                  if (match) val = match[1];
+                  else val = String(val).trim();
+               } catch (e) {
+                  console.error("Date transform error:", e);
+               }
+            }
+
+            if (mapping.simplifyTime && val !== null && val !== undefined) {
+               try {
+                  const match = String(val).match(/^.*?, .*? , (.*)$/);
+                  if (match) val = match[1];
+                  else val = String(val).trim();
+               } catch (e) {
+                  console.error("Time transform error:", e);
+               }
+            }
+
             if (mapping.findText && val !== null && val !== undefined) {
                try {
                   // Escape special regex characters in the search string
@@ -457,6 +477,34 @@ export default function GenerateReport() {
            });
         }
 
+        // --- GROUP-LEVEL AGGREGATION ENGINE (SUM BY PATIENT) ---
+        const groupAggMappings = template.mappings.filter(m => m.groupAggType && m.groupAggType !== 'none' && m.target);
+        if (groupAggMappings.length > 0) {
+           groupAggMappings.forEach(m => {
+              const targetCol = m.target;
+              const aggType = m.groupAggType;
+              const mIdx = template.mappings.findIndex(map => map.tag === m.tag);
+              const boundCols = template.mappings.slice(0, mIdx).filter(map => map.enableMerging && map.target).map(map => map.target);
+
+              let i = 0;
+              while (i < reportData.length) {
+                 let j = i;
+                 const groupValues = [];
+                 const isSameGroup = (idxA, idxB) => boundCols.every(col => String(reportData[idxA].data[col] || '') === String(reportData[idxB].data[col] || ''));
+                 while (j < reportData.length && isSameGroup(i, j)) {
+                    groupValues.push(Number(reportData[j].data[targetCol]) || 0);
+                    j++;
+                 }
+                 let result = 0;
+                 if (aggType === 'sum') result = groupValues.reduce((a, b) => a + b, 0);
+                 else if (aggType === 'count') result = groupValues.length;
+                 else if (aggType === 'avg') result = groupValues.length ? groupValues.reduce((a, b) => a + b, 0) / groupValues.length : 0;
+                 for (let k = i; k < j; k++) reportData[k].data[targetCol] = aggType === 'count' ? Math.round(result) : Number(result.toFixed(2));
+                 i = j;
+              }
+           });
+        }
+
         // POST-SORTING RECALCULATION FOR GROUPED COUNTS (Improved Fix)
         const groupedCountMappings = template.mappings.filter(m => m.type === 'count' && m.isGroupedCount && m.source && m.target);
         if (groupedCountMappings.length > 0) {
@@ -488,7 +536,34 @@ export default function GenerateReport() {
            });
         }
 
-        // --- FLATTEN DATA FOR FINAL OUTPUT ---
+                 // --- PHASE 3: POST-AGGREGATION FORMULA RECALCULATION ---
+         const lateMathMappings = template.mappings.filter(m => m.type === 'math' && m.formula && m.formula.includes('{') && m.target);
+         if (lateMathMappings.length > 0) {
+            reportData.forEach(item => {
+               lateMathMappings.forEach(mapping => {
+                  let expression = mapping.formula;
+                  const row = item.raw, newRow = item.data;
+                  const masterMatches = expression.match(/\[(.*?)\]/g);
+                  if (masterMatches) masterMatches.forEach(match => {
+                    const colName = match.replace(/\[|\]/g, ''), innerVal = row[colName];
+                    expression = expression.split(match).join(isNaN(Number(innerVal)) ? 0 : Number(innerVal));
+                  });
+                  const tmplMatches = expression.match(/\{(.*?)\}/g);
+                  if (tmplMatches) tmplMatches.forEach(match => {
+                    const colName = match.replace(/\{|\}/g, ''), innerVal = newRow[colName];
+                    expression = expression.split(match).join((innerVal !== undefined && innerVal !== null && !isNaN(Number(innerVal))) ? Number(innerVal) : 0);
+                  });
+                  const funcMap = { 'ABS(': 'Math.abs(', 'ROUND(': 'Math.round(', 'CEIL(': 'Math.ceil(', 'FLOOR(': 'Math.floor(', 'MAX(': 'Math.max(', 'MIN(': 'Math.min(' };
+                  Object.entries(funcMap).forEach(([key, val]) => expression = expression.split(key).join(val));
+                  try {
+                    const result = new Function(`return ${expression}`)();
+                    newRow[mapping.target] = isNaN(result) || !isFinite(result) ? 'Error' : Number(result.toFixed(4));
+                  } catch(e) { newRow[mapping.target] = 'Err: Syntax'; }
+               });
+            });
+         }
+
+// --- FLATTEN DATA FOR FINAL OUTPUT ---
         // Insert Top Merged Header
         if (topReportHeader !== null && topReportHeader !== undefined) {
            finalAOA.push([topReportHeader]);
@@ -661,20 +736,6 @@ export default function GenerateReport() {
                   
                   let startIdx = dataStartRow;
 
-                  // NEW: Pre-apply "Center" alignment to ALL cells in this column for consistency
-                  for (let r = dataStartRow; r < finalAOA.length; r++) {
-                     const cellAddress = XLSX.utils.encode_cell({ r, c: colIdx });
-                     if (ws[cellAddress]) {
-                        if (typeof ws[cellAddress] !== 'object') ws[cellAddress] = { v: ws[cellAddress], t: 's' };
-                        if (!ws[cellAddress].s) ws[cellAddress].s = {};
-                        ws[cellAddress].s.alignment = { 
-                           vertical: 'center', 
-                           horizontal: 'center',
-                           wrapText: false
-                        };
-                     }
-                  }
-
                   // Handle AOA values which could be either primitives or cell objects {v: ...}
                   // Normalized value for comparison (trimming for robustness)
                   const getVal = (r, c) => {
@@ -707,14 +768,70 @@ export default function GenerateReport() {
                });
             }
              
-             // --- ENFORCE COMPACT ROW HEIGHTS FOR ALL ROWS ---
-             ws['!rows'] = finalAOA.map(() => ({ hpt: 16 }));
+             // --- SMART ROW COLLAPSING: FIX GIANT MERGED CELLS ---
+             // A row is collapsible if it is identical to the row above across ALL mapped columns.
+             // This keeps the "box" height small even for many merged records.
+             const mappedColIdxs = template.mappings.filter(m => m.target).map(m => columnHeaders.indexOf(m.target)).filter(i => i !== -1);
+             let dataStartRow = (topReportHeader !== null && topReportHeader !== undefined) ? 2 : 1;
+             
+             const rowHeights = finalAOA.map((_, rIdx) => {
+                if (rIdx <= dataStartRow) return { hpt: 20, customHeight: true }; // Headers/Title
+                
+                // Helper to get raw value
+                const getRaw = (r, c) => {
+                   const cell = finalAOA[r] ? finalAOA[r][c] : null;
+                   return (cell && typeof cell === 'object') ? cell.v : cell;
+                };
+
+                // Check if this row is a perfect duplicate of the one above it
+                const isRedundant = mappedColIdxs.every(cIdx => {
+                   const cur = String(getRaw(rIdx, cIdx) || '').trim();
+                   const prev = String(getRaw(rIdx - 1, cIdx) || '').trim();
+                   return cur === prev;
+                });
+
+                // If redundant, "collapse" it to near-zero height to fix the giant box issue
+                return isRedundant ? { hpt: 2, customHeight: true } : { hpt: 18, customHeight: true };
+             });
+
+             // Apply Global Layout Guard (Alignment/No-Wrap)
+             const range = XLSX.utils.decode_range(ws['!ref']);
+             for (let r = range.s.r; r <= range.e.r; r++) {
+                for (let c = range.s.c; c <= range.e.c; c++) {
+                   const addr = XLSX.utils.encode_cell({ r, c });
+                   if (!ws[addr]) continue;
+                   if (typeof ws[addr] !== 'object') ws[addr] = { v: ws[addr], t: 's' };
+                   if (!ws[addr].s) ws[addr].s = {};
+                   if (!ws[addr].s.alignment) ws[addr].s.alignment = {};
+                   
+                   ws[addr].s.alignment.vertical = 'center';
+                   ws[addr].s.alignment.horizontal = 'center';
+                   ws[addr].s.alignment.wrapText = false;
+                }
+             }
+             
+             ws['!rows'] = rowHeights;
 
              XLSX.utils.book_append_sheet(wb, ws, 'Data Report');
         }
         
         if (pivotRows.length > 0) {
            const wsPivot = XLSX.utils.aoa_to_sheet(pivotRows);
+           
+           // Apply Global Guard to Pivot Sheet as well
+           const pRange = XLSX.utils.decode_range(wsPivot['!ref']);
+           for (let r = pRange.s.r; r <= pRange.e.r; r++) {
+              for (let c = pRange.s.c; c <= pRange.e.c; c++) {
+                 const addr = XLSX.utils.encode_cell({ r, c });
+                 if (!wsPivot[addr]) continue;
+                 if (typeof wsPivot[addr] !== 'object') wsPivot[addr] = { v: wsPivot[addr], t: 's' };
+                 wsPivot[addr].s = { 
+                    alignment: { vertical: 'center', horizontal: 'center', wrapText: false } 
+                 };
+              }
+           }
+           wsPivot['!rows'] = pivotRows.map(() => ({ hpt: 16, customHeight: true }));
+
            XLSX.utils.book_append_sheet(wb, wsPivot, 'Pivot Analysis');
         }
 
