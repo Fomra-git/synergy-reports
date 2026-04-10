@@ -86,7 +86,34 @@ export default function GenerateReport() {
       const data = await masterFile.arrayBuffer();
       const workbook = XLSX.read(data);
       const firstSheetName = workbook.SheetNames[0];
-      const masterData = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName]);
+      const worksheet = workbook.Sheets[firstSheetName];
+
+      // --- MASTER DATA NORMALIZATION: FILL-DOWN MERGED CELLS ---
+      // SheetJS sheet_to_json only sees the first cell of a merge. 
+      // We manually propagate the value to every cell in the merge range.
+      if (worksheet['!merges']) {
+        worksheet['!merges'].forEach(range => {
+          const startCol = range.s.c;
+          const endCol = range.e.c;
+          const startRow = range.s.r;
+          const endRow = range.e.r;
+          
+          const firstCellAddr = XLSX.utils.encode_cell({ r: startRow, c: startCol });
+          const firstCell = worksheet[firstCellAddr];
+          
+          if (firstCell) {
+            for (let r = startRow; r <= endRow; r++) {
+              for (let c = startCol; c <= endCol; c++) {
+                if (r === startRow && c === startCol) continue;
+                const addr = XLSX.utils.encode_cell({ r, c });
+                worksheet[addr] = { ...firstCell };
+              }
+            }
+          }
+        });
+      }
+
+      const masterData = XLSX.utils.sheet_to_json(worksheet);
       
       const zip = new JSZip();
       
@@ -105,8 +132,16 @@ export default function GenerateReport() {
         const finalAOA = [];
         const wb = XLSX.utils.book_new();
         let columnHeaders = [];
-        
-        const evaluateCondition = (row, mapping) => {
+        const parseSafeNum = (val) => {
+            if (val === null || val === undefined || val === '') return 0;
+            if (typeof val === 'number') return val;
+            // Remove everything except digits, dots, and negative signs
+            const cleaned = String(val).replace(/[^0-9.-]/g, '');
+            const num = parseFloat(cleaned);
+            return isNaN(num) ? 0 : num;
+         };
+
+         const evaluateCondition = (row, mapping) => {
           if (!mapping) return true;
           
           // Helper for single rule evaluation
@@ -500,7 +535,7 @@ export default function GenerateReport() {
                  const groupValues = [];
                  const isSameGroup = (idxA, idxB) => boundCols.every(col => String(reportData[idxA].data[col] || '') === String(reportData[idxB].data[col] || ''));
                  while (j < reportData.length && isSameGroup(i, j)) {
-                    groupValues.push(Number(reportData[j].data[targetCol]) || 0);
+                    groupValues.push(parseSafeNum(reportData[j].data[targetCol]));
                     j++;
                  }
                  let result = 0;
@@ -548,7 +583,14 @@ export default function GenerateReport() {
         }
 
                  // --- PHASE 3: POST-AGGREGATION FORMULA RECALCULATION ---
-         const lateMathMappings = template.mappings.filter(m => m.type === 'math' && m.formula && m.formula.includes('{') && m.target);
+          // Safety Lock: We skip columns that were already processed by the Aggregation Engine (Ph 2)
+          const lateMathMappings = template.mappings.filter(m => 
+             m.type === 'math' && 
+             m.formula && 
+             m.formula.includes('{') && 
+             m.target &&
+             (!m.groupAggType || m.groupAggType === 'none')
+          );
          if (lateMathMappings.length > 0) {
             reportData.forEach(item => {
                lateMathMappings.forEach(mapping => {
