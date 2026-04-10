@@ -155,10 +155,12 @@ export default function PivotTemplateManager() {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
       const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
       const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
       if (rows.length === 0) return;
-      const headers = (rows[0] || []).map(h => String(h || "").trim().replace(/["']/g, ''));
+      
+      // Auto-detect header row (first row with significant data)
+      const headerRow = rows.find(r => r.filter(c => c !== null && c !== '').length > 2) || rows[0];
+      const headers = headerRow.map(h => String(h || "").trim());
       setMasterHeaders(headers.filter(h => h));
 
       // Extract unique values for filters

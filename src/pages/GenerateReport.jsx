@@ -88,14 +88,9 @@ export default function GenerateReport() {
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
 
-      // --- ROBUST HEADER NORMALIZATION ---
-      // Read only the first row to get names
-      const headerRow = XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0] || [];
-      const cleanHeaders = headerRow.map(h => String(h || "").trim());
-      
-      // Use the cleaned headers to parse the data
-      // range: 1 ensures we start reading data from row 1, using cleanHeaders as keys for row 0
-      const masterData = XLSX.utils.sheet_to_json(worksheet, { header: cleanHeaders, range: 1, defval: "" });
+      // --- ROBUST MASTER DATA PARSING ---
+      // We let XLSX find the headers automatically (handles titles/empty rows better)
+      const masterData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
       // --- MASTER DATA NORMALIZATION: JSON-LAYER UN-MERGE ---
       if (worksheet['!merges'] && masterData.length > 0) {
@@ -141,11 +136,13 @@ export default function GenerateReport() {
          const getMasterValue = (row, source) => {
            if (!source || !row) return '';
            if (row[source] !== undefined && row[source] !== null) return row[source];
-           const cleanSource = String(source).trim().replace(/["']/g, '').toLowerCase();
-           const matchingKey = Object.keys(row).find(k => {
-              const cleanKey = String(k).trim().replace(/["']/g, '').toLowerCase();
-              return cleanKey === cleanSource;
-           });
+           
+           // Super Aggressive Normalization (Trims, No Quotes, No Special Chars, Lowercase)
+           const normalize = (str) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, '');
+           
+           const cleanSource = normalize(source);
+           const matchingKey = Object.keys(row).find(k => normalize(k) === cleanSource);
+           
            return matchingKey ? row[matchingKey] : '';
          };
 
