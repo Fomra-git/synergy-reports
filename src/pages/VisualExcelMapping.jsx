@@ -888,9 +888,7 @@ export default function VisualExcelMapping() {
                    <option value="count">Occurrence Count (Running Total)</option>
                    <option value="math">Mathematical Formula</option>
                    <option value="condition_count">Conditional Count (Dashboard Summary)</option>
-                   <option value="time_diff">Time Difference</option>
-                   <option value="multi_agg">Multi-Agg (Side-by-Side Metrics)</option>
-                   <option value="pivot_agg">Dynamic Pivot (Category Split)</option>
+                    <option value="time_diff">Time Difference</option>
                  </select>
                </div>
 
@@ -1309,79 +1307,6 @@ export default function VisualExcelMapping() {
                         </p>
                       )}
                     </div>
-                  </div>
-                )}
-
-                {(modalData.type === 'multi_agg' || modalData.type === 'pivot_agg') && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'var(--glass-subtle)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                     <label style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <LayoutGrid size={14} /> Pivot & Multi-Metric Config
-                     </label>
-
-                     <div className="form-group">
-                        <label>{modalData.type === 'pivot_agg' ? 'Value Field (Numeric)' : 'Source Field to Model'}</label>
-                        <SearchableDropdown 
-                          options={masterHeaders} 
-                          value={modalData.source || ''} 
-                          onChange={val => setModalData(prev => ({ ...prev, source: val }))}
-                          placeholder="Select field..."
-                          zIndex={1150} 
-                        />
-                     </div>
-
-                     {modalData.type === 'pivot_agg' && (
-                        <div className="form-group">
-                          <label>Split Category (e.g. Appointment Type / Doctor)</label>
-                          <SearchableDropdown 
-                            options={masterHeaders} 
-                            value={modalData.pivotSplitCol || ''} 
-                            onChange={val => setModalData(prev => ({ ...prev, pivotSplitCol: val }))}
-                            placeholder="Select category..."
-                            zIndex={1140} 
-                          />
-                          <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Creates one column for every unique value found in this category.</p>
-                        </div>
-                     )}
-
-                     {modalData.type === 'multi_agg' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                           <label style={{ fontSize: '12px', fontWeight: '600' }}>Select Operations to Generate Columns:</label>
-                           {['sum', 'count', 'avg', 'min', 'max'].map(op => {
-                              const existing = (modalData.multiMetrics || []).find(m => m.type === op);
-                              return (
-                                <div key={op} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--glass-bg)', borderRadius: '10px', border: '1px solid var(--border)' }}>
-                                   <input 
-                                     type="checkbox"
-                                     checked={!!existing}
-                                     onChange={e => {
-                                        let newMetrics = [...(modalData.multiMetrics || [])];
-                                        if (e.target.checked) {
-                                           newMetrics.push({ type: op, label: `${modalData.target || 'Metric'} (${op.toUpperCase()})` });
-                                        } else {
-                                           newMetrics = newMetrics.filter(m => m.type !== op);
-                                        }
-                                        setModalData(prev => ({ ...prev, multiMetrics: newMetrics }));
-                                     }}
-                                   />
-                                   <div style={{ flex: 1 }}>
-                                      <span style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase' }}>{op}</span>
-                                      {existing && (
-                                         <input 
-                                           style={{ marginLeft: '12px', padding: '4px 8px', fontSize: '11px', background: 'var(--input-bg)', width: '200px' }}
-                                           value={existing.label}
-                                           onChange={e => {
-                                              const newMetrics = (modalData.multiMetrics || []).map(m => m.type === op ? { ...m, label: e.target.value } : m);
-                                              setModalData(prev => ({ ...prev, multiMetrics: newMetrics }));
-                                           }}
-                                           placeholder="Label..."
-                                         />
-                                      )}
-                                   </div>
-                                </div>
-                              );
-                           })}
-                        </div>
-                     )}
                   </div>
                 )}
 

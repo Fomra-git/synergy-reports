@@ -92,30 +92,19 @@ export default function GenerateReport() {
       const masterData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
       // --- MASTER DATA NORMALIZATION: JSON-LAYER UN-MERGE ---
-      // We repair the data array directly by following the !merges metadata.
       if (worksheet['!merges'] && masterData.length > 0) {
-         // Map masterData keys to their original column indices
          const headers = Object.keys(masterData[0]);
-         
          worksheet['!merges'].forEach(range => {
             const { s, e } = range;
-            // Iterate every column in the merge range
             for (let c = s.c; c <= e.c; c++) {
                const headerName = headers[c]; 
                if (!headerName) continue;
-
-               // Find the original value from the start of the merge
-               // sheet_to_json offset: row 0 in masterData corresponds to Excel Row 2 (if header is row 1)
-               // SheetJS s.r is 0-indexed. If header is row 1 (index 0), then index 1 is masterData[0].
                const firstDataRowIdx = s.r - 1;
                if (firstDataRowIdx < 0) continue; 
-               
                const sourceRow = masterData[firstDataRowIdx];
                if (!sourceRow) return;
                const val = sourceRow[headerName];
                if (val === undefined || val === null || val === "") return;
-
-               // Propagate value to all subsequent rows in the merge
                for (let r = s.r; r <= e.r; r++) {
                   const targetRowIdx = r - 1;
                   if (targetRowIdx >= 0 && targetRowIdx < masterData.length) {
@@ -148,7 +137,6 @@ export default function GenerateReport() {
         const parseSafeNum = (val) => {
             if (val === null || val === undefined || val === '') return 0;
             if (typeof val === 'number') return val;
-            // Remove everything except digits, dots, and negative signs
             const cleaned = String(val).replace(/[^0-9.-]/g, '');
             const num = parseFloat(cleaned);
             return isNaN(num) ? 0 : num;
@@ -156,16 +144,10 @@ export default function GenerateReport() {
 
          const evaluateCondition = (row, mapping) => {
           if (!mapping) return true;
-          
-          // Helper for single rule evaluation
           const evalRule = (targetVal, operator, conditionVals) => {
-            const condVals = conditionVals && conditionVals.length > 0
-              ? conditionVals
-              : [];
-
+            const condVals = conditionVals && conditionVals.length > 0 ? conditionVals : [];
             const numMaster = Number(targetVal);
             const isMasterNumeric = !isNaN(numMaster) && targetVal !== undefined && targetVal !== '' && targetVal !== null;
-
             if (operator === 'between') {
                if (condVals.length < 2) return false;
                const min = Number(condVals[0]);
@@ -173,810 +155,395 @@ export default function GenerateReport() {
                if (!isMasterNumeric || isNaN(min) || isNaN(max)) return false;
                return numMaster >= min && numMaster <= max;
             }
-
             const evalSingle = (condVal) => {
               const numCond = condVal !== null && condVal !== undefined && condVal !== '' ? Number(condVal) : NaN;
               const isNumeric = isMasterNumeric && !isNaN(numCond);
-
-              if (operator === '==') {
-                return isNumeric ? numMaster === numCond : String(targetVal) === String(condVal);
-              } else if (operator === '!=') {
-                return isNumeric ? numMaster !== numCond : String(targetVal) !== String(condVal);
-              } else if (operator === '>') {
-                return isNumeric ? numMaster > numCond : String(targetVal) > String(condVal);
-              } else if (operator === '<') {
-                return isNumeric ? numMaster < numCond : String(targetVal) < String(condVal);
-              } else if (operator === '>=') {
-                return isNumeric ? numMaster >= numCond : String(targetVal) >= String(condVal);
-              } else if (operator === '<=') {
-                return isNumeric ? numMaster <= numCond : String(targetVal) <= String(condVal);
-              } else if (operator === 'contains') {
-                return String(targetVal || '').toLowerCase().includes(String(condVal || '').toLowerCase());
-              }
+              if (operator === '==') return isNumeric ? numMaster === numCond : String(targetVal) === String(condVal);
+              if (operator === '!=') return isNumeric ? numMaster !== numCond : String(targetVal) !== String(condVal);
+              if (operator === '>') return isNumeric ? numMaster > numCond : String(targetVal) > String(condVal);
+              if (operator === '<') return isNumeric ? numMaster < numCond : String(targetVal) < String(condVal);
+              if (operator === '>=') return isNumeric ? numMaster >= numCond : String(targetVal) >= String(condVal);
+              if (operator === '<=') return isNumeric ? numMaster <= numCond : String(targetVal) <= String(condVal);
+              if (operator === 'contains') return String(targetVal || '').toLowerCase().includes(String(condVal || '').toLowerCase());
               return false;
             };
-
             if (condVals.length > 0) {
-              if (operator === '!=') {
-                 return condVals.every(c => evalSingle(c));
-              } else {
-                 return condVals.some(c => evalSingle(c));
-              }
+              if (operator === '!=') return condVals.every(c => evalSingle(c));
+              return condVals.some(c => evalSingle(c));
             }
             return true;
           };
-
-          // MULTI-RULE HANDLING (New)
           if (mapping.rules && mapping.rules.length > 0) {
             return mapping.rules.every(rule => {
               if (!rule.conditionCol) return true;
               return evalRule(row[rule.conditionCol], rule.operator, rule.conditionVals);
             });
           }
-
-          // LEGACY SINGLE-RULE HANDLING
           if (!mapping.conditionCol) return true;
           return evalRule(row[mapping.conditionCol], mapping.operator, mapping.conditionVals);
         };
 
-        // 1. PHASE 1: PRE-FILTERING (EXCLUSION)
         let filteredMasterData = [...masterData];
         const displayUniqueFilters = [];
         
         if (template.isGlobalFilterEnabled !== false && template.globalFilters && template.globalFilters.length > 0) {
            template.globalFilters.forEach(globalFilter => {
               if (!globalFilter.conditionCol) return;
-              if (globalFilter.operator === 'unique') {
-                  displayUniqueFilters.push(globalFilter);
-              } else {
-                  filteredMasterData = filteredMasterData.filter(row => evaluateCondition(row, globalFilter));
-              }
+              if (globalFilter.operator === 'unique') displayUniqueFilters.push(globalFilter);
+              else filteredMasterData = filteredMasterData.filter(row => evaluateCondition(row, globalFilter));
            });
         }
 
-        const legacyConditionMappings = template.mappings.filter(m => m.type === 'condition' && m.conditionCol);
+        const legacyConditionMappings = (template.mappings || []).filter(m => m.type === 'condition' && m.conditionCol);
         if (legacyConditionMappings.length > 0) {
            filteredMasterData = filteredMasterData.filter(row => legacyConditionMappings.every(m => evaluateCondition(row, m)));
         }
 
         const metricCounts = {};
-        template.mappings.forEach((m, idx) => {
+        (template.mappings || []).forEach((m, idx) => {
            if (m.type === 'condition_count' && m.conditionCol) {
               metricCounts[idx] = filteredMasterData.filter(row => evaluateCondition(row, m)).length;
            }
         });
         
-        // Render 1 row automatically if it's purely a Summary Dashboard or user forced Summary Mode
-        // We ensure Audit Mode (no mappings + highlight empty) doesn't accidentally trigger a single row.
-        let hasMappingTargets = template.mappings.some(m => m.target);
-        const isSummaryOnly = template.isSummaryMode === true || 
-                             (hasMappingTargets && template.mappings.every(m => m.type === 'condition_count' || !m.target));
+        let hasMappingTargets = (template.mappings || []).some(m => m.target);
 
-        if (isSummaryOnly && filteredMasterData.length > 0) {
-           filteredMasterData = [filteredMasterData[0]];
+        // --- PIVOT TEMPLATE LOGIC ---
+        if (template.type === 'pivot') {
+          // CLONE AND MIGRATE (For backwards compatibility with old templates on different systems)
+          let pivotCols = [...(template.pivotColumns || [])];
+          
+          // Migration 1: old valueFields to pivotColumns
+          if (pivotCols.length === 0 && template.valueFields && template.valueFields.length > 0) {
+            pivotCols = template.valueFields.map((vf, i) => ({
+              id: `leggen-${i}`,
+              type: 'aggregation',
+              ...vf
+            }));
+          }
+
+          // Migration 2: Inject grouping column if not in list
+          const rowField = template.rowField;
+          if (rowField && !pivotCols.some(c => c.type === 'grouping')) {
+            pivotCols = [{
+              id: 'grp-gen',
+              type: 'grouping',
+              source: rowField,
+              displayName: rowField
+            }, ...pivotCols];
+          }
+
+          const groupingCol = pivotCols.find(c => c.type === 'grouping');
+          const activeRowField = groupingCol ? groupingCol.source : rowField;
+          
+          if (!activeRowField) {
+            console.warn("Pivot template missing rowField/groupingCol", template.name);
+          } else {
+            const pivotMap = {}; 
+            const aggCols = pivotCols.filter(c => c.type === 'aggregation');
+
+            filteredMasterData.forEach(row => {
+               const groupVal = row[activeRowField] !== undefined && row[activeRowField] !== null ? String(row[activeRowField]) : '(Blank)';
+               if (!pivotMap[groupVal]) {
+                 pivotMap[groupVal] = {
+                   rows: [],
+                   firstRow: row,
+                   aggregations: {}
+                 };
+               }
+               pivotMap[groupVal].rows.push(row);
+            });
+
+            // Headers assembly (Directly from pivotCols)
+            const headers = pivotCols.map(c => c.displayName || (c.type === 'aggregation' ? `${c.operation.toUpperCase()}(${c.source})` : c.source || 'Untitled'));
+            finalAOA.push(headers);
+
+            const pivotResults = [];
+
+            Object.entries(pivotMap).forEach(([groupVal, group]) => {
+               const groupResult = {};
+               
+               // 1. Pre-calculate aggregations
+               aggCols.forEach(col => {
+                  const vals = group.rows.map(r => parseSafeNum(r[col.source])).filter(v => v !== undefined);
+                  let res = 0;
+                  if (col.operation === 'count') res = vals.length;
+                  else if (vals.length > 0) {
+                    if (col.operation === 'sum') res = vals.reduce((a, b) => a + b, 0);
+                    else if (col.operation === 'avg') res = vals.reduce((a, b) => a + b, 0) / vals.length;
+                    else if (col.operation === 'min') res = Math.min(...vals);
+                    else if (col.operation === 'max') res = Math.max(...vals);
+                  }
+                  group.aggregations[col.id] = typeof res === 'number' ? Number(res.toFixed(2)) : res;
+               });
+
+               // 2. Process all columns in order
+               const reportRow = [];
+               pivotCols.forEach(col => {
+                  let val = '';
+                  if (col.type === 'grouping') {
+                    val = groupVal;
+                  } else if (col.type === 'property') {
+                    val = group.firstRow[col.source] || '';
+                  } else if (col.type === 'aggregation') {
+                    val = group.aggregations[col.id];
+                  } else if (col.type === 'formula') {
+                    let expr = col.formula || '';
+                    (expr.match(/\[(.*?)\]/g) || []).forEach(m => {
+                       const header = m.replace(/[\[\]]/g, '');
+                       expr = expr.split(m).join(parseSafeNum(group.firstRow[header]));
+                    });
+                    (expr.match(/\{(.*?)\}/g) || []).forEach(m => {
+                       const colName = m.replace(/[\{\}]/g, '');
+                       expr = expr.split(m).join(parseSafeNum(groupResult[colName]));
+                    });
+
+                    try {
+                      const res = new Function(`return ${expr}`)();
+                      val = isNaN(res) || !isFinite(res) ? 0 : Number(res.toFixed(4));
+                    } catch(e) {
+                      val = 'Err';
+                    }
+                  }
+                  
+                  const colKey = col.displayName || (col.type === 'aggregation' ? `${col.operation.toUpperCase()}(${col.source})` : col.source || 'Untitled');
+                  groupResult[colKey] = val;
+                  reportRow.push(val);
+               });
+               
+               pivotResults.push({ data: groupResult, rawRow: reportRow });
+            });
+
+            // Apply Output Filters
+            let filteredResults = pivotResults;
+            if (template.isOutputFilterEnabled !== false && template.outputFilters && template.outputFilters.length > 0) {
+               filteredResults = pivotResults.filter(res => {
+                  return template.outputFilters.every(f => evaluateCondition(res.data, f));
+               });
+            }
+
+            filteredResults.forEach(res => finalAOA.push(res.rawRow));
+
+            hasMappingTargets = true;
+            columnHeaders = headers;
         }
-
-        // Pre-compute occurrences based on filtered data only
-        const countMaps = {};
-        const countMappings = template.mappings.filter(m => m.type === 'count' && m.source);
-        countMappings.forEach(m => {
-          countMaps[m.source] = {};
-          filteredMasterData.forEach(row => {
-            // Check optional conditions for count mappings
-            if (!evaluateCondition(row, m)) return;
-
-            const val = row[m.source];
-            if (val !== undefined && val !== null) {
-              countMaps[m.source][val] = (countMaps[m.source][val] || 0) + 1;
-            }
-          });
-        });
-
-        // Map data based on template rules
-        let reportData = filteredMasterData.map((row, index) => {
-          const newRow = {};
-          let rowHasEmpty = false;
-          
-          template.mappings.forEach((mapping, mappingIndex) => {
-            if (!mapping.target) return;
-            
-            let val = '';
-            const type = mapping.type || 'direct';
-            
-            if (type === 'direct' && mapping.source) {
-              val = row[mapping.source] !== undefined ? row[mapping.source] : '';
-            } 
-            else if (type === 'serial') {
-              val = index + 1;
-            } 
-            else if (type === 'count' && mapping.source) {
-              const rawVal = row[mapping.source];
-              val = rawVal !== undefined && rawVal !== null ? countMaps[mapping.source][rawVal] : 0;
-            }
-            else if (type === 'time_diff' && mapping.colA && mapping.colB) {
-              // Parse various time formats into total minutes since midnight
-              const parseTimeToMins = (raw) => {
-                if (raw === undefined || raw === null || raw === '') return null;
-                const str = String(raw).trim().toUpperCase();
-
-                // Handle Excel serial number (decimal fraction of a day)
-                if (!isNaN(Number(str))) {
-                  const fracDay = Number(str) % 1;
-                  return Math.round(fracDay * 24 * 60);
-                }
-
-                // Handle HH:MM:SS AM/PM or HH:MM AM/PM
-                const match = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/);
-                if (!match) return null;
-                let hrs = parseInt(match[1], 10);
-                const mins = parseInt(match[2], 10);
-                const isPM = match[4] === 'PM';
-                const isAM = match[4] === 'AM';
-                if (isPM && hrs !== 12) hrs += 12;
-                if (isAM && hrs === 12) hrs = 0;
-                return hrs * 60 + mins;
-              };
-
-              const timeA = parseTimeToMins(row[mapping.colA]); // End / Checkout
-              const timeB = parseTimeToMins(row[mapping.colB]); // Start / Checkin
-              
-              if (timeA === null || timeB === null) {
-                val = 'Parse Err';
-              } else {
-                let diffMins = timeA - timeB;
-                if (diffMins < 0) diffMins += 24 * 60; // handle overnight crossings
-                
-                const threshold = mapping.threshold ? parseInt(mapping.threshold, 10) : null;
-                const outType = mapping.outType || 'duration_hhmm';
-
-                if (outType === 'duration_hhmm') {
-                  const h = Math.floor(diffMins / 60);
-                  const m = diffMins % 60;
-                  val = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-                } else if (outType === 'duration_mins') {
-                  val = diffMins;
-                } else if (outType === 'exceeds_yn') {
-                  val = threshold !== null ? (diffMins > threshold ? 'Yes' : 'No') : 'N/A';
-                } else if (outType === 'excess_mins') {
-                  val = threshold !== null ? (diffMins - threshold) : diffMins;
-                } else if (outType === 'excess_hhmm') {
-                  const excess = threshold !== null ? (diffMins - threshold) : 0;
-                  const isNeg = excess < 0;
-                  const absExcess = Math.abs(excess);
-                  const h = Math.floor(absExcess / 60);
-                  const m = absExcess % 60;
-                  val = (isNeg ? '-' : '') + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-                } else if (outType === 'remaining_mins') {
-                  val = threshold !== null ? (threshold - diffMins) : 0;
-                } else if (outType === 'remaining_hhmm') {
-                  const remaining = threshold !== null ? (threshold - diffMins) : 0;
-                  const isNeg = remaining < 0;
-                  const absRem = Math.abs(remaining);
-                  const h = Math.floor(absRem / 60);
-                  const m = absRem % 60;
-                  val = (isNeg ? '-' : '') + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-                }
-              }
-            }
-            else if (type === 'math' && mapping.formula) {
-              let expression = mapping.formula;
-              // Resolve [MasterCol] references from the raw master row
-              const masterMatches = expression.match(/\[(.*?)\]/g);
-              if (masterMatches) {
-                masterMatches.forEach(match => {
-                  const colName = match.replace(/\[|\]/g, '');
-                  const innerVal = row[colName];
-                  const numVal = parseSafeNum(innerVal);
-                  expression = expression.split(match).join(numVal);
-                });
-              }
-              // Resolve {TemplateCol} references from already-computed template columns (newRow)
-              const tmplMatches = expression.match(/\{(.*?)\}/g);
-              if (tmplMatches) {
-                tmplMatches.forEach(match => {
-                  const colName = match.replace(/\{|\}/g, '');
-                  const innerVal = newRow[colName];
-                  const numVal = parseSafeNum(innerVal);
-                  expression = expression.split(match).join(numVal);
-                });
-              }
-
-              // Transform human-friendly functions to JS Math
-              const funcMap = {
-                'ABS(': 'Math.abs(',
-                'ROUND(': 'Math.round(',
-                'CEIL(': 'Math.ceil(',
-                'FLOOR(': 'Math.floor(',
-                'MAX(': 'Math.max(',
-                'MIN(': 'Math.min('
-              };
-              Object.entries(funcMap).forEach(([key, val]) => {
-                expression = expression.split(key).join(val);
-              });
-
-              try {
-                // Allow digits, operators, dots, commas, parentheses, spaces, and the word "Math"
-                if (!/^[0-9+\-*/(),.\s]|Math\.[a-z]+/.test(expression)) {
-                   // A more precise check: Allow only characters and specific Math calls
-                   if (/[^0-9+\-*/(),.\s]|(?!\bMath\.(abs|round|ceil|floor|max|min)\b)Math\./.test(expression)) {
-                      throw new Error("Invalid characters");
-                   }
-                }
-                const result = new Function(`return ${expression}`)();
-                val = isNaN(result) || !isFinite(result) ? 'Error' : Number(result.toFixed(4));
-              } catch(e) {
-                val = 'Err: Syntax';
-              }
-            }
-            else if (type === 'condition' && mapping.conditionCol) {
-              val = row[mapping.conditionCol] !== undefined ? row[mapping.conditionCol] : '';
-            }
-            else if (type === 'condition_count' && mapping.conditionCol) {
-              val = metricCounts[mappingIndex] || 0;
-            }
-
-            // --- APPLY TEXT TRANSFORMS (Cleaning & Temporal Normalization) ---
-            if (mapping.simplifyDate && val !== null && val !== undefined) {
-               try {
-                  const match = String(val).match(/^.*?, (.*? - \d{4}) ,.*$/);
-                  if (match) val = match[1];
-                  else val = String(val).trim();
-               } catch (e) {
-                  console.error("Date transform error:", e);
-               }
-            }
-
-            if (mapping.simplifyTime && val !== null && val !== undefined) {
-               try {
-                  const match = String(val).match(/^.*?, .*? , (.*)$/);
-                  if (match) val = match[1];
-                  else val = String(val).trim();
-               } catch (e) {
-                  console.error("Time transform error:", e);
-               }
-            }
-
-            if (mapping.findText && val !== null && val !== undefined) {
-               try {
-                  // Escape special regex characters in the search string
-                  const escapedSearch = mapping.findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                  val = String(val).replace(new RegExp(escapedSearch, 'gi'), mapping.replaceWith || '').trim();
-               } catch (e) {
-                  console.error("Transform error:", e);
-               }
-            } else if (val !== null && val !== undefined) {
-               // Default fallback: trim whitespace even if no find/replace is set
-               val = String(val).trim();
-            }
-
-            // Apply Background Shading for Empty Cells if enabled
-            const isEmpty = val === '' || val === null || val === undefined;
-            if (template.isHighlightEmptyEnabled && isEmpty) {
-               rowHasEmpty = true;
-               newRow[mapping.target] = {
-                 v: '',
-                 t: 's',
-                 s: { fill: { fgColor: { rgb: "FF8080" } } } // Medium Red
-               };
-            } else {
-               newRow[mapping.target] = val;
-            }
-          });
-          
-          return { data: newRow, raw: row, hasEmpty: rowHasEmpty };
-        });
-
-        // 2.5 Apply Report Output Filters (Post-mapping)
-        if (template.isOutputFilterEnabled !== false && template.outputFilters && template.outputFilters.length > 0) {
-          reportData = reportData.filter(rowObj => {
-            const mappedRow = rowObj.data;
-            return template.outputFilters.every(filter => {
-              if (!filter.conditionCol) return true;
-              
-              // We reuse evaluateCondition but pass the Mapped Row instead of the Master Row
-              // The filter.conditionCol refers to the Target Column Name in the template
-              const targetVal = mappedRow[filter.conditionCol];
-              
-              // Since evaluateCondition expects mapping.conditionCol to find value, 
-              // we can just pass mappedRow directly if we ensure fields match.
-              return evaluateCondition(mappedRow, filter);
+      } else {
+          // --- STANDARD MAPPING LOGIC (RESTORED EXPERT PHASES) ---
+          const countMaps = {};
+          const countMappings = (template.mappings || []).filter(m => m.type === 'count' && m.source);
+          countMappings.forEach(m => {
+            countMaps[m.source] = {};
+            filteredMasterData.forEach(row => {
+              if (!evaluateCondition(row, m)) return;
+              const val = row[m.source];
+              if (val !== undefined && val !== null) countMaps[m.source][val] = (countMaps[m.source][val] || 0) + 1;
             });
           });
-        }
 
-        // Hiding rows that don't have empty cells in Audit/Highlight mode
-        if (template.isHighlightEmptyEnabled) {
-           reportData = reportData.filter(r => r.hasEmpty);
-        }
+          const isSummaryOnly = template.isSummaryMode === true || (hasMappingTargets && (template.mappings || []).every(m => m.type === 'condition_count' || !m.target));
+          let processData = [...filteredMasterData];
+          if (isSummaryOnly && processData.length > 0) processData = [processData[0]];
 
-        // AUTOMATIC SORTING FOR MERGED COLUMNS
-        // We sort the wrapped objects to preserve access to original 'raw' data
-        const mergeCols = template.mappings
-           .filter(m => m.enableMerging && m.target)
-           .map(m => m.target);
-
-        if (mergeCols.length > 0) {
-           reportData.sort((a, b) => {
-              for (const col of mergeCols) {
-                 const valA = String(a.data[col] || '').trim();
-                 const valB = String(b.data[col] || '').trim();
-                 if (valA !== valB) {
-                    return valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
-                 }
+          let reportData = processData.map((row, index) => {
+            const newRow = {};
+            let rowHasEmpty = false;
+            (template.mappings || []).forEach((mapping, mappingIndex) => {
+              if (!mapping.target) return;
+              let val = '';
+              const type = mapping.type || 'direct';
+              if (type === 'direct' && mapping.source) val = row[mapping.source] !== undefined ? row[mapping.source] : '';
+              else if (type === 'serial') val = index + 1;
+              else if (type === 'count' && mapping.source) val = row[mapping.source] !== undefined && row[mapping.source] !== null ? countMaps[mapping.source][row[mapping.source]] : 0;
+              else if (type === 'time_diff' && mapping.colA && mapping.colB) {
+                 const parseTimeToMins = (raw) => {
+                    if (raw === undefined || raw === null || raw === '') return null;
+                    const str = String(raw).trim().toUpperCase();
+                    if (!isNaN(Number(str))) return Math.round((Number(str) % 1) * 24 * 60);
+                    const match = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/);
+                    if (!match) return null;
+                    let hrs = parseInt(match[1], 10);
+                    const mins = parseInt(match[2], 10);
+                    if (match[4] === 'PM' && hrs !== 12) hrs += 12;
+                    if (match[4] === 'AM' && hrs === 12) hrs = 0;
+                    return hrs * 60 + mins;
+                  };
+                  const timeA = parseTimeToMins(row[mapping.colA]);
+                  const timeB = parseTimeToMins(row[mapping.colB]);
+                  if (timeA === null || timeB === null) val = 'Parse Err';
+                  else {
+                    let diffMins = timeA - timeB;
+                    if (diffMins < 0) diffMins += 24 * 60;
+                    const threshold = mapping.threshold ? parseInt(mapping.threshold, 10) : null;
+                    const outType = mapping.outType || 'duration_hhmm';
+                    if (outType === 'duration_hhmm') val = String(Math.floor(diffMins / 60)).padStart(2, '0') + ':' + String(diffMins % 60).padStart(2, '0');
+                    else if (outType === 'duration_mins') val = diffMins;
+                    else if (outType === 'exceeds_yn') val = threshold !== null ? (diffMins > threshold ? 'Yes' : 'No') : 'N/A';
+                  }
               }
-              return 0;
-           });
-        }
-
-        // 3. PHASE 3: CALCULATED AGGREGATIONS (GLOBAL MULTI-PIVOT ENGINE)
-        const groupAggMappings = template.mappings.filter(m => (m.groupAggType && m.groupAggType !== 'none' && m.target) || m.type === 'multi_agg' || m.type === 'pivot_agg');
-        if (groupAggMappings.length > 0) {
-           groupAggMappings.forEach(m => {
-              const aggType = m.groupAggType || 'sum';
-              const boundCols = m.groupAggBy ? [m.groupAggBy] : template.mappings.slice(0, template.mappings.indexOf(m)).filter(map => map.enableMerging && map.target).map(map => map.target);
-              if (boundCols.length === 0 && m.type !== 'pivot_agg') return;
-              
-              const primaryBoundCols = boundCols.length > 0 ? boundCols : (m.pivotSplitCol ? [m.pivotSplitCol] : []);
-
-              // PASS 1: Accumulate Global Totals
-              const globalTotals = {};
-              reportData.forEach(item => {
-                 const groupKey = primaryBoundCols.map(c => String(item.data[c] || '').trim().toLowerCase()).join('|');
-                 if (!globalTotals[groupKey]) {
-                    globalTotals[groupKey] = { rows: [] };
-                 }
-                 globalTotals[groupKey].rows.push(item);
-              });
-
-              // PASS 2: Calculate Metrics for each Group
-              Object.values(globalTotals).forEach(group => {
-                 if (m.type === 'multi_agg' && m.multiMetrics) {
-                    m.multiMetrics.forEach(mtrc => {
-                       const vals = group.rows.map(r => parseSafeNum(r.data[m.source]));
-                       let res = 0;
-                       if (mtrc.type === 'sum') res = vals.reduce((a, b) => a + b, 0);
-                       else if (mtrc.type === 'count') res = vals.length;
-                       else if (mtrc.type === 'avg') res = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-                       else if (mtrc.type === 'min') res = Math.min(...vals);
-                       else if (mtrc.type === 'max') res = Math.max(...vals);
-                       const final = mtrc.type === 'count' ? Math.round(res) : Number(res.toFixed(2));
-                       group.rows.forEach(r => {
-                          if (!r.multiData) r.multiData = {};
-                          r.multiData[`${m.tag}_${mtrc.type}`] = final;
-                       });
-                    });
-                 } else if (m.type === 'pivot_agg' && m.pivotSplitCol) {
-                    // Category-based splitting (Dynamic Pivot)
-                    const splits = {};
-                    group.rows.forEach(r => {
-                       const cat = String(r.data[m.pivotSplitCol] || '').trim() || '(Blank)';
-                       if (!splits[cat]) splits[cat] = [];
-                       splits[cat].push(parseSafeNum(r.data[m.source]));
-                    });
-                    Object.entries(splits).forEach(([cat, vals]) => {
-                       let res = vals.reduce((a, b) => a + b, 0); // Default Sum for Pivot
-                       const final = Number(res.toFixed(2));
-                       group.rows.forEach(r => {
-                          if (!r.pivotData) r.pivotData = {};
-                          r.pivotData[`${m.tag}_${cat}`] = final;
-                       });
-                    });
-                 } else {
-                    // Standard Single Aggregation
-                    const vals = group.rows.map(r => parseSafeNum(r.data[m.target]));
-                    let res = 0;
-                    if (aggType === 'sum') res = vals.reduce((a, b) => a + b, 0);
-                    else if (aggType === 'count') res = vals.length;
-                    else if (aggType === 'avg') res = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-                    else if (aggType === 'min') res = Math.min(...vals);
-                    else if (aggType === 'max') res = Math.max(...vals);
-                    const final = aggType === 'count' ? Math.round(res) : Number(res.toFixed(2));
-                    group.rows.forEach(r => r.data[m.target] = final);
-                 }
-              });
-           });
-        }
-
-        // POST-SORTING RECALCULATION FOR GROUPED COUNTS (Map-Based Fix)
-        const groupedCountMappings = template.mappings.filter(m => m.type === 'count' && m.isGroupedCount && m.source && m.target);
-        if (groupedCountMappings.length > 0) {
-           groupedCountMappings.forEach(m => {
-              const targetCol = m.target;
-              const sourceCol = m.source;
-              const countMap = {};
-
-              // Pass 1: Global Counting (Immune to sorting)
-              reportData.forEach(item => {
-                 const val = String(item.raw[sourceCol] || '').trim().toLowerCase();
-                 if (!val) return;
-                 if (!countMap[val]) countMap[val] = 0;
-                 if (evaluateCondition(item.raw, m)) {
-                    countMap[val]++;
-                 }
-              });
-
-              // Pass 2: Distribute
-              reportData.forEach(item => {
-                 const val = String(item.raw[sourceCol] || '').trim().toLowerCase();
-                 item.data[targetCol] = countMap[val] || 0;
-              });
-           });
-        }
-
-        // 4. PHASE 4: POST-AGGREGATIONS FORMULAS (BALANCES)
-        const lateMaths = template.mappings.filter(m => m.type === 'math' && m.formula && m.formula.includes('{') && m.target && (!m.groupAggType || m.groupAggType === 'none'));
-        if (lateMaths.length > 0) {
-           reportData.forEach(item => {
-              lateMaths.forEach(mapping => {
+              else if (type === 'math' && mapping.formula) {
                  let expr = mapping.formula;
-                 (expr.match(/\[(.*?)\]/g) || []).forEach(m => expr = expr.split(m).join(parseSafeNum(item.raw[m.replace(/[\[\]]/g, '')])));
-                 (expr.match(/\{(.*?)\}/g) || []).forEach(m => expr = expr.split(m).join(parseSafeNum(item.data[m.replace(/[\{\}]/g, '')])));
+                 (expr.match(/\[(.*?)\]/g) || []).forEach(m => expr = expr.split(m).join(parseSafeNum(row[m.replace(/[\[\]]/g, '')])));
+                 (expr.match(/\{(.*?)\}/g) || []).forEach(m => expr = expr.split(m).join(parseSafeNum(newRow[m.replace(/[\{\}]/g, '')])));
                  const funcMap = { 'ABS(': 'Math.abs(', 'ROUND(': 'Math.round(', 'CEIL(': 'Math.ceil(', 'FLOOR(': 'Math.floor(', 'MAX(': 'Math.max(', 'MIN(': 'Math.min(' };
                  Object.entries(funcMap).forEach(([k, v]) => expr = expr.split(k).join(v));
-                 try {
-                    const res = new Function(`return ${expr}`)();
-                    item.data[mapping.target] = isNaN(res) || !isFinite(res) ? 'Error' : Number(res.toFixed(4));
-                 } catch(e) { item.data[mapping.target] = 'Err: Syntax'; }
-              });
-           });
-        }
-
-        // 5. PHASE 5: DISPLAY FILTERS (DEDUPLICATION)
-        if (displayUniqueFilters.length > 0) {
-           displayUniqueFilters.forEach(filter => {
-              const seen = new Set();
-              reportData = reportData.filter(item => {
-                 const val = String(item.raw[filter.conditionCol] || '').trim().toLowerCase();
-                 if (!val || seen.has(val)) return false;
-                 seen.add(val);
-                 return true;
-              });
-           });
-        }
-
-// --- FLATTEN DATA FOR FINAL OUTPUT ---
-        // Insert Top Merged Header
-        if (topReportHeader !== null && topReportHeader !== undefined) {
-           finalAOA.push([topReportHeader]);
-        }
-        
-        columnHeaders = template.mappings.filter(m => m.target).map(m => m.target);
-        finalAOA.push(columnHeaders);
-        
-        reportData.forEach(item => {
-        // --- PHASE 6: COLUMN EXPANSION & FINAL GRID ---
-        const columnHeaders = [];
-        const mappingRegistry = []; // To track which column comes from which mapping/metric
-
-        template.mappings.forEach(m => {
-           if (!m.target && m.type !== 'multi_agg' && m.type !== 'pivot_agg') return;
-           
-           if (m.type === 'multi_agg' && m.multiMetrics) {
-              m.multiMetrics.forEach(mtrc => {
-                 columnHeaders.push(mtrc.label);
-                 mappingRegistry.push({ type: 'multi', tag: m.tag, sub: mtrc.type });
-              });
-           } else if (m.type === 'pivot_agg') {
-              // Find all unique pivot categories across the whole reportData for this mapping
-              const allCats = new Set();
-              reportData.forEach(r => {
-                 if (r.pivotData) {
-                    Object.keys(r.pivotData).forEach(k => {
-                       if (k.startsWith(`${m.tag}_`)) {
-                          allCats.add(k.replace(`${m.tag}_`, ''));
-                       }
-                    });
-                 }
-              });
-              Array.from(allCats).sort().forEach(cat => {
-                 columnHeaders.push(`${m.target || 'Pivot'} - ${cat}`);
-                 mappingRegistry.push({ type: 'pivot', tag: m.tag, sub: cat });
-              });
-           } else {
-              columnHeaders.push(m.target);
-              mappingRegistry.push({ type: 'standard', target: m.target });
-           }
-        });
-
-        if (columnHeaders.length > 0) {
-           finalAOA.push(columnHeaders);
-           reportData.forEach(item => {
-              finalAOA.push(mappingRegistry.map(reg => {
-                 let val = '';
-                 if (reg.type === 'multi') val = (item.multiData && item.multiData[`${reg.tag}_${reg.sub}`]) !== undefined ? item.multiData[`${reg.tag}_${reg.sub}`] : '';
-                 else if (reg.type === 'pivot') val = (item.pivotData && item.pivotData[`${reg.tag}_${reg.sub}`]) !== undefined ? item.pivotData[`${reg.tag}_${reg.sub}`] : 0;
-                 else val = item.data[reg.target] !== undefined ? item.data[reg.target] : '';
-                 
-                 if (typeof val === 'object') return ''; // Don't render raw objects
-                 return val;
-              }));
-           });
-        }
-
-        // --- ADD SUMMARY / TOTALS FOOTER ---
-        const footerCalculations = template.mappings.filter(m => m.totalType && m.totalType !== 'none' && m.target);
-        if (footerCalculations.length > 0) {
-           const footerRow = new Array(columnHeaders.length).fill(null);
-           const styledFooterRow = []; // We will use XLSX cell objects for styling
-           
-           // Index mapping for footer calculations
-           const calcIdxs = footerCalculations.map(m => ({
-              idx: columnHeaders.indexOf(m.target),
-              type: m.totalType
-           })).filter(o => o.idx !== -1).sort((a, b) => a.idx - b.idx);
-
-           if (calcIdxs.length > 0) {
-              // 1. Calculate the values
-              const results = {};
-              calcIdxs.forEach(({ idx, type }) => {
-                 const values = reportData.map(item => {
-                    const val = item.data[columnHeaders[idx]];
-                    return parseFloat(val);
-                 }).filter(v => !isNaN(v));
-
-                 if (values.length === 0) {
-                    results[idx] = 0;
-                 } else {
-                    switch (type) {
-                       case 'sum': results[idx] = values.reduce((a, b) => a + b, 0); break;
-                       case 'avg': results[idx] = values.reduce((a, b) => a + b, 0) / values.length; break;
-                       case 'count': results[idx] = values.length; break;
-                       case 'min': results[idx] = Math.min(...values); break;
-                       case 'max': results[idx] = Math.max(...values); break;
-                    }
-                 }
-              });
-
-              // 2. Identify contiguous blocks and place shared labels
-              let i = 0;
-              while (i < calcIdxs.length) {
-                 let j = i;
-                 while (j + 1 < calcIdxs.length && calcIdxs[j+1].idx === calcIdxs[j].idx + 1) {
-                    j++;
-                 }
-
-                 // Block is from calcIdxs[i].idx to calcIdxs[j].idx
-                 const firstIdx = calcIdxs[i].idx;
-                 const labelIdx = firstIdx - 1;
-
-                 // Determine custom label
-                 let customLabel = 'SUMMARY:';
-                 for (let k = i; k <= j; k++) {
-                    const mappingIdx = footerCalculations.findIndex(m => m.target === columnHeaders[calcIdxs[k].idx]);
-                    if (mappingIdx !== -1 && footerCalculations[mappingIdx].totalLabel) {
-                       customLabel = footerCalculations[mappingIdx].totalLabel;
-                       break; 
-                    }
-                 }
-
-                 if (labelIdx >= 0) {
-                    footerRow[labelIdx] = customLabel;
-                 }
-
-                 // Fill result cells
-                 for (let k = i; k <= j; k++) {
-                    const currentIdx = calcIdxs[k].idx;
-                    footerRow[currentIdx] = results[currentIdx];
-                 }
-
-                 i = j + 1;
+                 try { const res = new Function(`return ${expr}`)(); val = isNaN(res) || !isFinite(res) ? 'Error' : Number(res.toFixed(4)); } catch(e) { val = 'Err: Syntax'; }
               }
+              else if (type === 'condition' || type === 'direct') val = row[mapping.conditionCol || mapping.source] || '';
+              else if (type === 'condition_count') val = metricCounts[mappingIndex] || 0;
 
-              // 3. Assemble the row with styling objects
-              footerRow.forEach((val, fIdx) => {
-                 if (val === null) {
-                    styledFooterRow.push('');
-                 } else {
-                    styledFooterRow.push({
-                       v: val,
-                       t: typeof val === 'number' ? 'n' : 's',
-                       s: {
-                          font: { bold: true },
-                          fill: { fgColor: { rgb: "F1F5F9" } }, // Subtle slate highlight
-                          alignment: { horizontal: typeof val === 'number' ? 'center' : 'right' }
-                       }
-                    });
-                 }
-              });
-              
-              finalAOA.push(styledFooterRow);
-           }
+              if (mapping.findText && val) val = String(val).replace(new RegExp(mapping.findText, 'gi'), mapping.replaceWith || '').trim();
+              else if (val) val = String(val).trim();
+
+              const isEmpty = val === '' || val === null || val === undefined;
+              if (template.isHighlightEmptyEnabled && isEmpty) {
+                 rowHasEmpty = true;
+                 newRow[mapping.target] = { v: '', t: 's', s: { fill: { fgColor: { rgb: "FF8080" } } } };
+              } else newRow[mapping.target] = val;
+            });
+            return { data: newRow, raw: row, hasEmpty: rowHasEmpty };
+          });
+
+          // Output Filters
+          if (template.isOutputFilterEnabled !== false && template.outputFilters && template.outputFilters.length > 0) {
+            reportData = reportData.filter(r => template.outputFilters.every(f => evaluateCondition(r.data, f)));
+          }
+          if (template.isHighlightEmptyEnabled) reportData = reportData.filter(r => r.hasEmpty);
+
+          // Sorting & Merging
+          const mergeCols = (template.mappings || []).filter(m => m.enableMerging && m.target).map(m => m.target);
+          if (mergeCols.length > 0) {
+             reportData.sort((a, b) => {
+                for (const col of mergeCols) {
+                   const vA = String(a.data[col] || '').trim(), vB = String(b.data[col] || '').trim();
+                   if (vA !== vB) return vA.localeCompare(vB, undefined, { numeric: true, sensitivity: 'base' });
+                }
+                return 0;
+             });
+          }
+
+          // Aggregations (Cluster & Sum logic)
+          const groupAggMappings = (template.mappings || []).filter(m => m.groupAggType && m.groupAggType !== 'none' && m.target);
+          if (groupAggMappings.length > 0) {
+             groupAggMappings.forEach(m => {
+                const targetCol = m.target, aggType = m.groupAggType;
+                const boundCols = m.groupAggBy ? [m.groupAggBy] : (template.mappings || []).slice(0, template.mappings.indexOf(m)).filter(map => map.enableMerging && map.target).map(map => map.target);
+                if (boundCols.length === 0) return;
+                const globalTotals = {};
+                reportData.forEach(item => {
+                   const groupKey = boundCols.map(c => String(item.data[c] || '').trim().toLowerCase()).join('|');
+                   if (!globalTotals[groupKey]) globalTotals[groupKey] = { vals: [] };
+                   globalTotals[groupKey].vals.push(parseSafeNum(item.data[targetCol]));
+                });
+                reportData.forEach(item => {
+                   const groupKey = boundCols.map(c => String(item.data[c] || '').trim().toLowerCase()).join('|');
+                   const g = globalTotals[groupKey];
+                   if (!g.result) {
+                      let res = 0;
+                      if (aggType === 'sum') res = g.vals.reduce((a, b) => a + b, 0);
+                      else if (aggType === 'count') res = g.vals.length;
+                      else if (aggType === 'avg') res = g.vals.length ? g.vals.reduce((a, b) => a + b, 0) / g.vals.length : 0;
+                      g.result = aggType === 'count' ? Math.round(res) : Number(res.toFixed(2));
+                   }
+                   item.data[targetCol] = g.result;
+                });
+             });
+          }
+
+          if (topReportHeader) finalAOA.push([topReportHeader]);
+          columnHeaders = (template.mappings || []).filter(m => m.target).map(m => m.target);
+          finalAOA.push(columnHeaders);
+          reportData.forEach(item => {
+             finalAOA.push(columnHeaders.map(h => {
+                const val = item.data[h];
+                return (val && typeof val === 'object') ? val : (val === null || val === undefined ? '' : val);
+             }));
+          });
+
+          // Totals Footer
+          const footerCalculations = (template.mappings || []).filter(m => m.totalType && m.totalType !== 'none' && m.target);
+          if (footerCalculations.length > 0) {
+             const footerRow = new Array(columnHeaders.length).fill('');
+             footerCalculations.forEach(m => {
+                const idx = columnHeaders.indexOf(m.target);
+                if (idx === -1) return;
+                const vals = reportData.map(r => parseSafeNum(r.data[m.target])).filter(v => !isNaN(v));
+                let res = 0;
+                if (m.totalType === 'sum') res = vals.reduce((a, b) => a + b, 0);
+                else if (m.totalType === 'avg') res = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                else if (m.totalType === 'count') res = vals.length;
+                footerRow[idx] = { v: Number(res.toFixed(2)), t: 'n', s: { font: { bold: true }, fill: { fgColor: { rgb: "F1F5F9" } }, alignment: { horizontal: 'center' } } };
+                if (idx > 0 && !footerRow[idx-1]) footerRow[idx-1] = { v: m.totalLabel || 'TOTAL:', t: 's', s: { font: { bold: true }, alignment: { horizontal: 'right' } } };
+             });
+             finalAOA.push(footerRow);
+          }
         }
 
-        // 3. Generate Pivot Data if enabled
-        let pivotRows = [];
-        if (template.isPivotEnabled && template.pivotConfig && template.pivotConfig.rowField) {
-           const { rowField, colField, valField, aggType } = template.pivotConfig;
-           const pivotMap = {};
-           const allCols = new Set();
-           
-           filteredMasterData.forEach(row => {
-              const rVal = row[rowField] !== undefined && row[rowField] !== null ? String(row[rowField]) : '(Blank)';
-              const cVal = colField ? (row[colField] !== undefined && row[colField] !== null ? String(row[colField]) : '(Blank)') : 'Value';
-              const vVal = valField ? (isNaN(Number(row[valField])) ? 0 : Number(row[valField])) : 1;
-              
-              if (!pivotMap[rVal]) pivotMap[rVal] = {};
-              if (!pivotMap[rVal][cVal]) pivotMap[rVal][cVal] = { sum: 0, count: 0 };
-              
-              pivotMap[rVal][cVal].sum += vVal;
-              pivotMap[rVal][cVal].count += 1;
-              allCols.add(cVal);
-           });
-           
-           const sortedCols = Array.from(allCols).sort();
-           pivotRows.push([rowField, ...sortedCols]);
-           
-           Object.entries(pivotMap).forEach(([r, cols]) => {
-              const rowArr = [r];
-              sortedCols.forEach(c => {
-                 if (cols[c]) {
-                    rowArr.push(aggType === 'count' ? cols[c].count : cols[c].sum);
-                 } else {
-                    rowArr.push(0);
-                 }
-              });
-              pivotRows.push(rowArr);
-           });
-        }
-
+        // --- EXCEL GENERATION & STYLING (EXPERT VERSION) ---
         if (hasMappingTargets) {
            const ws = XLSX.utils.aoa_to_sheet(finalAOA);
-           
-           // Apply Merging for the Title Row
-           if (topReportHeader !== null && topReportHeader !== undefined && columnHeaders.length > 1) {
+           if (topReportHeader && columnHeaders.length > 1) {
               if (!ws['!merges']) ws['!merges'] = [];
               ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: columnHeaders.length - 1 } });
            }
-            // Apply Vertical Merging for Hierarchical Rows (New)
-            const mergeMappings = template.mappings.filter(m => m.enableMerging && m.target);
-            if (mergeMappings.length > 0) {
-                if (!ws['!merges']) ws['!merges'] = [];
-                
-                // Track "Break Points" from columns to the left to ensure hierarchical merging.
-                // A child column (like Count) should never merge across a parent's group boundary.
-                const parentBreakPoints = new Set();
-
-               
-               mergeMappings.forEach(m => {
-                  const colIdx = columnHeaders.indexOf(m.target);
-                  if (colIdx === -1) return;
-                  
-                  // Start row: 0 is Title (if exists), 1 is Headers, 2 is First Data Row
-                  let dataStartRow = (topReportHeader !== null && topReportHeader !== undefined) ? 2 : 1;
-                  
-                  let startIdx = dataStartRow;
-
-                  // Handle AOA values which could be either primitives or cell objects {v: ...}
-                  // Normalized value for comparison (trimming for robustness)
-                  const getVal = (r, c) => {
-                     const cell = finalAOA[r] ? finalAOA[r][c] : null;
-                     const raw = (cell && typeof cell === 'object') ? cell.v : cell;
-                     if (raw === null || raw === undefined) return '';
-                     return String(raw).trim();
-                  };
-                  
-                  let lastVal = getVal(startIdx, colIdx);
-                  
-                  for (let r = dataStartRow + 1; r < finalAOA.length; r++) {
-                     const currentVal = getVal(r, colIdx);
-                     
-                     if (currentVal !== lastVal || parentBreakPoints.has(r)) {
-                        if (r - 1 > startIdx) {
-                           ws['!merges'].push({ s: { r: startIdx, c: colIdx }, e: { r: r - 1, c: colIdx } });
-                        }
-                        lastVal = currentVal;
-                        startIdx = r;
-                        // Important: Mark this as a break point for all columns to the right
-                        parentBreakPoints.add(r);
-                     }
-                  }
-                  
-                  // Close final merge group if any
-                  if (finalAOA.length - 1 > startIdx) {
-                       ws['!merges'].push({ s: { r: startIdx, c: colIdx }, e: { r: finalAOA.length - 1, c: colIdx } });
-                  }
-               });
-            }
-             
-             // --- SMART ROW COLLAPSING: FIX GIANT MERGED CELLS ---
-             // A row is collapsible if it is identical to the row above across ALL mapped columns.
-             // This keeps the "box" height small even for many merged records.
-             const mappedColIdxs = template.mappings.filter(m => m.target).map(m => columnHeaders.indexOf(m.target)).filter(i => i !== -1);
-             let dataStartRow = (topReportHeader !== null && topReportHeader !== undefined) ? 2 : 1;
-             
-             const rowHeights = finalAOA.map((_, rIdx) => {
-                if (rIdx <= dataStartRow) return { hpt: 20, customHeight: true }; // Headers/Title
-                
-                // Helper to get raw value
-                const getRaw = (r, c) => {
-                   const cell = finalAOA[r] ? finalAOA[r][c] : null;
-                   return (cell && typeof cell === 'object') ? cell.v : cell;
-                };
-
-                // Check if this row is a perfect duplicate of the one above it
-                const isRedundant = mappedColIdxs.every(cIdx => {
-                   const cur = String(getRaw(rIdx, cIdx) || '').trim();
-                   const prev = String(getRaw(rIdx - 1, cIdx) || '').trim();
-                   return cur === prev;
-                });
-
-                // If redundant, "collapse" it to near-zero height to fix the giant box issue
-                return isRedundant ? { hpt: 2, customHeight: true } : { hpt: 18, customHeight: true };
-             });
-
-             // Apply Global Layout Guard (Alignment/No-Wrap)
-             const range = XLSX.utils.decode_range(ws['!ref']);
-             for (let r = range.s.r; r <= range.e.r; r++) {
-                for (let c = range.s.c; c <= range.e.c; c++) {
-                   const addr = XLSX.utils.encode_cell({ r, c });
-                   if (!ws[addr]) continue;
-                   if (typeof ws[addr] !== 'object') ws[addr] = { v: ws[addr], t: 's' };
-                   if (!ws[addr].s) ws[addr].s = {};
-                   if (!ws[addr].s.alignment) ws[addr].s.alignment = {};
-                   
-                   ws[addr].s.alignment.vertical = 'center';
-                   ws[addr].s.alignment.horizontal = 'center';
-                   ws[addr].s.alignment.wrapText = false;
-                }
-             }
-             
-             ws['!rows'] = rowHeights;
-
-             XLSX.utils.book_append_sheet(wb, ws, 'Data Report');
-        }
-        
-        if (pivotRows.length > 0) {
-           const wsPivot = XLSX.utils.aoa_to_sheet(pivotRows);
            
-           // Apply Global Guard to Pivot Sheet as well
-           const pRange = XLSX.utils.decode_range(wsPivot['!ref']);
-           for (let r = pRange.s.r; r <= pRange.e.r; r++) {
-              for (let c = pRange.s.c; c <= pRange.e.c; c++) {
+           if (template.type !== 'pivot') {
+              // Hierarchical Merging logic (Restored)
+              const mergeMappings = (template.mappings || []).filter(m => m.enableMerging && m.target);
+              if (mergeMappings.length > 0) {
+                 if (!ws['!merges']) ws['!merges'] = [];
+                 const parentBreakPoints = new Set();
+                 mergeMappings.forEach(m => {
+                    const colIdx = columnHeaders.indexOf(m.target);
+                    if (colIdx === -1) return;
+                    let dataStartRow = topReportHeader ? 2 : 1;
+                    let startIdx = dataStartRow;
+                    const getVal = (r, c) => {
+                       const cell = finalAOA[r] ? finalAOA[r][c] : null;
+                       const raw = (cell && typeof cell === 'object') ? cell.v : cell;
+                       return String(raw || '').trim();
+                    };
+                    let lastVal = getVal(startIdx, colIdx);
+                    for (let r = dataStartRow + 1; r < finalAOA.length; r++) {
+                       const currentVal = getVal(r, colIdx);
+                       if (currentVal !== lastVal || parentBreakPoints.has(r)) {
+                          if (r - 1 > startIdx) ws['!merges'].push({ s: { r: startIdx, c: colIdx }, e: { r: r - 1, c: colIdx } });
+                          lastVal = currentVal; startIdx = r; parentBreakPoints.add(r);
+                       }
+                    }
+                    if (finalAOA.length - 1 > startIdx) ws['!merges'].push({ s: { r: startIdx, c: colIdx }, e: { r: finalAOA.length - 1, c: colIdx } });
+                 });
+              }
+              // Row Heights Guard (Restored)
+              const range = XLSX.utils.decode_range(ws['!ref']);
+              ws['!rows'] = finalAOA.map((_, rIdx) => ({ hpt: 18, customHeight: true }));
+           }
+
+           // Global Guard (Alignment)
+           const range = XLSX.utils.decode_range(ws['!ref']);
+           for (let r = range.s.r; r <= range.e.r; r++) {
+              for (let c = range.s.c; c <= range.e.c; c++) {
                  const addr = XLSX.utils.encode_cell({ r, c });
-                 if (!wsPivot[addr]) continue;
-                 if (typeof wsPivot[addr] !== 'object') wsPivot[addr] = { v: wsPivot[addr], t: 's' };
-                 wsPivot[addr].s = { 
-                    alignment: { vertical: 'center', horizontal: 'center', wrapText: false } 
-                 };
+                 if (!ws[addr]) continue;
+                 if (typeof ws[addr] !== 'object') ws[addr] = { v: ws[addr], t: 's' };
+                 if (!ws[addr].s) ws[addr].s = {};
+                 ws[addr].s.alignment = { vertical: 'center', horizontal: 'center', wrapText: false };
               }
            }
-           wsPivot['!rows'] = pivotRows.map(() => ({ hpt: 16, customHeight: true }));
-
-           XLSX.utils.book_append_sheet(wb, wsPivot, 'Pivot Analysis');
+           XLSX.utils.book_append_sheet(wb, ws, 'Report');
         }
 
-        if (wb.SheetNames.length === 0) {
-           const wsEmpty = XLSX.utils.json_to_sheet([{ Status: 'No column mappings or pivot configuration targets found.' }]);
-           XLSX.utils.book_append_sheet(wb, wsEmpty, 'Report');
-        }
-        
-        // Write to buffer
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        
-        // Add to ZIP or download individual
-        const fileName = template.fileNameFormat
-          ? template.fileNameFormat.replace('{date}', new Date().toISOString().split('T')[0]) + '.xlsx'
-          : `${template.name.replace(/\s+/g, '_')}.xlsx`;
-          
-        if (!isSingle) {
-          zip.file(fileName, excelBuffer);
-        } else {
-          const blob = new Blob([excelBuffer], { type: 'application/octet-stream' });
-          saveAs(blob, fileName);
-        }
+        const fileName = `${template.name.replace(/\s+/g, '_')}.xlsx`;
+        if (!isSingle) zip.file(fileName, excelBuffer);
+        else saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
       }
       
-      if (!isSingle) {
-        setStatus('Compressing files...');
-        const content = await zip.generateAsync({ type: 'blob' });
-        saveAs(content, `Synergy_Reports_${new Date().getTime()}.zip`);
-      }
-      
+      if (!isSingle) saveAs(await zip.generateAsync({ type: 'blob' }), `Synergy_Reports_${Date.now()}.zip`);
       setStatus('Completed!');
       setTimeout(() => setStatus(''), 3000);
     } catch (err) {
-      console.error('Generation error:', err);
-      setError('An error occurred during report generation.');
+      console.error(err);
+      setError('Generation failed.');
     } finally {
       setIsGenerating(false);
     }
@@ -991,238 +558,114 @@ export default function GenerateReport() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 1fr) 320px', gap: '32px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-          {/* File Upload Section */}
+          {/* 1. Upload Section (Expert Design) */}
           <div className="glass" style={{ padding: '32px' }}>
              <h3 style={{ fontSize: '18px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                <span style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>1</span>
                Upload Master File
              </h3>
-             
              <div 
                className={`upload-zone ${isDragging ? 'dragging' : ''} ${masterFile ? 'has-file' : ''}`}
                onClick={() => fileInputRef.current.click()}
                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                onDragLeave={() => setIsDragging(false)}
-               onDrop={(e) => {
-                 e.preventDefault();
-                 setIsDragging(false);
-                 const file = e.dataTransfer.files[0];
-                 if (file) handleFileChange({ target: { files: [file] } });
-               }}
-               style={{ 
-                 padding: masterFile ? '40px' : '60px',
-                 borderColor: masterFile ? 'var(--success)' : (isDragging ? 'var(--primary)' : 'var(--border)')
-               }}
+               onDrop={(e) => { e.preventDefault(); setIsDragging(false); const file = e.dataTransfer.files[0]; if (file) handleFileChange({ target: { files: [file] } }); }}
+               style={{ padding: masterFile ? '40px' : '60px', border: '2px dashed var(--border)', borderRadius: '24px', textAlign: 'center', cursor: 'pointer', transition: '0.3s' }}
              >
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleFileChange} 
-                  style={{ display: 'none' }} 
-                  accept=".xlsx, .xls, .csv" 
-                />
-                
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} accept=".xlsx, .xls, .csv" />
                 {masterFile ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '20px', textAlign: 'left' }}>
-                    <div className="login-logo-icon" style={{ width: '56px', height: '56px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}>
-                      <FileSpreadsheet size={28} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontWeight: '600', fontSize: '16px' }}>{masterFile.name}</p>
-                      <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{(masterFile.size / 1024).toFixed(1)} KB • Ready to process</p>
-                    </div>
+                    <div className="login-logo-icon" style={{ width: '56px', height: '56px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}><FileSpreadsheet size={28} /></div>
+                    <div style={{ flex: 1 }}><p style={{ fontWeight: '600', fontSize: '16px' }}>{masterFile.name}</p><p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Ready to process</p></div>
                     <CheckCircle2 color="var(--success)" size={24} />
                   </div>
                 ) : (
                   <>
                     <div className="upload-icon"><Upload size={32} /></div>
                     <p style={{ fontWeight: '600', fontSize: '16px' }}>Click or drag Excel/CSV file here</p>
-                    <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '8px' }}>Security Note: This file stays in your browser.</p>
+                    <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '8px' }}>Security Note: Your data never leaves your browser.</p>
                   </>
                 )}
              </div>
              {error && <div className="alert-error" style={{ marginTop: '20px' }}>{error}</div>}
           </div>
 
-          {/* Template Selection Section */}
+          {/* 2. Template Selection Section (Expert Design) */}
           <div className="glass" style={{ padding: '32px' }}>
              <h3 style={{ fontSize: '18px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                <span style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>2</span>
                Select Output Templates
              </h3>
              
-             {templates.length === 0 ? (
-               <div style={{ textAlign: 'center', padding: '40px' }}>
-                 <p style={{ color: 'var(--text-muted)' }}>No templates found. Create some in the Template Manager first.</p>
-               </div>
-             ) : (
-               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  
-                   
-                   {/* TEMPLATE SEARCH */}
-                   <div style={{ 
-                     display: 'flex', 
-                     alignItems: 'center', 
-                     gap: '12px', 
-                     padding: '10px 16px', 
-                     background: 'var(--glass-subtle)', 
-                     borderRadius: '12px',
-                     border: '1px solid var(--border)',
-                     marginBottom: '8px'
-                   }}>
-                      <Search size={16} color="var(--text-muted)" />
-                      <input 
-                        type="text" 
-                        placeholder="Search templates..." 
-                        value={templateSearchTerm}
-                        onChange={e => setTemplateSearchTerm(e.target.value)}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-main)', fontSize: '14px', flex: 1, outline: 'none' }}
-                      />
-                   </div><div 
-                     onClick={handleSelectAll}
-                     onMouseOver={e => e.currentTarget.style.background = 'var(--glass-subtle)'} 
-                      onMouseOut={e => e.currentTarget.style.background = 'transparent'} 
-                      style={{ borderRadius: '12px', 
-                       display: 'flex', 
-                       alignItems: 'center', 
-                       gap: '16px', 
-                       padding: '12px 16px', 
-                       cursor: 'pointer',
-                       borderBottom: '1px solid var(--border)',
-                       marginBottom: '8px',
-                       transition: '0.2s'
-                     }}
-                     
-                   >
-                      <div className="modern-icon-box" style={{ 
-                        width: '24px', 
-                        height: '24px', 
-                        borderRadius: '6px', 
-                        background: (selectedTemplates.length === templates.length && templates.length > 0) ? 'var(--primary)' : 'var(--glass-bg)',
-                        borderColor: (selectedTemplates.length === templates.length && templates.length > 0) ? 'var(--primary)' : 'var(--border)',
-                        color: 'var(--text-main)',
-                        flexShrink: 0
-                      }}>
-                        {(selectedTemplates.length === templates.length && templates.length > 0) && <CheckCircle2 size={16} />}
-                      </div>
-                      <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Select All Templates
-                      </span>
-                      <div style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-muted)', background: 'var(--glass-bg)', padding: '2px 8px', borderRadius: '10px' }}>
-                        {selectedTemplates.length} / {filteredTemplates.length} Selected
-                      </div>
-                   </div>
-{filteredTemplates.map(template => (
-                    <div 
-                      key={template.id} 
-                      onClick={() => toggleTemplateSelection(template.id)}
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '16px', 
-                        padding: '16px', 
-                        borderRadius: '16px', 
-                        background: selectedTemplates.includes(template.id) ? 'rgba(99, 102, 241, 0.1)' : 'var(--glass-subtle)',
-                        border: '1px solid',
-                        borderColor: selectedTemplates.includes(template.id) ? 'var(--primary)' : 'transparent',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                       <div style={{ 
-                         width: '20px', 
-                         height: '20px', 
-                         borderRadius: '6px', 
-                         border: '2px solid',
-                         borderColor: selectedTemplates.includes(template.id) ? 'var(--primary)' : 'var(--border)',
-                         background: selectedTemplates.includes(template.id) ? 'var(--primary)' : 'transparent',
-                         display: 'flex',
-                         alignItems: 'center',
-                         justifyContent: 'center',
-                         color: 'var(--text-main)'
-                       }}>
-                         {selectedTemplates.includes(template.id) && <CheckCircle2 size={14} />}
-                       </div>
-                       <div style={{ flex: 1 }}>
-                          <p style={{ fontWeight: '600' }}>{template.name}</p>
-                          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{template.mappings.length} column mappings</p>
-                       </div>
-                       
-                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                         {masterFile && (
-                           <button 
-                             className="btn-link"
-                             onClick={(e) => { e.stopPropagation(); processFile(template.id); }}
-                             disabled={isGenerating}
-                             title="Download this specific report directly"
-                             style={{ background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '8px' }}
-                           >
-                             <Download size={18} />
-                           </button>
-                         )}
-                         <ArrowRight size={16} color="var(--text-muted)" />
-                       </div>
+             {/* Search box (Expert Design) */}
+             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', background: 'var(--glass-subtle)', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '16px' }}>
+                <Search size={16} color="var(--text-muted)" />
+                <input type="text" placeholder="Search templates..." value={templateSearchTerm} onChange={e => setTemplateSearchTerm(e.target.value)} style={{ background: 'none', border: 'none', color: 'var(--text-main)', fontSize: '14px', flex: 1, outline: 'none' }} />
+             </div>
+
+             {/* Select All (Expert Design) */}
+             <div onClick={handleSelectAll} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid var(--border)', marginBottom: '12px' }}>
+                <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: (selectedTemplates.length === filteredTemplates.length && filteredTemplates.length > 0) ? 'var(--primary)' : 'var(--glass-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
+                    {(selectedTemplates.length === filteredTemplates.length && filteredTemplates.length > 0) && <CheckCircle2 size={16} color="white" />}
+                </div>
+                <span style={{ fontSize: '14px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Select All Templates</span>
+                <div style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-muted)', background: 'var(--glass-bg)', padding: '2px 8px', borderRadius: '10px' }}>{selectedTemplates.length} / {filteredTemplates.length} Selected</div>
+             </div>
+
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+               {filteredTemplates.map(template => (
+                 <div 
+                   key={template.id} 
+                   onClick={() => toggleTemplateSelection(template.id)}
+                   style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', borderRadius: '16px', background: selectedTemplates.includes(template.id) ? 'rgba(99, 102, 241, 0.1)' : 'var(--glass-subtle)', border: '1px solid', borderColor: selectedTemplates.includes(template.id) ? 'var(--primary)' : 'transparent', cursor: 'pointer', transition: 'all 0.2s' }}
+                 >
+                    <div style={{ width: '20px', height: '20px', borderRadius: '6px', border: '2px solid', borderColor: selectedTemplates.includes(template.id) ? 'var(--primary)' : 'var(--border)', background: selectedTemplates.includes(template.id) ? 'var(--primary)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                      {selectedTemplates.includes(template.id) && <CheckCircle2 size={14} />}
                     </div>
-                  ))}
-               </div>
-             )}
+                    <div style={{ flex: 1 }}>
+                       <p style={{ fontWeight: '600' }}>{template.name}</p>
+                       <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                         {template.type === 'pivot' 
+                           ? `${(template.pivotColumns?.length || template.valueFields?.length || 0)} Pivot Columns` 
+                           : `${(template.mappings?.length || 0)} Column Mappings`
+                         }
+                       </p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      {masterFile && (
+                        <button className="btn-link" onClick={(e) => { e.stopPropagation(); processFile(template.id); }} disabled={isGenerating} style={{ color: 'var(--primary)', padding: '8px' }}><Download size={18} /></button>
+                      )}
+                      <ArrowRight size={16} color="var(--text-muted)" />
+                    </div>
+                 </div>
+               ))}
+             </div>
           </div>
         </div>
 
-        {/* Action Sidebar */}
+        {/* Action Sidebar (Expert Design) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-           <div className="glass" style={{ padding: '32px' }}>
-              <div style={{ textAlign: 'center' }}>
-                 <div style={{ 
-                   width: '80px', 
-                   height: '80px', 
-                   borderRadius: '24px', 
-                   background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
-                   color: 'var(--text-main)',
-                   display: 'flex',
-                   alignItems: 'center',
-                   justifyContent: 'center',
-                   margin: '0 auto 24px',
-                   boxShadow: '0 8px 16px rgba(99, 102, 241, 0.2)'
-                 }}>
-                    <FileArchive size={40} />
-                 </div>
-                 <h4 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '8px' }}>Execution Hub</h4>
-                 <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '32px' }}>
-                   Ready to generate {selectedTemplates.length} reports in a single ZIP file.
-                 </p>
-                 
-                 <button 
-                   className="btn-primary btn-full" 
-                   disabled={!masterFile || selectedTemplates.length === 0 || isGenerating}
-                   style={{ height: '56px', fontSize: '16px' }}
-                   onClick={() => processFile(null)}
-                 >
-                   {isGenerating ? (
-                     <><Loader2 className="spinner" size={20} /> Processing...</>
-                   ) : (
-                     <><Download size={20} /> Generate & Save ZIP</>
-                   )}
-                 </button>
-                 
-                 {status && (
-                   <p style={{ marginTop: '16px', fontSize: '14px', color: 'var(--primary)', fontWeight: '500' }}>
-                     {status}
-                   </p>
-                 )}
-              </div>
+           <div className="glass" style={{ padding: '32px', textAlign: 'center' }}>
+              <div style={{ width: '80px', height: '80px', borderRadius: '24px', background: 'linear-gradient(135deg, var(--primary), var(--secondary))', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', boxShadow: '0 8px 16px rgba(99, 102, 241, 0.2)' }}><FileArchive size={40} /></div>
+              <h4 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '8px' }}>Execution Hub</h4>
+              <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginBottom: '32px' }}>Ready to generate {selectedTemplates.length} reports in a single ZIP file.</p>
+              <button 
+                className="btn-primary btn-full" 
+                disabled={!masterFile || selectedTemplates.length === 0 || isGenerating} 
+                onClick={() => processFile(null)} 
+                style={{ height: '56px', fontSize: '16px' }}
+              >
+                {isGenerating ? <><Loader2 className="spinner" size={20} /> Processing...</> : <><Download size={20} /> Generate & Save ZIP</>}
+              </button>
+              {status && <p style={{ marginTop: '16px', fontSize: '14px', color: 'var(--primary)', fontWeight: '500' }}>{status}</p>}
            </div>
 
            <div className="glass" style={{ padding: '24px' }}>
-              <h5 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <AlertCircle size={16} color="var(--warning)" />
-                Security Standards
-              </h5>
+              <h5 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><AlertCircle size={16} color="var(--warning)" /> Security Standards</h5>
               <ul style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '16px' }}>
-                <li>Your data is never uploaded to any server.</li>
-                <li>Parsing happens 100% locally in your session.</li>
-                <li>Only template metadata is stored in Firebase.</li>
-                <li>Encryption-in-transit for template fetching.</li>
+                 <li>Data stays 100% local in your browser.</li>
+                 <li>Encryption-in-transit for Firestore templates.</li>
+                 <li>Zero server-side data persistence.</li>
               </ul>
            </div>
         </div>

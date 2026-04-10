@@ -10,7 +10,8 @@ import {
   FileSpreadsheet,
   LayoutGrid,
   Sun,
-  Moon
+  Moon,
+  BarChart4
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
@@ -70,6 +71,14 @@ export default function Layout() {
               <NavLink to="/admin" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                 <Users size={20} />
                 Admin Panel
+              </NavLink>
+              <NavLink to="/visual-mapper" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                <Settings size={20} />
+                Visual Mapper
+              </NavLink>
+              <NavLink to="/pivot-designer" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                <BarChart4 size={20} />
+                Pivot Designer
               </NavLink>
             </>
           )}

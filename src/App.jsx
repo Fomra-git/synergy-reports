@@ -12,6 +12,7 @@ import AdminPanel from './pages/AdminPanel';
 import TemplateManager from './pages/TemplateManager';
 import GenerateReport from './pages/GenerateReport';
 import VisualExcelMapping from './pages/VisualExcelMapping';
+import PivotTemplateManager from './pages/PivotTemplateManager';
 
 // Components
 import Layout from './components/Layout';
@@ -41,6 +42,11 @@ function App() {
             <Route path="visual-mapper" element={
               <AdminRoute>
                 <VisualExcelMapping />
+              </AdminRoute>
+            } />
+            <Route path="pivot-designer" element={
+              <AdminRoute>
+                <PivotTemplateManager />
               </AdminRoute>
             } />
           </Route>

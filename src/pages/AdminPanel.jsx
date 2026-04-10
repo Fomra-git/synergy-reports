@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, getDocs, addDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { UserPlus, UserMinus, Shield, Mail, Search, AlertCircle, Settings } from 'lucide-react';
+import { UserPlus, UserMinus, Shield, Mail, Search, AlertCircle, Settings, BarChart4 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import AdminSettings from '../components/AdminSettings';
 import ModernModal from '../components/ModernModal';
 
 export default function AdminPanel() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -112,6 +114,12 @@ export default function AdminPanel() {
                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: activeTab === 'settings' ? 'var(--primary)' : 'transparent', color: activeTab === 'settings' ? 'white' : 'var(--text-main)', cursor: 'pointer', fontWeight: '600' }}
             >
                App Settings
+            </button>
+            <button 
+               onClick={() => navigate('/pivot-designer')}
+               style={{ marginLeft: '8px', padding: '8px 16px', borderRadius: '8px', border: 'none', background: 'var(--glass-bg)', color: 'var(--secondary)', cursor: 'pointer', fontWeight: '600', border: '1px solid var(--border)' }}
+            >
+               <BarChart4 size={14} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> Pivot Designer
             </button>
         </div>
       </header>
