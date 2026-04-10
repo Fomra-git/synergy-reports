@@ -27,7 +27,7 @@ import {
   Database
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import SearchableDropdown from '../components/SearchableDropdown';
 import ModernModal from '../components/ModernModal';
 import FormulaBuilder from '../components/FormulaBuilder';
@@ -35,6 +35,8 @@ import MultiSelectDropdown from '../components/MultiSelectDropdown';
 
 export default function PivotTemplateManager() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const templateIdFromUrl = searchParams.get('id');
   const [templates, setTemplates] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [masterHeaders, setMasterHeaders] = useState([]);
@@ -71,6 +73,19 @@ export default function PivotTemplateManager() {
   useEffect(() => {
     fetchTemplates();
   }, []);
+
+  // Handle deep-linking / direct template load
+  useEffect(() => {
+    if (templates.length > 0 && templateIdFromUrl) {
+      const template = templates.find(t => t.id === templateIdFromUrl);
+      if (template && template.type !== 'pivot') {
+        navigate(`/visual-mapper?id=${templateIdFromUrl}`, { replace: true });
+        return;
+      }
+      setSelectedTemplateId(templateIdFromUrl);
+      loadTemplate(templateIdFromUrl);
+    }
+  }, [templates, templateIdFromUrl, navigate]);
 
   const fetchTemplates = async () => {
     setLoading(true);

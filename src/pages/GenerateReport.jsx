@@ -128,6 +128,27 @@ export default function GenerateReport() {
       for (const template of targetTemplates) {
         setStatus(`Generating ${template.name}...`);
         
+
+        // --- HELPER FUNCTIONS ---
+        const parseSafeNum = (val) => {
+            if (val === null || val === undefined || val === '') return 0;
+            if (typeof val === 'number') return val;
+            const cleaned = String(val).replace(/[^0-9.-]/g, '');
+            const num = parseFloat(cleaned);
+            return isNaN(num) ? 0 : num;
+         };
+
+         const getMasterValue = (row, source) => {
+           if (!source || !row) return '';
+           if (row[source] !== undefined && row[source] !== null) return row[source];
+           const cleanSource = String(source).trim().replace(/["']/g, '').toLowerCase();
+           const matchingKey = Object.keys(row).find(k => {
+              const cleanKey = String(k).trim().replace(/["']/g, '').toLowerCase();
+              return cleanKey === cleanSource;
+           });
+           return matchingKey ? row[matchingKey] : '';
+         };
+
         let topReportHeader = null;
         if (template.isHeaderEnabled && template.headerConfig) {
              if (template.headerConfig.type === 'custom' && template.headerConfig.text) {
@@ -140,28 +161,6 @@ export default function GenerateReport() {
         const finalAOA = [];
         const wb = XLSX.utils.book_new();
         let columnHeaders = [];
-        const parseSafeNum = (val) => {
-            if (val === null || val === undefined || val === '') return 0;
-            if (typeof val === 'number') return val;
-            const cleaned = String(val).replace(/[^0-9.-]/g, '');
-            const num = parseFloat(cleaned);
-            return isNaN(num) ? 0 : num;
-         };
-
-         // --- ROBUST HEADER LOOKUP (Strips quotes, spaces, and handles case-insensitivity) ---
-         const getMasterValue = (row, source) => {
-           if (!source || !row) return '';
-           // Try direct match first for performance
-           if (row[source] !== undefined && row[source] !== null) return row[source];
-           
-           const cleanSource = String(source).trim().replace(/["']/g, '').toLowerCase();
-           const matchingKey = Object.keys(row).find(k => {
-              const cleanKey = String(k).trim().replace(/["']/g, '').toLowerCase();
-              return cleanKey === cleanSource;
-           });
-           
-           return matchingKey ? row[matchingKey] : '';
-         };
 
          const evaluateCondition = (row, mapping) => {
           if (!mapping) return true;

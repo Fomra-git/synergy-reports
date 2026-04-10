@@ -194,7 +194,7 @@ export default function TemplateManager() {
                     </div>
                    <div style={{ display: 'flex', gap: '8px' }}>
                       <button 
-                        onClick={() => navigate(`/visual-mapper?id=${template.id}`)} 
+                        onClick={() => navigate(template.type === 'pivot' ? `/pivot-designer?id=${template.id}` : `/visual-mapper?id=${template.id}`)} 
                         className="modern-icon-box" 
                         style={{ padding: '8px', color: 'var(--primary)' }}
                         title="Edit Template"

@@ -95,10 +95,15 @@ export default function VisualExcelMapping() {
   // Handle deep-linking / direct template load when templates are ready
   useEffect(() => {
     if (templates.length > 0 && templateIdFromUrl) {
+      const template = templates.find(t => t.id === templateIdFromUrl);
+      if (template && template.type === 'pivot') {
+        navigate(`/pivot-designer?id=${templateIdFromUrl}`, { replace: true });
+        return;
+      }
       setSelectedTemplateId(templateIdFromUrl);
       loadTemplate(templateIdFromUrl, templates);
     }
-  }, [templates, templateIdFromUrl]);
+  }, [templates, templateIdFromUrl, navigate]);
 
   const fetchTemplates = async () => {
     setLoading(true);
