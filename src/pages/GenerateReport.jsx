@@ -88,32 +88,29 @@ export default function GenerateReport() {
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
 
-      // --- MASTER DATA NORMALIZATION: FILL-DOWN MERGED CELLS ---
+      // --- MASTER DATA NORMALIZATION: FORCED UN-MERGE ---
       // SheetJS sheet_to_json only sees the first cell of a merge. 
-      // We manually propagate the value to every cell in the merge range.
+      // We manually propagate the value (v) and type (t) to every cell in the range.
       if (worksheet['!merges']) {
         worksheet['!merges'].forEach(range => {
-          const startCol = range.s.c;
-          const endCol = range.e.c;
-          const startRow = range.s.r;
-          const endRow = range.e.r;
+          const startCol = range.s.c, endCol = range.e.c;
+          const startRow = range.s.r, endRow = range.e.r;
           
-          const firstCellAddr = XLSX.utils.encode_cell({ r: startRow, c: startCol });
-          const firstCell = worksheet[firstCellAddr];
-          
-          if (firstCell) {
+          const firstCell = worksheet[XLSX.utils.encode_cell({ r: startRow, c: startCol })];
+          if (firstCell && firstCell.v !== undefined) {
             for (let r = startRow; r <= endRow; r++) {
               for (let c = startCol; c <= endCol; c++) {
-                if (r === startRow && c === startCol) continue;
-                const addr = XLSX.utils.encode_cell({ r, c });
-                worksheet[addr] = { ...firstCell };
+                 const addr = XLSX.utils.encode_cell({ r, c });
+                 if (!worksheet[addr]) worksheet[addr] = { ...firstCell };
+                 else worksheet[addr].v = firstCell.v; // Force value update
               }
             }
           }
         });
       }
 
-      const masterData = XLSX.utils.sheet_to_json(worksheet);
+      // Use defval to ensure every object has every column key (prevents undefined math)
+      const masterData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
       
       const zip = new JSZip();
       
