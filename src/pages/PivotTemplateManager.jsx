@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, getDocs, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { 
@@ -821,6 +821,28 @@ export default function PivotTemplateManager() {
                    )}
                 </div>
              </div>
+
+              {/* PRIMARY GROUP FIELD - hierarchical merged output */}
+              <div style={{ marginTop: '16px', padding: '14px 16px', borderRadius: '12px', border: '1px dashed rgba(99,102,241,0.35)', background: 'rgba(99,102,241,0.04)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <Layers size={13} color="var(--primary)" />
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--primary)', margin: 0 }}>
+                    Primary (Merged) Group Field
+                    <span style={{ fontWeight: '400', color: 'var(--text-muted)', marginLeft: '6px' }}>� Optional</span>
+                  </label>
+                </div>
+                <SearchableDropdown
+                  options={masterHeaders}
+                  value={formData.primaryGroupField || ''}
+                  onChange={val => setFormData(prev => ({ ...prev, primaryGroupField: val }))}
+                  placeholder="e.g. Doctor Name � merges vertically over Row Field rows..."
+                />
+                {formData.primaryGroupField && (
+                  <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '6px', lineHeight: '1.5' }}>
+                    Output: <strong style={{ color: 'var(--primary)' }}>{formData.primaryGroupField}</strong> merged, one row per
+                  </p>
+                )}
+              </div>
           </div>
 
           <div style={{ flex: 1, padding: '32px 32px 250px 32px', overflowY: 'auto' }}>
@@ -1216,7 +1238,7 @@ export default function PivotTemplateManager() {
                     ))
                   )}
                </div>
-            </div>
+           </div>
 
           </div>
         </div>
