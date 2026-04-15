@@ -995,6 +995,10 @@ export default function GenerateReport() {
           const groupingCol = pivotCols.find(c => c.type === 'grouping');
           const activeRowField = groupingCol ? groupingCol.source : rowField;
           
+          // --- PRIMARY GROUP (HIERARCHICAL MERGED) ---
+          const primaryGroupField = template.primaryGroupField || '';
+          const isPrimaryGrouped = !!primaryGroupField && primaryGroupField !== activeRowField;
+          
           if (!activeRowField) {
             console.warn("Pivot template missing rowField/groupingCol", template.name);
           } else {
@@ -1012,41 +1016,52 @@ export default function GenerateReport() {
                }))].sort();
             }
 
-            filteredMasterData.forEach(row => {
-               const rawRowVal = getMasterValue(row, activeRowField);
-               let rowVal = cleanValue(rawRowVal, template.rowFieldTransforms, activeRowField);
-               if (rowVal === '') rowVal = '(Blank)';
-               
-               if (!pivotMap[rowVal]) {
-                  pivotMap[rowVal] = { firstRow: row, colGroups: {} };
-               }
+             filteredMasterData.forEach(row => {
+                const rawRowVal = getMasterValue(row, activeRowField);
+                let rowVal = cleanValue(rawRowVal, template.rowFieldTransforms, activeRowField);
+                if (rowVal === '') rowVal = '(Blank)';
+                
+                // Compound key for hierarchical grouping
+                let primaryVal = '';
+                let mapKey = rowVal;
+                if (isPrimaryGrouped) {
+                   const rawPrimary = getMasterValue(row, primaryGroupField);
+                   primaryVal = String(rawPrimary ?? '').trim() || '(Blank)';
+                   mapKey = primaryVal + '|||' + rowVal;
+                }
+                
+                if (!pivotMap[mapKey]) {
+                   pivotMap[mapKey] = { firstRow: row, colGroups: {}, _primary: primaryVal, _secondary: rowVal };
+                }
 
-               const rawColVal = colField ? getMasterValue(row, colField) : '_default';
-               let colVal = colField ? cleanValue(rawColVal, template.colFieldTransforms, colField) : '_default';
-               if (colField && colVal === '') colVal = '(Blank)';
+                const rawColVal = colField ? getMasterValue(row, colField) : '_default';
+                let colVal = colField ? cleanValue(rawColVal, template.colFieldTransforms, colField) : '_default';
+                if (colField && colVal === '') colVal = '(Blank)';
 
-               if (!pivotMap[rowVal].colGroups[colVal]) {
-                  pivotMap[rowVal].colGroups[colVal] = { rows: [], aggregations: {} };
-               }
-               pivotMap[rowVal].colGroups[colVal].rows.push(row);
-            });
+                if (!pivotMap[mapKey].colGroups[colVal]) {
+                   pivotMap[mapKey].colGroups[colVal] = { rows: [], aggregations: {} };
+                }
+                pivotMap[mapKey].colGroups[colVal].rows.push(row);
+             });
 
             // 1. Inject Top Report Header (Title) if resolved at top of loop
             if (topReportHeader) finalAOA.push([topReportHeader]);
 
-            // 2. Headers assembly
-            let headers = [];
-            if (colField) {
-               headers = [pivotCols.find(c => c.type === 'grouping')?.displayName || activeRowField];
-               uniqueColVals.forEach(cv => {
-                  aggCols.forEach(ac => {
-                     headers.push(`${cv} - ${ac.displayName || ac.operation.toUpperCase() + '(' + ac.source + ')'}`);
-                  });
-               });
-            } else {
-               headers = pivotCols.map(c => c.displayName || (c.type === 'aggregation' ? `${c.operation.toUpperCase()}(${c.source})` : c.source || 'Untitled'));
-            }
-            finalAOA.push(headers);
+             // 2. Headers assembly
+             let headers = [];
+             if (colField) {
+                const secondaryLabel = pivotCols.find(c => c.type === 'grouping')?.displayName || activeRowField;
+                headers = isPrimaryGrouped ? [primaryGroupField, secondaryLabel] : [secondaryLabel];
+                uniqueColVals.forEach(cv => {
+                   aggCols.forEach(ac => {
+                      headers.push(cv + ' - ' + (ac.displayName || ac.operation.toUpperCase() + '(' + ac.source + ')'));
+                   });
+                });
+             } else {
+                headers = pivotCols.map(c => c.displayName || (c.type === 'aggregation' ? c.operation.toUpperCase() + '(' + c.source + ')' : c.source || 'Untitled'));
+                if (isPrimaryGrouped) headers = [primaryGroupField, ...headers];
+             }
+             finalAOA.push(headers);
 
             const pivotResults = [];
 
@@ -1082,9 +1097,21 @@ export default function GenerateReport() {
               });
             };
 
-            Object.entries(pivotMap).forEach(([rowVal, rowGroup]) => {
-               const groupResult = { [headers[0]]: rowVal };
-               const reportRow = [rowVal];
+             // Sort and iterate compound pivotMap
+             let pivotEntries = Object.entries(pivotMap);
+             if (isPrimaryGrouped) {
+                pivotEntries = pivotEntries.sort(([, a], [, b]) => {
+                   const pc = String(a._primary || '').localeCompare(String(b._primary || ''));
+                   return pc !== 0 ? pc : String(a._secondary || '').localeCompare(String(b._secondary || ''));
+                });
+             }
+             pivotEntries.forEach(([mapKey, rowGroup]) => {
+                const rowVal = isPrimaryGrouped ? rowGroup._secondary : mapKey;
+                const _primaryVal = rowGroup._primary || '';
+                const groupResult = isPrimaryGrouped
+                   ? { [headers[0]]: _primaryVal, [headers[1]]: rowVal }
+                   : { [headers[0]]: rowVal };
+                const reportRow = isPrimaryGrouped ? [_primaryVal, rowVal] : [rowVal];
 
                if (colField) {
                   // CROSS-TAB MODE
@@ -1221,6 +1248,7 @@ export default function GenerateReport() {
             hasMappingTargets = true;
             columnHeaders = headers;
             if (topReportHeader) template._resolvedPivotHeader = topReportHeader;
+            if (isPrimaryGrouped) template._isPrimaryGrouped = primaryGroupField;
 
             // Generate Chart if enabled
             if (template.isChartEnabled && template.chartConfig) {
@@ -1418,6 +1446,20 @@ export default function GenerateReport() {
                   });
                }
             }
+             // --- PRIMARY GROUP MERGE (Pivot Hierarchical) ---
+             if (template.type === 'pivot' && template._isPrimaryGrouped) {
+                if (!ws['!merges']) ws['!merges'] = [];
+                const dataStart = hasHeader ? 2 : 1;
+                let mStart = dataStart;
+                let lastPG = finalAOA[dataStart] ? String(finalAOA[dataStart][0] || '').trim() : '';
+                for (let r = dataStart + 1; r <= finalAOA.length; r++) {
+                   const curPG = (r < finalAOA.length && finalAOA[r]) ? String(finalAOA[r][0] || '').trim() : null;
+                   if (curPG !== lastPG || r === finalAOA.length) {
+                      if (r - 1 > mStart) ws['!merges'].push({ s: { r: mStart, c: 0 }, e: { r: r - 1, c: 0 } });
+                      lastPG = curPG; mStart = r;
+                   }
+                }
+             }
               // Row Heights Guard (Restored)
               const range = XLSX.utils.decode_range(ws['!ref']);
               ws['!rows'] = finalAOA.map((_, rIdx) => ({ hpt: 18, customHeight: true }));
