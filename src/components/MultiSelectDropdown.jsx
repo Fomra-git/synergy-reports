@@ -23,17 +23,25 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Recalculate dropdown position whenever it opens
+  // Continuously track trigger position with rAF so dropdown follows on scroll
   useEffect(() => {
-    if (isOpen && triggerRef.current) {
+    if (!isOpen) return;
+    let rafId;
+    const dropHeight = 260;
+
+    const updatePos = () => {
+      if (!triggerRef.current) return;
       const rect = triggerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      const dropHeight = 260;
       const top = spaceBelow >= dropHeight
         ? rect.bottom + 4
         : rect.top - dropHeight - 4;
       setDropdownPos({ top, left: rect.left, width: rect.width });
-    }
+      rafId = requestAnimationFrame(updatePos);
+    };
+
+    rafId = requestAnimationFrame(updatePos);
+    return () => cancelAnimationFrame(rafId);
   }, [isOpen]);
 
   const filteredOptions = options.filter(opt =>
