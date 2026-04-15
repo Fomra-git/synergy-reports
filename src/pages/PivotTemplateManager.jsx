@@ -993,11 +993,30 @@ export default function PivotTemplateManager() {
                                   <option value="avg">Average</option>
                                   <option value="min">Minimum</option>
                                   <option value="max">Maximum</option>
+                                  <optgroup label="── Unique Count ──">
+                                    <option value="count_unique">Count Unique (by ID column)</option>
+                                  </optgroup>
                                   <optgroup label="── Treatment Split ──">
                                     <option value="count_single">Count Single Treatment (no /)</option>
                                     <option value="count_multi">Count Multiple Treatments (has /)</option>
                                   </optgroup>
                                 </select>
+                                {col.operation === 'count_unique' && (
+                                  <div style={{ marginTop: '8px' }}>
+                                    <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                                      Unique By Column (e.g. Patient ID)
+                                    </label>
+                                    <SearchableDropdown
+                                      options={masterHeaders}
+                                      value={col.dedupColumn || ''}
+                                      onChange={val => updatePivotColumn(col.id, 'dedupColumn', val)}
+                                      placeholder="Select ID column..."
+                                    />
+                                    <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                      ✦ Counts distinct values in the chosen column — multiple sessions per patient count as <strong>1</strong>.
+                                    </p>
+                                  </div>
+                                )}
                                 {(col.operation === 'count_single' || col.operation === 'count_multi') && (
                                   <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
                                     {col.operation === 'count_single'

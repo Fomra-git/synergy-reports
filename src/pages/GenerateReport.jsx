@@ -1092,6 +1092,14 @@ export default function GenerateReport() {
                      const cg = rowGroup.colGroups[cv] || { rows: [], aggregations: {} };
                      aggCols.forEach(col => {
                         const filteredRows = applyColRowFilters(cg.rows, col);
+                         if (col.operation === 'count_unique') {
+                            const dedupCol = col.dedupColumn || col.source;
+                            const res = new Set(filteredRows.map(r => String(getMasterValue(r, dedupCol) ?? '').trim()).filter(v => v !== '')).size;
+                             const headerKey = `${cv} - ${col.displayName || ('Unique(' + dedupCol + ')')}`;
+                            groupResult[headerKey] = res;
+                            reportRow.push(res);
+                            return;
+                         }
                         if (col.operation === 'count_single' || col.operation === 'count_multi') {
                            const res = filteredRows.filter(r => {
                              const raw = String(getMasterValue(r, col.source) || '').trim();
@@ -1127,6 +1135,11 @@ export default function GenerateReport() {
                   // Pre-calculate aggregations for standard mode
                   aggCols.forEach(col => {
                      const filteredRows = applyColRowFilters(cg.rows, col);
+                      if (col.operation === 'count_unique') {
+                         const dedupCol = col.dedupColumn || col.source;
+                         cg.aggregations[col.id] = new Set(filteredRows.map(r => String(getMasterValue(r, dedupCol) ?? '').trim()).filter(v => v !== '')).size;
+                         return;
+                      }
                      if (col.operation === 'count_single' || col.operation === 'count_multi') {
                         cg.aggregations[col.id] = filteredRows.filter(r => {
                           const raw = String(getMasterValue(r, col.source) || '').trim();
