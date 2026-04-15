@@ -823,7 +823,7 @@ export default function PivotTemplateManager() {
              </div>
           </div>
 
-          <div style={{ flex: 1, padding: '32px 32px 250px 32px', overflowY: 'auto' }}>
+          <div style={{ flex: 1, padding: '32px 32px 250px 32px', overflowY: 'auto', position: 'relative' }}>
             
             {/* INTEGRATED COLUMNS SECTION */}
             <div>
