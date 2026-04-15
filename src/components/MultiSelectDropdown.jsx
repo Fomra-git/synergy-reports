@@ -30,9 +30,9 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
       const spaceBelow = window.innerHeight - rect.bottom;
       const dropHeight = 260;
       const top = spaceBelow >= dropHeight
-        ? rect.bottom + window.scrollY + 4
-        : rect.top + window.scrollY - dropHeight - 4;
-      setDropdownPos({ top, left: rect.left + window.scrollX, width: rect.width });
+        ? rect.bottom + 4
+        : rect.top - dropHeight - 4;
+      setDropdownPos({ top, left: rect.left, width: rect.width });
     }
   }, [isOpen]);
 
@@ -62,7 +62,7 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
     <div
       ref={dropdownRef}
       style={{
-        position: 'absolute',
+        position: 'fixed',
         top: dropdownPos.top,
         left: dropdownPos.left,
         width: dropdownPos.width,
