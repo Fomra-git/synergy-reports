@@ -282,18 +282,48 @@ export default function PivotTemplateManager() {
       simplifyDate: false,
       simplifyTime: false,
       normalizeMonth: false,
-      normalizeWeek: false
+      normalizeWeek: false,
+      rowFilters: [] // per-column row filter conditions
     };
-    
-    // Maintain rowField sync for backend compat
-    let nextRowField = formData.rowField;
-    if (type === 'grouping') {
-       // Only allow one grouping column ideally, but we'll just track the latest
-    }
 
     setFormData(prev => ({
       ...prev,
       pivotColumns: [...prev.pivotColumns, newCol]
+    }));
+  };
+
+  // --- PER-COLUMN ROW FILTER HANDLERS ---
+  const addColRowFilter = (colId) => {
+    setFormData(prev => ({
+      ...prev,
+      pivotColumns: prev.pivotColumns.map(c =>
+        c.id === colId
+          ? { ...c, rowFilters: [...(c.rowFilters || []), { conditionCol: '', operator: '==', conditionVals: [] }] }
+          : c
+      )
+    }));
+  };
+
+  const removeColRowFilter = (colId, filterIdx) => {
+    setFormData(prev => ({
+      ...prev,
+      pivotColumns: prev.pivotColumns.map(c =>
+        c.id === colId
+          ? { ...c, rowFilters: (c.rowFilters || []).filter((_, i) => i !== filterIdx) }
+          : c
+      )
+    }));
+  };
+
+  const updateColRowFilter = (colId, filterIdx, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      pivotColumns: prev.pivotColumns.map(c => {
+        if (c.id !== colId) return c;
+        const newFilters = [...(c.rowFilters || [])];
+        newFilters[filterIdx] = { ...newFilters[filterIdx], [field]: value };
+        return { ...c, rowFilters: newFilters };
+      })
     }));
   };
 
@@ -1055,6 +1085,113 @@ export default function PivotTemplateManager() {
                                  </label>
                               </div>
                            </div>
+                        )}
+
+                        {/* ── PER-AGGREGATION ROW CONDITIONS ── */}
+                        {col.type === 'aggregation' && (
+                          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                              <h5 style={{ fontSize: '10px', color: 'var(--warning, #f59e0b)', fontWeight: '700', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Filter size={11} />
+                                Row Conditions
+                                {(col.rowFilters?.length > 0) && (
+                                  <span style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: '8px', padding: '1px 6px', fontSize: '9px', fontWeight: '800' }}>
+                                    {col.rowFilters.length}
+                                  </span>
+                                )}
+                              </h5>
+                              <button
+                                onClick={() => addColRowFilter(col.id)}
+                                className="btn-secondary"
+                                style={{ padding: '4px 10px', fontSize: '10px', gap: '4px', border: '1px dashed var(--border)' }}
+                              >
+                                <Plus size={11} /> Add Condition
+                              </button>
+                            </div>
+
+                            {(!col.rowFilters || col.rowFilters.length === 0) && (
+                              <p style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '8px', background: 'var(--glass-subtle)', borderRadius: '8px' }}>
+                                No conditions — all rows are included in this aggregation. Add conditions to filter which rows contribute.
+                              </p>
+                            )}
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {(col.rowFilters || []).map((f, fi) => (
+                                <div key={fi} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 1fr auto', gap: '6px', alignItems: 'start', padding: '10px', background: 'rgba(245,158,11,0.05)', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.2)' }}>
+                                  
+                                  {/* Column to filter on */}
+                                  <div>
+                                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Field</label>
+                                    <SearchableDropdown
+                                      options={masterHeaders}
+                                      value={f.conditionCol}
+                                      onChange={v => updateColRowFilter(col.id, fi, 'conditionCol', v)}
+                                      placeholder="Select field..."
+                                    />
+                                  </div>
+
+                                  {/* Operator */}
+                                  <div>
+                                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Operator</label>
+                                    <select
+                                      value={f.operator}
+                                      onChange={e => updateColRowFilter(col.id, fi, 'operator', e.target.value)}
+                                      style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}
+                                    >
+                                      <option value="==">= Equals</option>
+                                      <option value="!=">≠ Not Equal</option>
+                                      <option value=">">{'>'} Greater Than</option>
+                                      <option value="<">{'<'} Less Than</option>
+                                      <option value=">=">≥ Greater or Equal</option>
+                                      <option value="<=">≤ Less or Equal</option>
+                                      <option value="between">↔ Between (range)</option>
+                                      <option value="contains">⊂ Contains</option>
+                                    </select>
+                                  </div>
+
+                                  {/* Value(s) */}
+                                  <div>
+                                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
+                                      {f.operator === 'between' ? 'From / To' : 'Value'}
+                                    </label>
+                                    {f.operator === 'between' ? (
+                                      <div style={{ display: 'flex', gap: '4px' }}>
+                                        <input
+                                          placeholder="From"
+                                          value={f.conditionVals?.[0] || ''}
+                                          onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', [e.target.value, f.conditionVals?.[1] || ''])}
+                                          style={{ padding: '8px', fontSize: '11px', width: '50%' }}
+                                        />
+                                        <input
+                                          placeholder="To"
+                                          value={f.conditionVals?.[1] || ''}
+                                          onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', [f.conditionVals?.[0] || '', e.target.value])}
+                                          style={{ padding: '8px', fontSize: '11px', width: '50%' }}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <input
+                                        placeholder="Value..."
+                                        value={f.conditionVals?.[0] || ''}
+                                        onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', [e.target.value])}
+                                        style={{ padding: '8px', fontSize: '11px', width: '100%' }}
+                                      />
+                                    )}
+                                  </div>
+
+                                  {/* Remove button */}
+                                  <div style={{ paddingTop: '18px' }}>
+                                    <button
+                                      onClick={() => removeColRowFilter(col.id, fi)}
+                                      style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '6px' }}
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
                     ))

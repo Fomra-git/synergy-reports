@@ -1050,6 +1050,38 @@ export default function GenerateReport() {
 
             const pivotResults = [];
 
+            // --- PER-COLUMN ROW FILTER HELPER ---
+            const applyColRowFilters = (rows, col) => {
+              if (!col.rowFilters || col.rowFilters.length === 0) return rows;
+              return rows.filter(row => {
+                return col.rowFilters.every(f => {
+                  if (!f.conditionCol) return true;
+                  const rawVal = getMasterValue(row, f.conditionCol);
+                  const tv = String(rawVal ?? '').trim();
+                  const numTv = parseFloat(tv);
+                  const isNum = !isNaN(numTv) && tv !== '';
+                  const vals = f.conditionVals || [];
+                  const op = f.operator;
+                  if (op === 'between') {
+                    const lo = parseFloat(vals[0]);
+                    const hi = parseFloat(vals[1]);
+                    return isNum && !isNaN(lo) && !isNaN(hi) && numTv >= lo && numTv <= hi;
+                  }
+                  if (op === 'contains') return tv.toLowerCase().includes(String(vals[0] ?? '').toLowerCase());
+                  const cv = String(vals[0] ?? '').trim();
+                  const numCv = parseFloat(cv);
+                  const bothNum = isNum && !isNaN(numCv);
+                  if (op === '==') return bothNum ? numTv === numCv : tv.toLowerCase() === cv.toLowerCase();
+                  if (op === '!=') return bothNum ? numTv !== numCv : tv.toLowerCase() !== cv.toLowerCase();
+                  if (op === '>') return bothNum ? numTv > numCv : tv > cv;
+                  if (op === '<') return bothNum ? numTv < numCv : tv < cv;
+                  if (op === '>=') return bothNum ? numTv >= numCv : tv >= cv;
+                  if (op === '<=') return bothNum ? numTv <= numCv : tv <= cv;
+                  return true;
+                });
+              });
+            };
+
             Object.entries(pivotMap).forEach(([rowVal, rowGroup]) => {
                const groupResult = { [headers[0]]: rowVal };
                const reportRow = [rowVal];
@@ -1059,8 +1091,9 @@ export default function GenerateReport() {
                   uniqueColVals.forEach(cv => {
                      const cg = rowGroup.colGroups[cv] || { rows: [], aggregations: {} };
                      aggCols.forEach(col => {
+                        const filteredRows = applyColRowFilters(cg.rows, col);
                         if (col.operation === 'count_single' || col.operation === 'count_multi') {
-                           const res = cg.rows.filter(r => {
+                           const res = filteredRows.filter(r => {
                              const raw = String(getMasterValue(r, col.source) || '').trim();
                              return col.operation === 'count_single' ? !raw.includes('/') : raw.includes('/');
                            }).length;
@@ -1069,7 +1102,7 @@ export default function GenerateReport() {
                            reportRow.push(res);
                            return;
                         }
-                        const vals = cg.rows.map(r => {
+                        const vals = filteredRows.map(r => {
                            const raw = getMasterValue(r, col.source);
                            const cleaned = cleanValue(raw, col, col.source);
                            return parseSafeNum(cleaned);
@@ -1093,14 +1126,15 @@ export default function GenerateReport() {
                   const cg = rowGroup.colGroups['_default'];
                   // Pre-calculate aggregations for standard mode
                   aggCols.forEach(col => {
+                     const filteredRows = applyColRowFilters(cg.rows, col);
                      if (col.operation === 'count_single' || col.operation === 'count_multi') {
-                        cg.aggregations[col.id] = cg.rows.filter(r => {
+                        cg.aggregations[col.id] = filteredRows.filter(r => {
                           const raw = String(getMasterValue(r, col.source) || '').trim();
                           return col.operation === 'count_single' ? !raw.includes('/') : raw.includes('/');
                         }).length;
                         return;
                      }
-                     const vals = cg.rows.map(r => {
+                     const vals = filteredRows.map(r => {
                         const raw = getMasterValue(r, col.source);
                         const cleaned = cleanValue(raw, col, col.source);
                         return parseSafeNum(cleaned);
