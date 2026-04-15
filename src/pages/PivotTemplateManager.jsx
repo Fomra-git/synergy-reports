@@ -497,7 +497,7 @@ export default function PivotTemplateManager() {
 
                 {/* REPORT TITLE HEADER */}
                 <div style={{ marginTop: '8px', padding: '20px', background: 'var(--glass-subtle)', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', position: 'sticky', top: 0, zIndex: 100, background: 'var(--bg-card, var(--bg-main, #0f1117))', paddingTop: '4px', paddingBottom: '8px', backdropFilter: 'blur(12px)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                          <Settings2 size={16} color="var(--secondary)" />
                          <h4 style={{ fontSize: '14px', fontWeight: '700' }}>Report Title Header</h4>
@@ -827,7 +827,7 @@ export default function PivotTemplateManager() {
             
             {/* INTEGRATED COLUMNS SECTION */}
             <div>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', position: 'sticky', top: 0, zIndex: 100, background: 'var(--bg-card, var(--bg-main, #0f1117))', paddingTop: '4px', paddingBottom: '8px', backdropFilter: 'blur(12px)' }}>
                   <h4 style={{ fontSize: '14px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }}></div>
                     Pivot Output Columns
@@ -1136,7 +1136,7 @@ export default function PivotTemplateManager() {
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                               {(col.rowFilters || []).map((f, fi) => (
-                                <div key={fi} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 1fr auto', gap: '6px', alignItems: 'start', padding: '10px', background: 'rgba(245,158,11,0.05)', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.2)' }}>
+                                <div key={fi} style={{ display: 'grid', gridTemplateColumns: '1fr 120px 1fr auto', gap: '6px', alignItems: 'start', padding: '10px', background: 'rgba(245,158,11,0.05)', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.2)', position: 'relative', zIndex: (col.rowFilters?.length || 0) - fi }}>
                                   
                                   {/* Column to filter on */}
                                   <div>
