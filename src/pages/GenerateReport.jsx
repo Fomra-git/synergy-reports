@@ -123,6 +123,7 @@ export default function GenerateReport() {
       }
       
       const zip = new JSZip();
+      const templateErrors = [];
 
       // --- SHARED HELPER FUNCTIONS ---
       const parseSafeNum = (val) => {
@@ -607,7 +608,8 @@ export default function GenerateReport() {
       };
 
       for (const template of targetTemplates) {
-        setStatus(`Generating ${template.name}...`);
+       try {
+        setStatus(`Generating ${template.name || 'Untitled'}...`);
 
         // --- DISPATCH SCOREBOARD TEMPLATES ---
         if (template.type === 'scoreboard') {
@@ -883,6 +885,7 @@ export default function GenerateReport() {
            return await workbook.xlsx.writeBuffer();
          };
 
+        // --- PER-TEMPLATE STATE (must be reset for each template) ---
         let topReportHeader = null;
         if (template.isHeaderEnabled && template.headerConfig) {
              if (template.headerConfig.type === 'custom' && template.headerConfig.text) {
@@ -896,6 +899,7 @@ export default function GenerateReport() {
         const wb = XLSX.utils.book_new();
         let columnHeaders = [];
         let currentChartImage = null;
+        let hasMappingTargets = (template.mappings || []).some(m => m.target);
 
          const evaluateCondition = (row, mapping) => {
           if (!mapping) return true;
@@ -961,7 +965,7 @@ export default function GenerateReport() {
            }
         });
         
-        let hasMappingTargets = (template.mappings || []).some(m => m.target);
+        // hasMappingTargets is now declared above per-template
 
         // --- PIVOT TEMPLATE LOGIC ---
         if (template.type === 'pivot') {
@@ -1400,14 +1404,32 @@ export default function GenerateReport() {
 
         if (!isSingle) zip.file(fileName, excelBuffer);
         else saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName);
+       } catch (templateErr) {
+         console.error(`Template "${template.name || 'Untitled'}" failed:`, templateErr);
+         templateErrors.push(`${template.name || 'Untitled'}: ${templateErr.message}`);
+         if (isSingle) {
+           setError(`Report "${template.name || 'Untitled'}" failed: ${templateErr.message}`);
+         }
+       }
       }
       
-      if (!isSingle) saveAs(await zip.generateAsync({ type: 'blob' }), `Synergy_Reports_${Date.now()}.zip`);
+      if (!isSingle) {
+        const zipFileCount = Object.keys(zip.files).length;
+        if (zipFileCount > 0) {
+          saveAs(await zip.generateAsync({ type: 'blob' }), `Synergy_Reports_${Date.now()}.zip`);
+        }
+        if (templateErrors.length > 0) {
+          setError(`${templateErrors.length} template(s) failed: ${templateErrors.join('; ')}`);
+        }
+        if (zipFileCount === 0 && templateErrors.length > 0) {
+          setError(`All templates failed: ${templateErrors.join('; ')}`);
+        }
+      }
       setStatus('Completed!');
       setTimeout(() => setStatus(''), 3000);
     } catch (err) {
       console.error(err);
-      setError('Generation failed.');
+      setError(`Generation failed: ${err.message}`);
     } finally {
       setIsGenerating(false);
     }
