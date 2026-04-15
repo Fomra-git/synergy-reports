@@ -11,7 +11,8 @@ import {
   LayoutGrid,
   Sun,
   Moon,
-  BarChart4
+  BarChart4,
+  Trophy
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
@@ -79,6 +80,10 @@ export default function Layout() {
               <NavLink to="/pivot-designer" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                 <BarChart4 size={20} />
                 Pivot Designer
+              </NavLink>
+              <NavLink to="/scoreboard-designer" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                <Trophy size={20} />
+                Score Board
               </NavLink>
             </>
           )}

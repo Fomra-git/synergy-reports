@@ -13,6 +13,7 @@ import TemplateManager from './pages/TemplateManager';
 import GenerateReport from './pages/GenerateReport';
 import VisualExcelMapping from './pages/VisualExcelMapping';
 import PivotTemplateManager from './pages/PivotTemplateManager';
+import ScoreboardDesigner from './pages/ScoreboardDesigner';
 
 // Components
 import Layout from './components/Layout';
@@ -47,6 +48,11 @@ function App() {
             <Route path="pivot-designer" element={
               <AdminRoute>
                 <PivotTemplateManager />
+              </AdminRoute>
+            } />
+            <Route path="scoreboard-designer" element={
+              <AdminRoute>
+                <ScoreboardDesigner />
               </AdminRoute>
             } />
           </Route>

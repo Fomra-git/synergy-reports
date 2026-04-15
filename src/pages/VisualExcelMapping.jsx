@@ -1045,7 +1045,34 @@ export default function VisualExcelMapping() {
                               />
                               <div>
                                  <p style={{ fontSize: '12px', fontWeight: '600' }}>Simplify Time (Extract Time Part)</p>
-                                 <p style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Extracts the time (e.g. 'Friday, Feb 27 - 2026 , 9:30 AM' becomes '9:30 AM').</p>
+                                 <p style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Extracts the time (e.g. '9:30 AM').</p>
+                              </div>
+                           </div>
+
+                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', background: 'var(--glass-bg)', borderRadius: '10px', border: '1px solid var(--border)', borderColor: 'var(--primary)' }}>
+                                 <input 
+                                   type="checkbox"
+                                   checked={modalData.normalizeMonth || false}
+                                   onChange={e => setModalData(prev => ({ ...prev, normalizeMonth: e.target.checked }))}
+                                   style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                 />
+                                 <div>
+                                    <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--primary)' }}>Normalize Month</p>
+                                    <p style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Displays only Month (e.g. 'Apr').</p>
+                                 </div>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', background: 'var(--glass-bg)', borderRadius: '10px', border: '1px solid var(--border)', borderColor: 'var(--primary)' }}>
+                                 <input 
+                                   type="checkbox"
+                                   checked={modalData.normalizeWeek || false}
+                                   onChange={e => setModalData(prev => ({ ...prev, normalizeWeek: e.target.checked }))}
+                                   style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                 />
+                                 <div>
+                                    <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--primary)' }}>Normalize Week</p>
+                                    <p style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Groups by Week from Start.</p>
+                                 </div>
                               </div>
                            </div>
                            
