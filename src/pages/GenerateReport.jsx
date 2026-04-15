@@ -1221,17 +1221,15 @@ export default function GenerateReport() {
 
             // --- GRAND TOTAL ROW ---
             if (template.isPivotSummaryEnabled) {
+               const colOffset = isPrimaryGrouped ? 2 : 1; // extra leading columns before aggregations
                const totalRow = ['GRAND TOTAL'];
-               for (let i = 1; i < headers.length; i++) {
-                  // Only sum if it's a numeric column
-                  // In Cross-tab mode, all Dynamic columns are aggregations.
-                  // In List mode, we check col.showTotal.
+               if (isPrimaryGrouped) totalRow.push(''); // blank for secondary group col
+               for (let i = colOffset; i < headers.length; i++) {
                   let shouldSum = true;
                   if (!colField) {
-                     const colDef = pivotCols[i];
+                     const colDef = pivotCols[i - (colOffset - 1)]; // adjust for leading group cols
                      if (!colDef || (colDef.type !== 'aggregation' && colDef.type !== 'formula') || colDef.showTotal === false) shouldSum = false;
                   }
-                  
                   if (shouldSum) {
                      const sum = filteredResults.reduce((acc, res) => {
                         const val = res.rawRow[i];
