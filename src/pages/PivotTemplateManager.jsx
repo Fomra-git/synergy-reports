@@ -1171,7 +1171,7 @@ export default function PivotTemplateManager() {
                                   {/* Value(s) */}
                                   <div>
                                     <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
-                                      {f.operator === 'between' ? 'From / To' : 'Value'}
+                                      {f.operator === 'between' ? 'From / To' : 'Value(s)'}
                                     </label>
                                     {f.operator === 'between' ? (
                                       <div style={{ display: 'flex', gap: '4px' }}>
@@ -1189,11 +1189,11 @@ export default function PivotTemplateManager() {
                                         />
                                       </div>
                                     ) : (
-                                      <input
-                                        placeholder="Value..."
-                                        value={f.conditionVals?.[0] || ''}
-                                        onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', [e.target.value])}
-                                        style={{ padding: '8px', fontSize: '11px', width: '100%' }}
+                                      <MultiSelectDropdown
+                                        options={masterUniqueValues[f.conditionCol] || []}
+                                        selectedValues={f.conditionVals || []}
+                                        onChange={vals => updateColRowFilter(col.id, fi, 'conditionVals', vals)}
+                                        placeholder={f.conditionCol ? `Pick values from ${f.conditionCol}...` : 'Select a field first...'}
                                       />
                                     )}
                                   </div>
