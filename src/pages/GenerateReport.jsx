@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, getDocs } from 'firebase/firestore';
 import XLSX from 'xlsx-js-style';
@@ -134,14 +134,38 @@ export default function GenerateReport() {
          return isNaN(num) ? 0 : num;
       };
 
+      // Strips leading/trailing whitespace, double/single quotes, zero-width chars and non-printable symbols
+      // Used to normalise BOTH template field names (source/target/conditionCol) AND master data header keys
+      const cleanFieldName = (str) =>
+         String(str || '')
+           .trim()
+           .replace(/^["'\s]+|["'\s]+$/g, '')   // leading/trailing quotes & whitespace
+           .replace(/[\u200B-\u200D\uFEFF]/g, '') // zero-width chars
+           .trim();
+
+      // --- NORMALIZE MASTER DATA HEADER KEYS in-place ---
+      // Strip quotes, extra spaces, zero-width chars from every row key before any lookup
+      if (masterData.length > 0) {
+        masterData.forEach(row => {
+          Object.keys(row).forEach(key => {
+            const cleaned = cleanFieldName(key);
+            if (cleaned !== key) {
+              row[cleaned] = row[key];
+              delete row[key];
+            }
+          });
+        });
+      }
+
       const getMasterValue = (row, source) => {
         if (!source || !row) return '';
-        if (row[source] !== undefined && row[source] !== null) return row[source];
+        const src = cleanFieldName(source); // strip quotes/spaces from template field names
+        if (row[src] !== undefined && row[src] !== null) return row[src];
         
-        // Super Aggressive Normalization (Trims, No Quotes, No Special Chars, Lowercase)
+        // Super Aggressive Normalization fallback (Trims, No Special Chars, Lowercase)
         const normalize = (str) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, '');
         
-        const cleanSource = normalize(source);
+        const cleanSource = normalize(src);
         const matchingKey = Object.keys(row).find(k => normalize(k) === cleanSource);
         
         return matchingKey ? row[matchingKey] : '';
@@ -1386,7 +1410,7 @@ export default function GenerateReport() {
           }
 
           if (topReportHeader) finalAOA.push([topReportHeader]);
-          columnHeaders = effectiveMappings.filter(m => m.target).map(m => m.target);
+          columnHeaders = effectiveMappings.filter(m => m.target).map(m => cleanFieldName(m.target));
           finalAOA.push(columnHeaders);
           reportData.forEach(item => {
              finalAOA.push(columnHeaders.map(h => {
@@ -1504,9 +1528,9 @@ export default function GenerateReport() {
          if (isSingle) {
            setError(`Report "${template.name || 'Untitled'}" failed: ${templateErr.message}`);
          }
-       }
-      }
-      
+         }
+      } // end per-template catch
+
       if (!isSingle) {
         const zipFileCount = Object.keys(zip.files).length;
         if (zipFileCount > 0) {
