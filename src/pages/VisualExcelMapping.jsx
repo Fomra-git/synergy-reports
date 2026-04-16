@@ -252,20 +252,75 @@ export default function VisualExcelMapping() {
     }
   };
 
-  // Drag and Drop Logic
+  // Drag from sidebar (master header → column slot)
   const onDragStart = (e, header) => {
     e.dataTransfer.setData('sourceHeader', header);
+    e.dataTransfer.setData('dragType', 'masterHeader');
   };
 
   const onDragOver = (e) => {
     e.preventDefault();
   };
 
+  // Drag-to-reorder mapped columns
+  const [dragReorderIdx, setDragReorderIdx] = useState(null);
+  const [dragOverReorderIdx, setDragOverReorderIdx] = useState(null);
+
+  const onColDragStart = (e, idx) => {
+    e.stopPropagation();
+    e.dataTransfer.setData('dragType', 'reorderCol');
+    e.dataTransfer.setData('reorderIdx', String(idx));
+    setDragReorderIdx(idx);
+  };
+
+  const onColDragOver = (e, idx) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverReorderIdx(idx);
+  };
+
+  const onColDrop = (e, idx) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dragType = e.dataTransfer.getData('dragType');
+    if (dragType === 'reorderCol') {
+      const fromIdx = parseInt(e.dataTransfer.getData('reorderIdx'), 10);
+      if (fromIdx === idx) { setDragReorderIdx(null); setDragOverReorderIdx(null); return; }
+      const newMappings = [...(formData.mappings || [])];
+      const [moved] = newMappings.splice(fromIdx, 1);
+      newMappings.splice(idx, 0, moved);
+      // Re-assign tags A, B, C... in new order
+      const retagged = newMappings.map((m, i) => ({ ...m, tag: String.fromCharCode(65 + i) }));
+      setFormData(prev => ({ ...prev, mappings: retagged }));
+    } else if (dragType === 'masterHeader') {
+      // Drop master header onto existing column slot to open configure modal
+      const sourceHeader = e.dataTransfer.getData('sourceHeader');
+      const mapping = formData.mappings[idx];
+      setActiveCell({ colIndex: idx, colLetter: mapping?.tag || String.fromCharCode(65 + idx) });
+      setModalData({
+        type: 'direct',
+        source: sourceHeader || '',
+        target: sourceHeader || mapping?.target || '',
+        formula: '',
+        conditionCol: '',
+        operator: '==',
+        conditionVals: [],
+        trueOut: '',
+        falseOut: ''
+      });
+      setShowModal(true);
+    }
+    setDragReorderIdx(null);
+    setDragOverReorderIdx(null);
+  };
+
   const onDrop = (e, colIndex) => {
     e.preventDefault();
+    // Only handle master-header drops on the empty "Add Column" slot
+    const dragType = e.dataTransfer.getData('dragType');
+    if (dragType !== 'masterHeader') return;
     const sourceHeader = e.dataTransfer.getData('sourceHeader');
     const colLetter = String.fromCharCode(65 + colIndex);
-    
     setActiveCell({ colIndex, colLetter });
     setModalData({
       type: 'direct',
@@ -743,115 +798,142 @@ export default function VisualExcelMapping() {
             </div>
 
             <div style={{ flex: 1, overflowX: 'auto', padding: '32px' }}>
-              <div style={{ display: 'flex', gap: '20px', minWidth: 'min-content' }}>
-                {Array.from({ length: 26 }).map((_, i) => {
-                  const letter = String.fromCharCode(65 + i);
-                  const mapping = getMappingForCell(letter);
-                  
-                  return (
-                    <div 
-                      key={i} 
-                      className={`grid-col ${mapping ? 'is-mapped' : ''}`}
-                      onDragOver={onDragOver}
-                      onDrop={(e) => onDrop(e, i)}
-                      onClick={() => {
-                        const letter = String.fromCharCode(65 + i);
-                        setActiveCell({ colIndex: i, colLetter: letter });
-                        if (mapping) {
-                          setModalData(mapping);
-                        } else {
-                          setModalData({
-                            type: 'direct',
-                            target: '',
-                            source: '',
-                            enableMerging: false,
-                            totalType: 'none',
-                            totalLabel: '',
-                            findText: '',
-                            replaceWith: ''
-                          });
-                        }
-                        setShowModal(true);
-                      }}
-                      style={{ 
-                        width: '260px', 
-                        flexShrink: 0,
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        gap: '12px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <div style={{ 
-                        textAlign: 'center', 
-                        background: mapping ? 'var(--primary)' : 'var(--input-bg)', 
-                        padding: '8px', 
-                        borderRadius: '8px', 
-                        fontSize: '14px', 
-                        fontWeight: '700',
-                        color: 'var(--text-main)',
-                        border: '1px solid var(--border)'
-                      }}>
-                        Column {letter}
-                      </div>
+              <div style={{ display: 'flex', gap: '20px', minWidth: 'min-content', alignItems: 'flex-start' }}>
 
-                      <div style={{ 
-                        flex: 1, 
-                        border: '2px dashed var(--border)', 
-                        borderRadius: '16px', 
-                        minHeight: '260px',
+                {/* MAPPED COLUMNS — drag to reorder */}
+                {(formData.mappings || []).map((mapping, idx) => {
+                  const isDragging = dragReorderIdx === idx;
+                  const isDragOver = dragOverReorderIdx === idx;
+                  return (
+                    <div
+                      key={mapping.tag || idx}
+                      draggable
+                      onDragStart={(e) => onColDragStart(e, idx)}
+                      onDragOver={(e) => onColDragOver(e, idx)}
+                      onDrop={(e) => onColDrop(e, idx)}
+                      onDragEnd={() => { setDragReorderIdx(null); setDragOverReorderIdx(null); }}
+                      style={{
+                        width: '260px',
+                        flexShrink: 0,
                         display: 'flex',
                         flexDirection: 'column',
+                        gap: '12px',
+                        opacity: isDragging ? 0.45 : 1,
+                        transform: isDragOver ? 'scale(1.02)' : 'scale(1)',
+                        transition: 'opacity 0.2s, transform 0.15s',
+                        cursor: 'default'
+                      }}
+                    >
+                      {/* Column Letter Header with drag handle */}
+                      <div style={{
+                        textAlign: 'center',
+                        background: 'var(--primary)',
+                        padding: '8px',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        fontWeight: '700',
+                        color: 'white',
+                        border: '1px solid var(--border)',
+                        display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        background: mapping ? 'rgba(99, 102, 241, 0.05)' : 'rgba(255,255,255,0.01)',
-                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                        padding: '20px',
-                        position: 'relative'
+                        justifyContent: 'space-between',
+                        gap: '6px',
+                        boxShadow: isDragOver ? '0 0 0 2px var(--primary)' : 'none'
                       }}>
-                        {mapping ? (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                               <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                   <div style={{ background: 'var(--primary)', color: 'white', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: '700', textTransform: 'uppercase' }}>{mapping.type}</div>
-                                   {mapping.totalType && mapping.totalType !== 'none' && (
-                                     <div style={{ background: 'var(--secondary)', color: 'white', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: '700', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                       Σ {mapping.totalType}
-                                     </div>
-                                   )}
-                                </div>
-                               <button 
-                                onClick={(e) => { e.stopPropagation(); removeMapping(letter); }} 
-                                style={{ background: 'rgba(239, 68, 68, 0.1)', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px', borderRadius: '6px' }}
-                               >
-                                <Trash2 size={14} />
-                               </button>
-                            </div>
-                            
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                                <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>{mapping.target}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>From: {mapping.source || 'Manual/Engine'}</div>
-                            </div>
+                        <GripVertical
+                          size={16}
+                          style={{ cursor: 'grab', opacity: 0.7, flexShrink: 0 }}
+                          onMouseDown={e => e.currentTarget.closest('[draggable]').setAttribute('draggable', true)}
+                        />
+                        <span>Col {mapping.tag} — #{idx + 1}</span>
+                        <div style={{ width: 16 }} />
+                      </div>
 
-                            <div 
-                              className="btn-link" 
-                              style={{ width: '100%', textAlign: 'center', background: 'var(--glass-bg)', borderRadius: '8px', padding: '8px' }}
+                      {/* Column Card */}
+                      <div
+                        className="grid-col is-mapped"
+                        onClick={() => {
+                          setActiveCell({ colIndex: idx, colLetter: mapping.tag });
+                          setModalData(mapping);
+                          setShowModal(true);
+                        }}
+                        style={{
+                          flex: 1,
+                          border: isDragOver ? '2px solid var(--primary)' : '2px dashed var(--border)',
+                          borderRadius: '16px',
+                          minHeight: '260px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          background: 'rgba(99, 102, 241, 0.05)',
+                          transition: 'all 0.2s',
+                          padding: '20px',
+                          position: 'relative',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                              <div style={{ background: 'var(--primary)', color: 'white', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: '700', textTransform: 'uppercase' }}>{mapping.type}</div>
+                              {mapping.totalType && mapping.totalType !== 'none' && (
+                                <div style={{ background: 'var(--secondary)', color: 'white', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: '700', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                  &Sigma; {mapping.totalType}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={e => { e.stopPropagation(); removeMapping(mapping.tag); }}
+                              style={{ background: 'rgba(239,68,68,0.1)', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px', borderRadius: '6px' }}
                             >
-                               <Settings size={14} /> Configuration
-                            </div>
+                              <Trash2 size={14} />
+                            </button>
                           </div>
-                        ) : (
-                          <div style={{ textAlign: 'center', color: 'var(--glass-border)', fontSize: '12px' }}>
-                            <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '2px dashed currentColor', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <Plus size={20} />
-                            </div>
-                            Click to Add Mapping <br/> or Drop Header Here
+
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>{mapping.target}</div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>From: {mapping.source || 'Manual/Engine'}</div>
+                            {mapping.enableMerging && <div style={{ fontSize: '10px', color: 'var(--secondary)', marginTop: '4px', fontWeight: '700' }}>⊞ MERGE</div>}
                           </div>
-                        )}
+
+                          <div className="btn-link" style={{ width: '100%', textAlign: 'center', background: 'var(--glass-bg)', borderRadius: '8px', padding: '8px' }}>
+                            <Settings size={14} /> Configuration
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
                 })}
+
+                {/* ADD COLUMN SLOT */}
+                {
+                  (formData.mappings || []).length < 26 && (
+                    <div
+                      onDragOver={onDragOver}
+                      onDrop={(e) => onDrop(e, (formData.mappings || []).length)}
+                      style={{ width: '260px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px', cursor: 'pointer' }}
+                      onClick={() => {
+                        const newIdx = (formData.mappings || []).length;
+                        const newLetter = String.fromCharCode(65 + newIdx);
+                        setActiveCell({ colIndex: newIdx, colLetter: newLetter });
+                        setModalData({ type: 'direct', target: '', source: '', enableMerging: false, totalType: 'none', totalLabel: '', findText: '', replaceWith: '' });
+                        setShowModal(true);
+                      }}
+                    >
+                      <div style={{ textAlign: 'center', background: 'var(--input-bg)', padding: '8px', borderRadius: '8px', fontSize: '14px', fontWeight: '700', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+                        Column {String.fromCharCode(65 + (formData.mappings || []).length)}
+                      </div>
+                      <div style={{ flex: 1, border: '2px dashed var(--border)', borderRadius: '16px', minHeight: '260px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.01)', transition: 'all 0.3s', padding: '20px', position: 'relative' }}>
+                        <div style={{ textAlign: 'center', color: 'var(--glass-border)', fontSize: '12px' }}>
+                          <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '2px dashed currentColor', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Plus size={20} />
+                          </div>
+                          Click to Add Column<br/>or Drop Header Here
+                        </div>
+                      </div>
+                    </div>
+                  )
+                }
+
               </div>
             </div>
           </div>
