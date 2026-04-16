@@ -899,7 +899,7 @@ export default function GenerateReport() {
         const wb = XLSX.utils.book_new();
         let columnHeaders = [];
         let currentChartImage = null;
-        let hasMappingTargets = (template.mappings || []).some(m => m.target);
+        let hasMappingTargets = (template.mappings || []).some(m => m.target) || !!template.isHighlightEmptyEnabled;
 
          const evaluateCondition = (row, mapping) => {
           if (!mapping) return true;
@@ -1266,14 +1266,21 @@ export default function GenerateReport() {
             });
           });
 
-          const isSummaryOnly = template.isSummaryMode === true || (hasMappingTargets && (template.mappings || []).every(m => m.type === 'condition_count' || !m.target));
+          // When isHighlightEmptyEnabled with no explicit mappings, auto-build mappings from all master columns
+          let effectiveMappings = template.mappings || [];
+          if (template.isHighlightEmptyEnabled && effectiveMappings.filter(m => m.target).length === 0 && masterData.length > 0) {
+            const allCols = Object.keys(masterData[0] || {});
+            effectiveMappings = allCols.map(col => ({ type: 'direct', source: col, target: col }));
+          }
+
+          const isSummaryOnly = template.isSummaryMode === true || (hasMappingTargets && effectiveMappings.every(m => m.type === 'condition_count' || !m.target));
           let processData = [...filteredMasterData];
           if (isSummaryOnly && processData.length > 0) processData = [processData[0]];
 
           let reportData = processData.map((row, index) => {
             const newRow = {};
             let rowHasEmpty = false;
-            (template.mappings || []).forEach((mapping, mappingIndex) => {
+            effectiveMappings.forEach((mapping, mappingIndex) => {
               if (!mapping.target) return;
               let val = '';
               const type = mapping.type || 'direct';
@@ -1339,7 +1346,7 @@ export default function GenerateReport() {
           if (template.isHighlightEmptyEnabled) reportData = reportData.filter(r => r.hasEmpty);
 
           // Sorting & Merging
-          const mergeCols = (template.mappings || []).filter(m => m.enableMerging && m.target).map(m => m.target);
+          const mergeCols = effectiveMappings.filter(m => m.enableMerging && m.target).map(m => m.target);
           if (mergeCols.length > 0) {
              reportData.sort((a, b) => {
                 for (const col of mergeCols) {
@@ -1351,7 +1358,7 @@ export default function GenerateReport() {
           }
 
           // Aggregations (Cluster & Sum logic)
-          const groupAggMappings = (template.mappings || []).filter(m => m.groupAggType && m.groupAggType !== 'none' && m.target);
+          const groupAggMappings = effectiveMappings.filter(m => m.groupAggType && m.groupAggType !== 'none' && m.target);
           if (groupAggMappings.length > 0) {
              groupAggMappings.forEach(m => {
                 const targetCol = m.target, aggType = m.groupAggType;
@@ -1379,7 +1386,7 @@ export default function GenerateReport() {
           }
 
           if (topReportHeader) finalAOA.push([topReportHeader]);
-          columnHeaders = (template.mappings || []).filter(m => m.target).map(m => m.target);
+          columnHeaders = effectiveMappings.filter(m => m.target).map(m => m.target);
           finalAOA.push(columnHeaders);
           reportData.forEach(item => {
              finalAOA.push(columnHeaders.map(h => {
@@ -1389,7 +1396,7 @@ export default function GenerateReport() {
           });
 
           // Totals Footer
-          const footerCalculations = (template.mappings || []).filter(m => m.totalType && m.totalType !== 'none' && m.target);
+          const footerCalculations = effectiveMappings.filter(m => m.totalType && m.totalType !== 'none' && m.target);
           if (footerCalculations.length > 0) {
              const footerRow = new Array(columnHeaders.length).fill('');
              footerCalculations.forEach(m => {
