@@ -142,6 +142,41 @@ export default function GenerateReport() {
            .replace(/^["'\s]+|["'\s]+$/g, '')   // leading/trailing quotes & whitespace
            .replace(/[\u200B-\u200D\uFEFF]/g, '') // zero-width chars
            .trim();
+       const parseReportDate = (rawVal) => {
+          if (rawVal === undefined || rawVal === null || rawVal === '') return null;
+          if (typeof rawVal === 'number') {
+             if (rawVal > 20000 && rawVal < 100000) return new Date(Math.round((rawVal - 25569) * 86400 * 1000));
+             return null;
+          }
+          let s = String(rawVal).trim();
+          const longMatch = s.match(/.*,\s+(.*?)\s+,\s+.*/);
+          if (longMatch) s = longMatch[1];
+          const d = new Date(s);
+          if (!isNaN(d.getTime())) return d;
+          const monthsF = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+          const mdy = s.match(/([a-z]+)\s+(\d{1,2})\s*[-,]?\s*(\d{4})/i);
+          if (mdy) {
+             const mIdx = monthsF.indexOf(mdy[1].toLowerCase().slice(0, 3));
+             if (mIdx >= 0) return new Date(parseInt(mdy[3]), mIdx, parseInt(mdy[2]));
+          }
+          const dmy = s.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/i);
+          if (dmy) {
+             const mIdx = monthsF.indexOf(dmy[2].toLowerCase().slice(0, 3));
+             if (mIdx >= 0) return new Date(parseInt(dmy[3]), mIdx, parseInt(dmy[1]));
+          }
+          const foundMonth = monthsF.find(m => s.toLowerCase().includes(m));
+          if (foundMonth) {
+             const yearMatch = s.match(/\d{4}/);
+             const year = yearMatch ? parseInt(yearMatch[0]) : new Date().getFullYear();
+             const noYear = s.replace(/\d{4}/, '');
+             const noMonth = noYear.replace(new RegExp(foundMonth, 'i'), '');
+             const dayMatch = noMonth.match(/\b(\d{1,2})\b/);
+             const day = dayMatch ? parseInt(dayMatch[1]) : 1;
+             return new Date(year, monthsF.indexOf(foundMonth), day);
+          }
+          return null;
+       };
+
 
       // --- NORMALIZE MASTER DATA HEADER KEYS in-place ---
       // Strip quotes, extra spaces, zero-width chars from every row key before any lookup
@@ -674,53 +709,9 @@ export default function GenerateReport() {
 
            // Robust Date Parsing for normalization
            let dateObj = null;
-           const tryParse = (rawVal) => {
-              if (rawVal === undefined || rawVal === null || rawVal === '') return null;
-              if (typeof rawVal === 'number') {
-                 // Standard Excel Date range
-                 if (rawVal > 30000 && rawVal < 60000) return new Date((rawVal - 25569) * 86400 * 1000);
-                 return null;
-              }
-              let s = String(rawVal).trim();
-              
-              // Handle "Friday, Feb 27 - 2026 , 9:30 AM" format (allow variable whitespace)
-              const longMatch = s.match(/.*,\s+(.*?)\s+,\s+.*/);
-              if (longMatch) s = longMatch[1];
-              
-              const d = new Date(s);
-              if (!isNaN(d.getTime())) return d;
-
-              // Fallback: try manual month extraction if Date.parse fails
-              const monthsF = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-              // Strategy 1: "Month DD - YYYY" or "Month DD, YYYY"
-              const mdy = s.match(/([a-z]+)\s+(\d{1,2})\s*[-,]?\s*(\d{4})/i);
-              if (mdy) {
-                 const mIdx = monthsF.indexOf(mdy[1].toLowerCase().slice(0, 3));
-                 if (mIdx >= 0) return new Date(parseInt(mdy[3]), mIdx, parseInt(mdy[2]));
-              }
-              // Strategy 2: "DD Month YYYY"
-              const dmy = s.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/i);
-              if (dmy) {
-                 const mIdx = monthsF.indexOf(dmy[2].toLowerCase().slice(0, 3));
-                 if (mIdx >= 0) return new Date(parseInt(dmy[3]), mIdx, parseInt(dmy[1]));
-              }
-              // Strategy 3: extract month/year and find a day
-              const foundMonth = monthsF.find(m => s.toLowerCase().includes(m));
-              if (foundMonth) {
-                 const yearMatch = s.match(/\d{4}/);
-                 const year = yearMatch ? parseInt(yearMatch[0]) : new Date().getFullYear();
-                 const noYear = s.replace(/\d{4}/, '');
-                 const noMonth = noYear.replace(new RegExp(foundMonth, 'i'), '');
-                 const dayMatch = noMonth.match(/\b(\d{1,2})\b/);
-                 const day = dayMatch ? parseInt(dayMatch[1]) : 1;
-                 return new Date(year, monthsF.indexOf(foundMonth), day);
-              }
-              return null;
-           };
-
            if (config.normalizeMonth || config.normalizeWeek) {
-              dateObj = tryParse(val);
-           }
+               dateObj = parseReportDate(val);
+            }
 
            if (config.simplifyDate) {
              const match = cleaned.match(/.*,\s+(.*?)\s+,\s+.*/);
@@ -1047,7 +1038,17 @@ export default function GenerateReport() {
                   let val = getMasterValue(r, colField);
                   val = cleanValue(val, template.colFieldTransforms, colField);
                   return val !== undefined && val !== null && val !== '' ? String(val) : '(Blank)';
-               }))].sort();
+               }))];
+                
+                // Smart Chronological Sorting for Cross-tab Columns
+                uniqueColVals.sort((a, b) => {
+                   if (a === '(Blank)') return -1;
+                   if (b === '(Blank)') return 1;
+                   const dA = parseReportDate(a);
+                   const dB = parseReportDate(b);
+                   if (dA && dB) return dA.getTime() - dB.getTime();
+                   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+                });
             }
 
              filteredMasterData.forEach(row => {
