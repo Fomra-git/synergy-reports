@@ -458,10 +458,10 @@ export default function PivotTemplateManager() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '24px', height: 'calc(100vh - 220px)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '24px', height: 'calc(100vh - 220px)' }}>
         
         {/* LEFT PANEL: CONFIG */}
-        <div className="glass" style={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="glass" style={{ padding: 0, display: 'flex', flexDirection: "column", overflow: "hidden" }}>
           
           {/* Tabs Header */}
           <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
@@ -491,7 +491,7 @@ export default function PivotTemplateManager() {
             </button>
           </div>
 
-          <div style={{ padding: '24px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ padding: '24px', flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "24px" }}>
             
             {activeTab === 'settings' ? (
               <>
@@ -541,7 +541,7 @@ export default function PivotTemplateManager() {
 
                 {/* REPORT TITLE HEADER */}
                 <div style={{ marginTop: '8px', padding: '20px', background: 'var(--glass-subtle)', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', position: 'sticky', top: 0, zIndex: 100, background: 'var(--bg-card, var(--bg-main, #0f1117))', paddingTop: '4px', paddingBottom: '8px', backdropFilter: 'blur(12px)' }}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                          <Settings2 size={16} color="var(--secondary)" />
                          <h4 style={{ fontSize: '14px', fontWeight: '700' }}>Report Title Header</h4>
@@ -783,8 +783,8 @@ export default function PivotTemplateManager() {
         </div>
 
         {/* RIGHT PANEL: DESIGNER AREA */}
-        <div className="glass" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '24px', borderBottom: '1px solid var(--border)', background: 'var(--glass-subtle)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div className="glass" style={{ display: 'flex', flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ flex: 1, padding: "24px 32px 250px 32px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "24px" }}>
              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                    <TableIcon size={20} color="var(--secondary)" />
@@ -932,13 +932,11 @@ export default function PivotTemplateManager() {
                   </p>
                 )}
               </div>
-          </div>
 
-          <div style={{ flex: 1, padding: '32px 32px 250px 32px', overflowY: 'auto' }}>
             
             {/* INTEGRATED COLUMNS SECTION */}
             <div>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', position: 'sticky', top: 0, zIndex: 100, background: 'var(--bg-card, var(--bg-main, #0f1117))', paddingTop: '4px', paddingBottom: '8px', backdropFilter: 'blur(12px)' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
                   <h4 style={{ fontSize: '14px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }}></div>
                     Pivot Output Columns
@@ -1012,7 +1010,7 @@ export default function PivotTemplateManager() {
                         </div>
                         <div className="form-group">
                            <label style={{ fontSize: '11px' }}>Metric Columns (Y-Axis)</label>
-                           <div className="glass" style={{ maxHeight: '120px', overflowY: 'auto', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                           <div className="glass" style={{ maxHeight: '120px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                               {formData.pivotColumns.filter(c => (c.type === 'aggregation' || c.type === 'formula') && (c.displayName || c.source)).map(c => {
                                  const val = c.displayName || (c.type === 'aggregation' ? `${c.operation.toUpperCase()}(${c.source})` : c.source || 'Untitled');
                                  return (
@@ -1112,23 +1110,36 @@ export default function PivotTemplateManager() {
                                     <option value="count_multi">Count Multiple Treatments (has /)</option>
                                   </optgroup>
                                 </select>
-                                {col.operation === 'count_unique' && (
-                                  <div style={{ marginTop: '8px' }}>
-                                    <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                                      Unique By Column (e.g. Patient ID)
-                                    </label>
-                                    <SearchableDropdown
-                                      options={masterHeaders}
-                                      value={col.dedupColumn || ''}
-                                      onChange={val => updatePivotColumn(col.id, 'dedupColumn', val)}
-                                      placeholder="Select ID column..."
+                                
+                                <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(99,102,241,0.05)', borderRadius: '10px', border: '1px solid rgba(99,102,241,0.1)' }}>
+                                  <label style={{ fontSize: '11px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--primary)' }}>
+                                    <input 
+                                      type="checkbox" 
+                                      checked={!!col.isUniqueCount} 
+                                      onChange={e => updatePivotColumn(col.id, 'isUniqueCount', e.target.checked)} 
                                     />
-                                    <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                      ✦ Counts distinct values in the chosen column — multiple sessions per patient count as <strong>1</strong>.
-                                    </p>
-                                  </div>
-                                )}
-                                {(col.operation === 'count_single' || col.operation === 'count_multi') && (
+                                    Unique Patient Count (Deduplicate)
+                                  </label>
+                                  
+                                  {col.isUniqueCount && (
+                                    <div style={{ marginTop: '8px' }}>
+                                      <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                                        Deduplicate By Column (e.g. Patient ID)
+                                      </label>
+                                      <SearchableDropdown
+                                        options={masterHeaders}
+                                        value={col.dedupColumn || ''}
+                                        onChange={val => updatePivotColumn(col.id, 'dedupColumn', val)}
+                                        placeholder="Select ID column..."
+                                      />
+                                      <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                        ✦ Session rows for the same ID will be counted as <strong>1</strong> patient.
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {(col.operation === 'count_single' || col.operation === 'count_multi') && !col.isUniqueCount && (
                                   <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
                                     {col.operation === 'count_single'
                                       ? '✦ Counts rows where the selected column has NO "/" — e.g., "Neck pain"'

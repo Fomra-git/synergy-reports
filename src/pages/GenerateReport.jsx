@@ -1153,16 +1153,29 @@ export default function GenerateReport() {
                      const cg = rowGroup.colGroups[cv] || { rows: [], aggregations: {} };
                      aggCols.forEach(col => {
                         const filteredRows = applyColRowFilters(cg.rows, col);
+                        
+                        // Deduplication Logic (Unique Patient Count)
+                        let rowsToAggregate = filteredRows;
+                        if (col.isUniqueCount) {
+                          const seenIds = new Set();
+                          const idCol = col.dedupColumn || col.source;
+                          rowsToAggregate = filteredRows.filter(r => {
+                            const val = String(getMasterValue(r, idCol) || '').trim();
+                            if (!val || seenIds.has(val)) return false;
+                            seenIds.add(val);
+                            return true;
+                          });
+                        }
                          if (col.operation === 'count_unique') {
                             const dedupCol = col.dedupColumn || col.source;
-                            const res = new Set(filteredRows.map(r => String(getMasterValue(r, dedupCol) ?? '').trim()).filter(v => v !== '')).size;
+                            const res = new Set(rowsToAggregate.map(r => String(getMasterValue(r, dedupCol) ?? '').trim()).filter(v => v !== '')).size;
                              const headerKey = `${cv} - ${col.displayName || ('Unique(' + dedupCol + ')')}`;
                             groupResult[headerKey] = res;
                             reportRow.push(res);
                             return;
                          }
                         if (col.operation === 'count_single' || col.operation === 'count_multi') {
-                           const res = filteredRows.filter(r => {
+                           const res = rowsToAggregate.filter(r => {
                              const raw = String(getMasterValue(r, col.source) || '').trim();
                              return col.operation === 'count_single' ? !raw.includes('/') : raw.includes('/');
                            }).length;
@@ -1171,7 +1184,7 @@ export default function GenerateReport() {
                            reportRow.push(res);
                            return;
                         }
-                        const vals = filteredRows.map(r => {
+                        const vals = rowsToAggregate.map(r => {
                            const raw = getMasterValue(r, col.source);
                            const cleaned = cleanValue(raw, col, col.source);
                            return parseSafeNum(cleaned);
@@ -1196,19 +1209,32 @@ export default function GenerateReport() {
                   // Pre-calculate aggregations for standard mode
                   aggCols.forEach(col => {
                      const filteredRows = applyColRowFilters(cg.rows, col);
+                        
+                        // Deduplication Logic (Unique Patient Count)
+                        let rowsToAggregate = filteredRows;
+                        if (col.isUniqueCount) {
+                          const seenIds = new Set();
+                          const idCol = col.dedupColumn || col.source;
+                          rowsToAggregate = filteredRows.filter(r => {
+                            const val = String(getMasterValue(r, idCol) || '').trim();
+                            if (!val || seenIds.has(val)) return false;
+                            seenIds.add(val);
+                            return true;
+                          });
+                        }
                       if (col.operation === 'count_unique') {
                          const dedupCol = col.dedupColumn || col.source;
-                         cg.aggregations[col.id] = new Set(filteredRows.map(r => String(getMasterValue(r, dedupCol) ?? '').trim()).filter(v => v !== '')).size;
+                         cg.aggregations[col.id] = new Set(rowsToAggregate.map(r => String(getMasterValue(r, dedupCol) ?? '').trim()).filter(v => v !== '')).size;
                          return;
                       }
                      if (col.operation === 'count_single' || col.operation === 'count_multi') {
-                        cg.aggregations[col.id] = filteredRows.filter(r => {
+                        cg.aggregations[col.id] = rowsToAggregate.filter(r => {
                           const raw = String(getMasterValue(r, col.source) || '').trim();
                           return col.operation === 'count_single' ? !raw.includes('/') : raw.includes('/');
                         }).length;
                         return;
                      }
-                     const vals = filteredRows.map(r => {
+                     const vals = rowsToAggregate.map(r => {
                         const raw = getMasterValue(r, col.source);
                         const cleaned = cleanValue(raw, col, col.source);
                         return parseSafeNum(cleaned);

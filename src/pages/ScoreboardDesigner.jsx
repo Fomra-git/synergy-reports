@@ -636,7 +636,12 @@ export default function ScoreboardDesigner() {
                                       </div>
                                       <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', flexShrink: 0, marginTop: '14px' }}>
                                         <input type="checkbox" checked={col.isConsultationColumn || false}
-                                          onChange={e => updateColumn(group.id, col.id, { isConsultationColumn: e.target.checked })} />
+                                          onChange={e => {
+                                            const isChecked = e.target.checked;
+                                            const updates = { isConsultationColumn: isChecked };
+                                            if (isChecked) updates.displayMode = 'triple';
+                                            updateColumn(group.id, col.id, updates);
+                                          }} />
                                         Count in Branch
                                       </label>
                                     </div>
