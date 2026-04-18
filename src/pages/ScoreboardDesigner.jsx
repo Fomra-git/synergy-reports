@@ -33,6 +33,10 @@ const DEFAULT_FORM = {
   branches: [],
   globalFilters: [],
   isGlobalFilterEnabled: true,
+  branchCurFormula: '',
+  branchFooterCurFormula: '',
+  branchFooterActualFormula: '',
+  branchFooterTargetFormula: '',
 };
 
 export default function ScoreboardDesigner() {
@@ -183,7 +187,18 @@ export default function ScoreboardDesigner() {
     setFormData(p => ({
       ...p,
       groups: p.groups.map(g => g.id === groupId
-        ? { ...g, columns: [...g.columns, { id, name: 'New Column', displayMode: 'cumulative', isConsultationColumn: false, filterColumn: '', filterValue: '' }] }
+        ? { ...g, columns: [...g.columns, { 
+            id, 
+            name: 'New Column', 
+            displayMode: 'cumulative', 
+            isConsultationColumn: false, 
+            filterColumn: '', 
+            filterValue: '',
+            isCalculated: false,
+            formula: '',
+            formulaCur: '',
+            formulaConv: ''
+          }] }
         : g)
     }));
   };
@@ -598,31 +613,84 @@ export default function ScoreboardDesigner() {
                                       <button onClick={() => removeColumn(group.id, col.id)} className="btn-link" style={{ color: 'var(--error)', padding: '3px 5px' }}><X size={12} /></button>
                                     </div>
 
-                                    {/* Column Config Grid */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                                      <div className="form-group" style={{ marginBottom: 0 }}>
-                                        <label style={{ fontSize: '10px' }}>Filter Column</label>
-                                        <SearchableDropdown options={masterHeaders} value={col.filterColumn} onChange={val => updateColumn(group.id, col.id, { filterColumn: val })} placeholder="Master column..." />
-                                      </div>
-                                      <div className="form-group" style={{ marginBottom: 0 }}>
-                                        <label style={{ fontSize: '10px' }}>Filter Value(s)</label>
-                                        {col.filterColumn && masterColumnValues[col.filterColumn]?.length > 0 ? (
-                                          <MultiSelectCheckboxDropdown
-                                            options={masterColumnValues[col.filterColumn]}
-                                            values={col.filterValues || []}
-                                            onChange={vals => updateColumn(group.id, col.id, { filterValues: vals })}
-                                            placeholder="Select values..."
-                                          />
-                                        ) : (
-                                          <input
-                                            value={col.filterValues?.[0] || ''}
-                                            onChange={e => updateColumn(group.id, col.id, { filterValues: e.target.value ? [e.target.value] : [] })}
-                                            placeholder="Type value..."
-                                            style={{ padding: '7px', fontSize: '11px' }}
-                                          />
-                                        )}
+                                    {/* Column Settings Header */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                      <p style={{ fontSize: '10px', fontWeight: '700', color: 'var(--secondary)', textTransform: 'uppercase' }}>Column Source</p>
+                                      <div style={{ display: 'flex', gap: '4px', background: 'var(--glass-subtle)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                        {[
+                                          { id: false, label: 'Standard', icon: <Filter size={10} /> },
+                                          { id: true, label: 'Calculated', icon: <Database size={10} /> },
+                                        ].map(m => (
+                                          <button key={m.label} onClick={() => updateColumn(group.id, col.id, { isCalculated: m.id })}
+                                            style={{
+                                              padding: '4px 10px', fontSize: '10px', fontWeight: '600', borderRadius: '6px', cursor: 'pointer', border: 'none',
+                                              display: 'flex', alignItems: 'center', gap: '4px',
+                                              background: (col.isCalculated || false) === m.id ? 'var(--primary)' : 'transparent',
+                                              color: (col.isCalculated || false) === m.id ? '#fff' : 'var(--text-muted)',
+                                            }}>
+                                            {m.icon} {m.label}
+                                          </button>
+                                        ))}
                                       </div>
                                     </div>
+
+                                    {/* Column Config Grid */}
+                                    {col.isCalculated ? (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
+                                        <div className="form-group" style={{ marginBottom: 0 }}>
+                                          <label style={{ fontSize: '10px', display: 'flex', justifyContent: 'space-between' }}>
+                                            Current Formula
+                                            <span style={{ fontSize: '9px', fontWeight: 'normal', opacity: 0.7 }}>e.g. &#123;&#123;G1:C1:cur&#125;&#125; + &#123;&#123;G2:C1:cur&#125;&#125;</span>
+                                          </label>
+                                          <input
+                                            value={col.formulaCur || ''}
+                                            onChange={e => updateColumn(group.id, col.id, { formulaCur: e.target.value })}
+                                            placeholder="Formula for Current value..."
+                                            style={{ padding: '8px', fontSize: '12px', width: '100%', fontFamily: 'monospace', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-main)' }}
+                                          />
+                                        </div>
+                                        <div className="form-group" style={{ marginBottom: 0 }}>
+                                          <label style={{ fontSize: '10px', display: 'flex', justifyContent: 'space-between' }}>
+                                            Total Formula
+                                            <span style={{ fontSize: '9px', fontWeight: 'normal', opacity: 0.7 }}>e.g. &#123;&#123;G1:C1:total&#125;&#125; + &#123;&#123;G2:C1:total&#125;&#125;</span>
+                                          </label>
+                                          <input
+                                            value={col.formula || ''}
+                                            onChange={e => updateColumn(group.id, col.id, { formula: e.target.value })}
+                                            placeholder="Formula for Total value..."
+                                            style={{ padding: '8px', fontSize: '12px', width: '100%', fontFamily: 'monospace', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-main)' }}
+                                          />
+                                        </div>
+                                        <p style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                          💡 Output will automatically display as <strong>Current(Total)</strong>. Use IDs like <strong>G1:C1</strong> found below.
+                                        </p>
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                                        <div className="form-group" style={{ marginBottom: 0 }}>
+                                          <label style={{ fontSize: '10px' }}>Filter Column</label>
+                                          <SearchableDropdown options={masterHeaders} value={col.filterColumn} onChange={val => updateColumn(group.id, col.id, { filterColumn: val })} placeholder="Master column..." />
+                                        </div>
+                                        <div className="form-group" style={{ marginBottom: 0 }}>
+                                          <label style={{ fontSize: '10px' }}>Filter Value(s)</label>
+                                          {col.filterColumn && masterColumnValues[col.filterColumn]?.length > 0 ? (
+                                            <MultiSelectCheckboxDropdown
+                                              options={masterColumnValues[col.filterColumn]}
+                                              values={col.filterValues || []}
+                                              onChange={vals => updateColumn(group.id, col.id, { filterValues: vals })}
+                                              placeholder="Select values..."
+                                            />
+                                          ) : (
+                                            <input
+                                              value={col.filterValues?.[0] || ''}
+                                              onChange={e => updateColumn(group.id, col.id, { filterValues: e.target.value ? [e.target.value] : [] })}
+                                              placeholder="Type value..."
+                                              style={{ padding: '7px', fontSize: '11px' }}
+                                            />
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
 
                                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                                       <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
@@ -730,6 +798,65 @@ export default function ScoreboardDesigner() {
                     </div>
                   </div>
                 )}
+
+                {/* ADVANCED BRANCH FORMULAS */}
+                <div className="glass" style={{ marginTop: '24px', padding: '24px', borderRadius: '16px', border: '1px solid var(--border)', background: 'rgba(99,102,241,0.03)' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <Settings2 size={16} /> Advanced Branch Configuration
+                  </h4>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: '11px', fontWeight: '700', display: 'flex', justifyContent: 'space-between' }}>
+                        Custom Branch (Cur) Formula
+                        <span style={{ fontSize: '10px', fontWeight: 'normal', color: 'var(--text-muted)' }}>Overrides "Count in Branch" checkbox</span>
+                      </label>
+                      <textarea
+                        value={formData.branchCurFormula || ''}
+                        onChange={e => setFormData(p => ({ ...p, branchCurFormula: e.target.value }))}
+                        placeholder="e.g. {{G1:C1:total}} + {{G1:C2:total}}"
+                        rows={2}
+                        style={{ padding: '10px', fontSize: '12px', width: '100%', fontFamily: 'monospace', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: '10px', color: 'var(--text-main)' }}
+                      />
+                    </div>
+
+                    <div style={{ padding: '16px', background: 'var(--glass-subtle)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                      <p style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--secondary)', marginBottom: '12px' }}>Grand Total Row (Branch Column)</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: '10px' }}>Sum (Cur)</label>
+                          <input 
+                            value={formData.branchFooterCurFormula || ''}
+                            onChange={e => setFormData(p => ({ ...p, branchFooterCurFormula: e.target.value }))}
+                            placeholder="f(x)..."
+                            style={{ padding: '8px', fontSize: '11px', fontFamily: 'monospace' }}
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: '10px' }}>Sum (Total)</label>
+                          <input 
+                            value={formData.branchFooterTotalFormula || ''}
+                            onChange={e => setFormData(p => ({ ...p, branchFooterTotalFormula: e.target.value }))}
+                            placeholder="f(x)..."
+                            style={{ padding: '8px', fontSize: '11px', fontFamily: 'monospace' }}
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: '10px' }}>Sum (Conv)</label>
+                          <input 
+                            value={formData.branchFooterConvFormula || ''}
+                            onChange={e => setFormData(p => ({ ...p, branchFooterConvFormula: e.target.value }))}
+                            placeholder="f(x)..."
+                            style={{ padding: '8px', fontSize: '11px', fontFamily: 'monospace' }}
+                          />
+                        </div>
+                      </div>
+                      <p style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                        💡 Tip: Use <code>SUM_ALL(&#123;&#123;B:CUR&#125;&#125;)</code> to sum the calculated branch currents.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -841,6 +968,42 @@ export default function ScoreboardDesigner() {
 
               </div>
             )}
+
+            {/* ===================== VARIABLE REFERENCE ===================== */}
+            <div style={{ padding: '24px', paddingTop: 0 }}>
+              <div style={{ padding: '20px', background: 'var(--glass-subtle)', border: '1px solid var(--border)', borderRadius: '16px' }}>
+                <h5 style={{ fontSize: '12px', fontWeight: '700', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Database size={14} color="var(--primary)" /> Formula Variables Guide
+                </h5>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', paddingRight: '12px' }}>
+                  {formData.groups.map(g => (
+                    <div key={g.id} style={{ marginBottom: '6px' }}>
+                      <p style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--primary)', marginBottom: '4px' }}>{g.name || 'Untitled Group'}</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {(g.columns || []).map(c => (
+                          <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'var(--glass-bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                            <span style={{ fontSize: '11px', fontWeight: '600' }}>{c.name || 'Untitled'}</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <code style={{ fontSize: '10px', padding: '2px 5px', background: 'var(--primary-subtle)', color: 'var(--primary)', borderRadius: '4px' }}>{g.id}:{c.id}</code>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: '10px', padding: '10px', background: 'var(--glass-bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    <p style={{ fontSize: '10px', fontWeight: '700', color: 'var(--secondary)', marginBottom: '4px' }}>Global Branch Variables</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {['B:CUR', 'B:ACT', 'B:TGT'].map(v => <code key={v} style={{ fontSize: '10px', padding: '2px 5px', background: 'var(--bg-main)', border: '1px solid var(--border)', borderRadius: '4px' }}>{v}</code>)}
+                    </div>
+                  </div>
+                </div>
+                <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '12px', lineHeight: '1.4' }}>
+                  <strong>Usage:</strong> Wrap IDs in double braces. <br/>
+                  Example: <code>(&#123;&#123;G1:C1:total&#125;&#125; / &#123;&#123;G1:C2:total&#125;&#125;) * 100</code>
+                </p>
+              </div>
+            </div>
 
           </div>
         </div>
