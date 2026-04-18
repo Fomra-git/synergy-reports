@@ -18,7 +18,9 @@ import {
   LayoutGrid,
   Upload,
   Calculator,
-  BarChart
+  BarChart,
+  Keyboard,
+  List
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -150,8 +152,8 @@ export default function VisualExcelMapping() {
       setFormData({
         ...t,
         mappings: migratedMappings,
-        globalFilters: t.globalFilters || [],
-        outputFilters: t.outputFilters || [],
+        globalFilters: (t.globalFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
+        outputFilters: (t.outputFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
         isOutputFilterEnabled: t.isOutputFilterEnabled !== false,
         pivotConfig: t.pivotConfig || { rowField: '', colField: '', valField: '', aggType: 'count' },
         headerConfig: t.headerConfig || { type: 'custom', text: '', sourceCol: '' }
@@ -162,7 +164,7 @@ export default function VisualExcelMapping() {
   const handleAddOutputFilter = () => {
     setFormData(prev => ({
       ...prev,
-      outputFilters: [...(prev.outputFilters || []), { conditionCol: '', operator: '==', conditionVals: [] }]
+      outputFilters: [...(prev.outputFilters || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false }]
     }));
   };
 
@@ -373,7 +375,7 @@ export default function VisualExcelMapping() {
   const handleAddGlobalFilter = () => {
     setFormData(prev => ({
       ...prev,
-      globalFilters: [...(prev.globalFilters || []), { conditionCol: '', operator: '==', conditionVals: [] }]
+      globalFilters: [...(prev.globalFilters || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false }]
     }));
   };
 
@@ -626,22 +628,44 @@ export default function VisualExcelMapping() {
                           </select>
 
                           {filter.operator !== 'unique' && (
-                            filter.operator === 'between' ? (
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                <input placeholder="Min" value={filter.conditionVals?.[0] || ''} onChange={e => handleGlobalFilterChange(index, 'conditionVals', [e.target.value, filter.conditionVals?.[1] || ''])} style={{ padding: '6px', fontSize: '11px' }} />
-                                <input placeholder="Max" value={filter.conditionVals?.[1] || ''} onChange={e => handleGlobalFilterChange(index, 'conditionVals', [filter.conditionVals?.[0] || '', e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
+                            <div style={{ position: 'relative' }}>
+                              <div style={{ position: 'absolute', top: '-18px', right: '0' }}>
+                                <button 
+                                  onClick={() => handleGlobalFilterChange(index, 'isManual', !filter.isManual)}
+                                  style={{ background: 'none', border: 'none', color: filter.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                >
+                                  {filter.isManual ? <List size={10} /> : <Keyboard size={10} />}
+                                  {filter.isManual ? 'List' : 'Manual'}
+                                </button>
                               </div>
-                            ) : (
-                              masterUniqueValues[filter.conditionCol] ? (
-                                <MultiSelectDropdown 
-                                  options={masterUniqueValues[filter.conditionCol]}
-                                  selectedValues={filter.conditionVals || []}
-                                  onChange={vals => handleGlobalFilterChange(index, 'conditionVals', vals)}
-                                />
+
+                              {filter.operator === 'between' ? (
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                  <input placeholder="Min" value={filter.conditionVals?.[0] || ''} onChange={e => handleGlobalFilterChange(index, 'conditionVals', [e.target.value, filter.conditionVals?.[1] || ''])} style={{ padding: '6px', fontSize: '11px' }} />
+                                  <input placeholder="Max" value={filter.conditionVals?.[1] || ''} onChange={e => handleGlobalFilterChange(index, 'conditionVals', [filter.conditionVals?.[0] || '', e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
+                                </div>
                               ) : (
-                                <input placeholder="Value..." value={filter.conditionVals?.[0] || ''} onChange={e => handleGlobalFilterChange(index, 'conditionVals', [e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
-                              )
-                            )
+                                filter.isManual ? (
+                                  <input 
+                                    placeholder="e.g. Val1, Val2" 
+                                    value={Array.isArray(filter.conditionVals) ? filter.conditionVals.join(', ') : filter.conditionVals || ''} 
+                                    onChange={e => handleGlobalFilterChange(index, 'conditionVals', e.target.value.split(',').map(s => s.trim()))}
+                                    style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}
+                                  />
+                                ) : (
+                                  masterUniqueValues[filter.conditionCol] ? (
+                                    <MultiSelectDropdown 
+                                      options={masterUniqueValues[filter.conditionCol]}
+                                      selectedValues={filter.conditionVals || []}
+                                      onChange={vals => handleGlobalFilterChange(index, 'conditionVals', vals)}
+                                      placeholder="Values..."
+                                    />
+                                  ) : (
+                                    <input placeholder="Value..." value={filter.conditionVals?.[0] || ''} onChange={e => handleGlobalFilterChange(index, 'conditionVals', [e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
+                                  )
+                                )
+                              )}
+                            </div>
                           )}
                         </div>
                       ))}
@@ -701,14 +725,35 @@ export default function VisualExcelMapping() {
                               <option value="between">Between</option>
                             </select>
 
-                            {filter.operator === 'between' ? (
-                              <div style={{ display: 'flex', gap: '4px' }}>
-                                <input placeholder="Min" value={filter.conditionVals?.[0] || ''} onChange={e => handleOutputFilterChange(index, 'conditionVals', [e.target.value, filter.conditionVals?.[1] || ''])} style={{ padding: '6px', fontSize: '11px' }} />
-                                <input placeholder="Max" value={filter.conditionVals?.[1] || ''} onChange={e => handleOutputFilterChange(index, 'conditionVals', [filter.conditionVals?.[0] || '', e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
+                            <div style={{ position: 'relative' }}>
+                               <div style={{ position: 'absolute', top: '-18px', right: '0' }}>
+                                <button 
+                                  onClick={() => handleOutputFilterChange(index, 'isManual', !filter.isManual)}
+                                  style={{ background: 'none', border: 'none', color: filter.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                >
+                                  {filter.isManual ? <List size={10} /> : <Keyboard size={10} />}
+                                  {filter.isManual ? 'List' : 'Manual'}
+                                </button>
                               </div>
-                            ) : (
-                                <input placeholder="Filter Value..." value={filter.conditionVals?.[0] || ''} onChange={e => handleOutputFilterChange(index, 'conditionVals', [e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
-                            )}
+
+                              {filter.operator === 'between' ? (
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                  <input placeholder="Min" value={filter.conditionVals?.[0] || ''} onChange={e => handleOutputFilterChange(index, 'conditionVals', [e.target.value, filter.conditionVals?.[1] || ''])} style={{ padding: '6px', fontSize: '11px' }} />
+                                  <input placeholder="Max" value={filter.conditionVals?.[1] || ''} onChange={e => handleOutputFilterChange(index, 'conditionVals', [filter.conditionVals?.[0] || '', e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
+                                </div>
+                              ) : (
+                                filter.isManual ? (
+                                  <input 
+                                    placeholder="Value..." 
+                                    value={Array.isArray(filter.conditionVals) ? filter.conditionVals.join(', ') : filter.conditionVals || ''} 
+                                    onChange={e => handleOutputFilterChange(index, 'conditionVals', e.target.value.split(',').map(s => s.trim()))}
+                                    style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}
+                                  />
+                                ) : (
+                                  <input placeholder="Filter Value..." value={filter.conditionVals?.[0] || ''} onChange={e => handleOutputFilterChange(index, 'conditionVals', [e.target.value])} style={{ padding: '6px', fontSize: '11px', width: '100%' }} />
+                                )
+                              )}
+                            </div>
                           </div>
                         ))}
                         <button onClick={handleAddOutputFilter} className="btn-secondary" style={{ width: '100%', padding: '8px', fontSize: '11px' }}>
@@ -1386,16 +1431,44 @@ export default function VisualExcelMapping() {
                             </div>
                             <div className="form-group">
                               <label style={{ fontSize: '11px' }}>Criteria Values</label>
-                              <MultiSelectDropdown 
-                                 options={masterUniqueValues[rule.conditionCol] || []}
-                                 selectedValues={rule.conditionVals || []}
-                                 onChange={vals => {
-                                   const newRules = [...modalData.rules];
-                                   newRules[ridx].conditionVals = vals;
-                                   setModalData(prev => ({ ...prev, rules: newRules }));
-                                 }}
-                                 placeholder="Values..."
-                              />
+                              <div style={{ position: 'relative' }}>
+                                 <div style={{ position: 'absolute', top: '-18px', right: '0' }}>
+                                    <button 
+                                      onClick={() => {
+                                        const newRules = [...modalData.rules];
+                                        newRules[ridx].isManual = !newRules[ridx].isManual;
+                                        setModalData(prev => ({ ...prev, rules: newRules }));
+                                      }}
+                                      style={{ background: 'none', border: 'none', color: rule.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                    >
+                                      {rule.isManual ? <List size={10} /> : <Keyboard size={10} />}
+                                      {rule.isManual ? 'List' : 'Manual'}
+                                    </button>
+                                  </div>
+                                  {rule.isManual ? (
+                                    <input 
+                                      placeholder="e.g. Val1, Val2" 
+                                      value={Array.isArray(rule.conditionVals) ? rule.conditionVals.join(', ') : rule.conditionVals || ''} 
+                                      onChange={e => {
+                                        const newRules = [...modalData.rules];
+                                        newRules[ridx].conditionVals = e.target.value.split(',').map(s => s.trim());
+                                        setModalData(prev => ({ ...prev, rules: newRules }));
+                                      }}
+                                      style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}
+                                    />
+                                  ) : (
+                                    <MultiSelectDropdown 
+                                       options={masterUniqueValues[rule.conditionCol] || []}
+                                       selectedValues={rule.conditionVals || []}
+                                       onChange={vals => {
+                                         const newRules = [...modalData.rules];
+                                         newRules[ridx].conditionVals = vals;
+                                         setModalData(prev => ({ ...prev, rules: newRules }));
+                                       }}
+                                       placeholder="Values..."
+                                    />
+                                  )}
+                                </div>
                             </div>
                           </div>
                         </div>
@@ -1407,7 +1480,7 @@ export default function VisualExcelMapping() {
                            e.preventDefault();
                            setModalData(prev => ({ 
                              ...prev, 
-                             rules: [...(prev.rules || []), { conditionCol: '', operator: '==', conditionVals: [] }] 
+                             rules: [...(prev.rules || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false }] 
                            }));
                          }}
                          style={{ width: '100%', padding: '10px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)', border: '1px dashed var(--primary)', borderRadius: '10px', fontSize: '12px' }}

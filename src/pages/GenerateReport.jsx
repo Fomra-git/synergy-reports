@@ -408,15 +408,23 @@ export default function GenerateReport() {
 
           // Per-doctor branch Cur = sum of isConsultation flagged cols for today
           let docBranchCur = 0;
-          groupData.forEach(gd => gd.colData.forEach(cd => { if (cd.isConsultation) docBranchCur += cd.cur; }));
+          groupData.forEach(gd => gd.colData.forEach(cd => { if (cd.isConsultation) docBranchCur += (cd.total || 0); }));
 
           // Branch Actual = target * daysElapsed / daysInPeriod
           let branchActual = 0;
           if (branchTarget > 0 && targetDate) {
             const [tY, tMo, tD] = targetDate.split('-').map(Number);
-            const msd = parseInt(template.monthStartDay) || 26;
-            const periodStart = tD >= msd ? new Date(tY, tMo - 1, msd) : new Date(tY, tMo - 2, msd);
-            const periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, msd - 1);
+            let periodStart, periodEnd;
+            
+            if (template.customStartDate && template.customEndDate) {
+              periodStart = new Date(template.customStartDate);
+              periodEnd = new Date(template.customEndDate);
+            } else {
+              const msd = parseInt(template.monthStartDay) || 26;
+              periodStart = tD >= msd ? new Date(tY, tMo - 1, msd) : new Date(tY, tMo - 2, msd);
+              periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, msd - 1);
+            }
+            
             const daysInPeriod = Math.max(1, Math.round((periodEnd - periodStart) / 864e5) + 1);
             const tdObj = new Date(tY, tMo - 1, tD);
             const daysElapsed = Math.max(1, Math.round((tdObj - periodStart) / 864e5) + 1);
@@ -600,17 +608,19 @@ export default function GenerateReport() {
                 sumCur += cd.cur || 0;
                 sumTotal += cd.total || 0;
                 sumConv += cd.conv || 0;
-                // Accumulate consultation cols for branch totals
+                // Accumulate consultation cols for branch totals (Cumulative Total)
                 if (cd.isConsultation) {
-                  totalsBranchCur += cd.cur || 0;
+                  totalsBranchCur += cd.total || 0;
                   totalsBranchTotal += cd.total || 0;
                   totalsBranchConv += cd.conv || 0;
                 }
               }
             });
-            if (col.displayMode === 'triple') totalVals.push(`(${sumCur})(${sumTotal})(${sumConv})`);
-            else if (col.displayMode === 'cumulative') totalVals.push(`${sumCur}(${sumTotal})`);
-            else totalVals.push(String(sumCur));
+            if (col.isConsultationColumn) {
+               totalVals.push(`(${sumCur})(${sumTotal})(${sumConv})`);
+            } else {
+               totalVals.push(`${sumCur}(${sumTotal})`);
+            }
           });
         });
 

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, getDocs, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { 
@@ -30,7 +30,9 @@ import {
   Check,
   PieChart,
   BarChart2,
-  TrendingUp
+  TrendingUp,
+  Keyboard,
+  List
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -174,7 +176,14 @@ export default function PivotTemplateManager() {
         fileNameFormat: t.fileNameFormat || 'Pivot_Report_{date}',
         isHeaderEnabled: !!t.isHeaderEnabled,
         headerConfig: t.headerConfig || { type: 'custom', text: '', sourceCol: '' },
-        isPivotSummaryEnabled: !!t.isPivotSummaryEnabled
+        isPivotSummaryEnabled: !!t.isPivotSummaryEnabled,
+        // Initialize isManual for old templates
+        globalFilters: (t.globalFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
+        outputFilters: (t.outputFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
+        pivotColumns: cols.map(c => ({
+          ...c,
+          rowFilters: (c.rowFilters || []).map(f => ({ ...f, isManual: f.isManual || false }))
+        }))
       });
     }
   };
@@ -281,9 +290,9 @@ export default function PivotTemplateManager() {
       replaceWith: '',
       simplifyDate: false,
       simplifyTime: false,
-      normalizeMonth: false,
       normalizeWeek: false,
-      rowFilters: [] // per-column row filter conditions
+      rowFilters: [], // per-column row filter conditions
+      valueFilters: [] // per-column source value filter conditions
     };
 
     setFormData(prev => ({
@@ -298,7 +307,7 @@ export default function PivotTemplateManager() {
       ...prev,
       pivotColumns: prev.pivotColumns.map(c =>
         c.id === colId
-          ? { ...c, rowFilters: [...(c.rowFilters || []), { conditionCol: '', operator: '==', conditionVals: [] }] }
+          ? { ...c, rowFilters: [...(c.rowFilters || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false }] }
           : c
       )
     }));
@@ -323,6 +332,41 @@ export default function PivotTemplateManager() {
         const newFilters = [...(c.rowFilters || [])];
         newFilters[filterIdx] = { ...newFilters[filterIdx], [field]: value };
         return { ...c, rowFilters: newFilters };
+      })
+    }));
+  };
+
+  // --- PER-COLUMN VALUE FILTER HANDLERS ---
+  const addColValueFilter = (colId) => {
+    setFormData(prev => ({
+      ...prev,
+      pivotColumns: prev.pivotColumns.map(c =>
+        c.id === colId
+          ? { ...c, valueFilters: [...(c.valueFilters || []), { operator: '==', value: '', valueTo: '' }] }
+          : c
+      )
+    }));
+  };
+
+  const removeColValueFilter = (colId, filterIdx) => {
+    setFormData(prev => ({
+      ...prev,
+      pivotColumns: prev.pivotColumns.map(c =>
+        c.id === colId
+          ? { ...c, valueFilters: (c.valueFilters || []).filter((_, i) => i !== filterIdx) }
+          : c
+      )
+    }));
+  };
+
+  const updateColValueFilter = (colId, filterIdx, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      pivotColumns: prev.pivotColumns.map(c => {
+        if (c.id !== colId) return c;
+        const newFilters = [...(c.valueFilters || [])];
+        newFilters[filterIdx] = { ...newFilters[filterIdx], [field]: value };
+        return { ...c, valueFilters: newFilters };
       })
     }));
   };
@@ -357,7 +401,7 @@ export default function PivotTemplateManager() {
   const addFilter = (listType) => {
     setFormData(prev => ({
       ...prev,
-      [listType]: [...(prev[listType] || []), { conditionCol: '', operator: '==', conditionVals: [] }]
+      [listType]: [...(prev[listType] || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false }]
     }));
   };
 
@@ -602,19 +646,39 @@ export default function PivotTemplateManager() {
                               <option value="between">Between</option>
                             </select>
                             
-                            <div style={{ flex: 1.5 }}>
+                            <div style={{ flex: 1.5, position: 'relative' }}>
+                              <div style={{ position: 'absolute', top: '-18px', right: '0', display: 'flex', gap: '8px' }}>
+                                <button 
+                                  onClick={() => updateFilter('globalFilters', i, 'isManual', !f.isManual)}
+                                  style={{ background: 'none', border: 'none', color: f.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                  title={f.isManual ? "Switch to Pick from List" : "Switch to Manual Type"}
+                                >
+                                  {f.isManual ? <List size={10} /> : <Keyboard size={10} />}
+                                  {f.isManual ? 'List Mode' : 'Manual Mode'}
+                                </button>
+                              </div>
+
                               {f.operator === 'between' ? (
                                 <div style={{ display: 'flex', gap: '4px' }}>
                                   <input placeholder="Min" value={f.conditionVals[0] || ''} onChange={e => updateFilter('globalFilters', i, 'conditionVals', [e.target.value, f.conditionVals[1]])} style={{ padding: '6px', fontSize: '11px', width: '50%' }} />
                                   <input placeholder="Max" value={f.conditionVals[1] || ''} onChange={e => updateFilter('globalFilters', i, 'conditionVals', [f.conditionVals[0], e.target.value])} style={{ padding: '6px', fontSize: '11px', width: '50%' }} />
                                 </div>
                               ) : f.operator !== 'unique' && (
-                                <MultiSelectDropdown 
-                                  options={masterUniqueValues[f.conditionCol] || []} 
-                                  selectedValues={f.conditionVals} 
-                                  onChange={vals => updateFilter('globalFilters', i, 'conditionVals', vals)}
-                                  placeholder="Values..."
-                                />
+                                f.isManual ? (
+                                  <input 
+                                    placeholder="e.g. Value1, Value2" 
+                                    value={Array.isArray(f.conditionVals) ? f.conditionVals.join(', ') : f.conditionVals || ''} 
+                                    onChange={e => updateFilter('globalFilters', i, 'conditionVals', e.target.value.split(',').map(s => s.trim()))}
+                                    style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}
+                                  />
+                                ) : (
+                                  <MultiSelectDropdown 
+                                    options={masterUniqueValues[f.conditionCol] || []} 
+                                    selectedValues={f.conditionVals || []} 
+                                    onChange={vals => updateFilter('globalFilters', i, 'conditionVals', vals)}
+                                    placeholder="Values..."
+                                  />
+                                )
                               )}
                             </div>
                           </div>
@@ -668,14 +732,39 @@ export default function PivotTemplateManager() {
                               <option value="between">Between</option>
                             </select>
                             
-                            <div style={{ flex: 1.5 }}>
+                            <div style={{ flex: 1.5, position: 'relative' }}>
+                              <div style={{ position: 'absolute', top: '-18px', right: '0', display: 'flex', gap: '8px' }}>
+                                <button 
+                                  onClick={() => updateFilter('outputFilters', i, 'isManual', !f.isManual)}
+                                  style={{ background: 'none', border: 'none', color: f.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                  title={f.isManual ? "Switch to Pick from List" : "Switch to Manual Type"}
+                                >
+                                  {f.isManual ? <List size={10} /> : <Keyboard size={10} />}
+                                  {f.isManual ? 'List Mode' : 'Manual Mode'}
+                                </button>
+                              </div>
+
                               {f.operator === 'between' ? (
                                 <div style={{ display: 'flex', gap: '4px' }}>
                                   <input placeholder="Min" value={f.conditionVals[0] || ''} onChange={e => updateFilter('outputFilters', i, 'conditionVals', [e.target.value, f.conditionVals[1]])} style={{ padding: '6px', fontSize: '11px', width: '50%' }} />
                                   <input placeholder="Max" value={f.conditionVals[1] || ''} onChange={e => updateFilter('outputFilters', i, 'conditionVals', [f.conditionVals[0], e.target.value])} style={{ padding: '6px', fontSize: '11px', width: '50%' }} />
                                 </div>
                               ) : (
-                                <input placeholder="Value..." value={f.conditionVals[0] || ''} onChange={e => updateFilter('outputFilters', i, 'conditionVals', [e.target.value])} style={{ padding: '6px', fontSize: '11px', width: '100%' }} />
+                                f.isManual ? (
+                                  <input 
+                                    placeholder="Value..." 
+                                    value={Array.isArray(f.conditionVals) ? f.conditionVals.join(', ') : f.conditionVals || ''} 
+                                    onChange={e => updateFilter('outputFilters', i, 'conditionVals', e.target.value.split(',').map(s => s.trim()))}
+                                    style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}
+                                  />
+                                ) : (
+                                  <MultiSelectDropdown 
+                                    options={formData.pivotColumns.map(c => c.displayName || c.source)} 
+                                    selectedValues={f.conditionVals || []} 
+                                    onChange={vals => updateFilter('outputFilters', i, 'conditionVals', vals)}
+                                    placeholder="Values..."
+                                  />
+                                )
                               )}
                             </div>
                           </div>
@@ -839,7 +928,7 @@ export default function PivotTemplateManager() {
                 />
                 {formData.primaryGroupField && (
                   <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '6px', lineHeight: '1.5' }}>
-                    Output: <strong style={{ color: 'var(--primary)' }}>{formData.primaryGroupField}</strong> merged, one row per
+                    Output: <strong style={{ color: 'var(--primary)' }}>{formData.primaryGroupField}</strong> merged, one row per
                   </p>
                 )}
               </div>
@@ -1128,8 +1217,8 @@ export default function PivotTemplateManager() {
                            </div>
                         )}
 
-                        {/* ── PER-AGGREGATION ROW CONDITIONS ── */}
-                        {col.type === 'aggregation' && (
+                        {/* ── PER-COLUMN ROW CONDITIONS (Aggregations & Properties) ── */}
+                        {(col.type === 'aggregation' || col.type === 'property') && (
                           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '4px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                               <h5 style={{ fontSize: '10px', color: 'var(--warning, #f59e0b)', fontWeight: '700', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1192,8 +1281,17 @@ export default function PivotTemplateManager() {
 
                                   {/* Value(s) */}
                                   <div>
-                                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>
-                                      {f.operator === 'between' ? 'From / To' : 'Value(s)'}
+                                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                                      <span>{f.operator === 'between' ? 'From / To' : 'Value(s)'}</span>
+                                      {f.operator !== 'between' && (
+                                        <button 
+                                          onClick={() => updateColRowFilter(col.id, fi, 'isManual', !f.isManual)}
+                                          style={{ background: 'none', border: 'none', color: f.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '8px', display: 'flex', alignItems: 'center', gap: '2px' }}
+                                        >
+                                          {f.isManual ? <List size={9} /> : <Keyboard size={9} />}
+                                          {f.isManual ? 'List' : 'Manual'}
+                                        </button>
+                                      )}
                                     </label>
                                     {f.operator === 'between' ? (
                                       <div style={{ display: 'flex', gap: '4px' }}>
@@ -1211,12 +1309,21 @@ export default function PivotTemplateManager() {
                                         />
                                       </div>
                                     ) : (
-                                      <MultiSelectDropdown
-                                        options={masterUniqueValues[f.conditionCol] || []}
-                                        selectedValues={f.conditionVals || []}
-                                        onChange={vals => updateColRowFilter(col.id, fi, 'conditionVals', vals)}
-                                        placeholder={f.conditionCol ? `Pick values from ${f.conditionCol}...` : 'Select a field first...'}
-                                      />
+                                      f.isManual ? (
+                                        <input 
+                                          placeholder="Value(s)..." 
+                                          value={Array.isArray(f.conditionVals) ? f.conditionVals.join(', ') : f.conditionVals || ''} 
+                                          onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', e.target.value.split(',').map(s => s.trim()))}
+                                          style={{ width: '100%', padding: '10px 8px', fontSize: '11px' }}
+                                        />
+                                      ) : (
+                                        <MultiSelectDropdown
+                                          options={masterUniqueValues[f.conditionCol] || []}
+                                          selectedValues={f.conditionVals || []}
+                                          onChange={vals => updateColRowFilter(col.id, fi, 'conditionVals', vals)}
+                                          placeholder={f.conditionCol ? `Pick values...` : 'Select field...'}
+                                        />
+                                      )
                                     )}
                                   </div>
 
@@ -1232,6 +1339,99 @@ export default function PivotTemplateManager() {
                                 </div>
                               ))}
                             </div>
+
+                            {/* ── PER-COLUMN VALUE FILTERS (Filter on Source Column itself) ── */}
+                            {col.source && (
+                              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                  <h5 style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: '700', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Calculator size={11} />
+                                    Value Filters (on {col.source})
+                                    {(col.valueFilters?.length > 0) && (
+                                      <span style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--primary)', borderRadius: '8px', padding: '1px 6px', fontSize: '9px', fontWeight: '800' }}>
+                                        {col.valueFilters.length}
+                                      </span>
+                                    )}
+                                  </h5>
+                                  <button
+                                    onClick={() => addColValueFilter(col.id)}
+                                    className="btn-secondary"
+                                    style={{ padding: '4px 10px', fontSize: '10px', gap: '4px', border: '1px dashed var(--border)' }}
+                                  >
+                                    <Plus size={11} /> Add Value Filter
+                                  </button>
+                                </div>
+
+                                {(!col.valueFilters || col.valueFilters.length === 0) && (
+                                  <p style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '8px', background: 'var(--glass-subtle)', borderRadius: '8px' }}>
+                                    No value filters — all "{col.source}" values are included.
+                                  </p>
+                                )}
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  {(col.valueFilters || []).map((vf, vfi) => (
+                                    <div key={vfi} style={{ display: 'grid', gridTemplateColumns: '120px 1fr auto', gap: '6px', alignItems: 'start', padding: '10px', background: 'rgba(99,102,241,0.05)', borderRadius: '10px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                      
+                                      {/* Operator */}
+                                      <div>
+                                        <select
+                                          value={vf.operator}
+                                          onChange={e => updateColValueFilter(col.id, vfi, 'operator', e.target.value)}
+                                          style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}
+                                        >
+                                          <option value="==">= Equals</option>
+                                          <option value="!=">≠ Not Equal</option>
+                                          <option value=">">{'>'} Greater Than</option>
+                                          <option value="<">{'<'} Less Than</option>
+                                          <option value=">=">≥ Greater or Equal</option>
+                                          <option value="<=">≤ Less or Equal</option>
+                                          <option value="between">↔ Between (range)</option>
+                                          <option value="contains">⊂ Contains</option>
+                                        </select>
+                                      </div>
+
+                                      {/* Value(s) */}
+                                      <div style={{ display: 'flex', gap: '4px' }}>
+                                        {vf.operator === 'between' ? (
+                                          <>
+                                            <input 
+                                              placeholder="Min" 
+                                              type="text" 
+                                              value={vf.value} 
+                                              onChange={e => updateColValueFilter(col.id, vfi, 'value', e.target.value)} 
+                                              style={{ flex: 1, padding: '8px 6px', fontSize: '11px' }} 
+                                            />
+                                            <input 
+                                              placeholder="Max" 
+                                              type="text" 
+                                              value={vf.valueTo} 
+                                              onChange={e => updateColValueFilter(col.id, vfi, 'valueTo', e.target.value)} 
+                                              style={{ flex: 1, padding: '8px 6px', fontSize: '11px' }} 
+                                            />
+                                          </>
+                                        ) : (
+                                          <input 
+                                            placeholder="Criteria..." 
+                                            type="text" 
+                                            value={vf.value} 
+                                            onChange={e => updateColValueFilter(col.id, vfi, 'value', e.target.value)} 
+                                            style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }} 
+                                          />
+                                        )}
+                                      </div>
+
+                                      {/* Actions */}
+                                      <button 
+                                        onClick={() => removeColValueFilter(col.id, vfi)}
+                                        style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '6px' }}
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

@@ -27,6 +27,8 @@ const DEFAULT_FORM = {
   aptNoColumn: '',
   appNoColumn: '',
   monthStartDay: 26,
+  customStartDate: '',
+  customEndDate: '',
   groups: [],
   branches: [],
   globalFilters: [],
@@ -411,17 +413,53 @@ export default function ScoreboardDesigner() {
 
             {/* Month Config */}
             <div style={{ padding: '12px', background: 'var(--glass-subtle)', border: '1px solid var(--border)', borderRadius: '10px' }}>
-              <p style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-                <Calendar size={12} /> Month Configuration
-              </p>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label style={{ fontSize: '11px' }}>Month Start Day</label>
-                <input type="number" min={1} max={31} value={formData.monthStartDay}
-                  onChange={e => setFormData(p => ({ ...p, monthStartDay: parseInt(e.target.value) || 26 }))}
-                  style={{ padding: '8px', fontSize: '12px' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <p style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Calendar size={12} /> Month Configuration
+                </p>
+                {(formData.customStartDate || formData.customEndDate) && (
+                  <button 
+                    onClick={() => setFormData(p => ({ ...p, customStartDate: '', customEndDate: '' }))}
+                    style={{ fontSize: '10px', color: 'var(--error)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600' }}
+                  >
+                    Reset Range
+                  </button>
+                )}
               </div>
-              <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '6px' }}>
-                E.g., "26" means: 26-March to 25-April = one month period for Actual calculation.
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '11px' }}>Custom Range (Overrides Default)</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input 
+                      type="date" 
+                      value={formData.customStartDate || ''} 
+                      onChange={e => setFormData(p => ({ ...p, customStartDate: e.target.value }))}
+                      style={{ padding: '6px', fontSize: '11px', flex: 1 }} 
+                    />
+                    <input 
+                      type="date" 
+                      value={formData.customEndDate || ''} 
+                      onChange={e => setFormData(p => ({ ...p, customEndDate: e.target.value }))}
+                      style={{ padding: '6px', fontSize: '11px', flex: 1 }} 
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '11px' }}>Standard Month Start Day</label>
+                  <input type="number" min={1} max={31} value={formData.monthStartDay}
+                    disabled={!!(formData.customStartDate || formData.customEndDate)}
+                    onChange={e => setFormData(p => ({ ...p, monthStartDay: parseInt(e.target.value) || 26 }))}
+                    style={{ padding: '8px', fontSize: '11px', opacity: (formData.customStartDate || formData.customEndDate) ? 0.5 : 1 }} />
+                </div>
+              </div>
+
+              <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                { (formData.customStartDate || formData.customEndDate) 
+                  ? "✓ Using custom dates for this month's calculations."
+                  : '💡 Default: 26th of prev month to 25th of current month.'
+                }
               </p>
             </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { ChevronDown, Search, CheckSquare, Square, X } from 'lucide-react';
+import { ChevronDown, Search, CheckSquare, Square, X, Plus } from 'lucide-react';
 
 export default function MultiSelectDropdown({ options, selectedValues, onChange, placeholder = "Select values...", disabled = false }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -112,7 +112,27 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
           </li>
         )}
 
-        {filteredOptions.length === 0 ? (
+        {filteredOptions.length === 0 && searchTerm.trim() !== '' && !options.includes(searchTerm.trim()) ? (
+          <li
+            onClick={() => {
+              const val = searchTerm.trim();
+              if (val && !selectedValues.includes(val)) {
+                onChange([...selectedValues, val]);
+                setSearchTerm('');
+              }
+            }}
+            style={{
+              padding: '10px 12px', fontSize: '13px', color: 'var(--primary)',
+              cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center',
+              gap: '8px', fontWeight: '600', border: '1px dashed var(--primary)', margin: '4px'
+            }}
+            onMouseOver={e => e.currentTarget.style.background = 'rgba(99,102,241,0.1)'}
+            onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+          >
+            <Plus size={16} />
+            Add Custom: "{searchTerm.trim()}"
+          </li>
+        ) : filteredOptions.length === 0 ? (
           <li style={{ padding: '8px 12px', color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center' }}>No values found</li>
         ) : (
           filteredOptions.map((opt, i) => (
@@ -159,7 +179,9 @@ export default function MultiSelectDropdown({ options, selectedValues, onChange,
         }}
       >
         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '8px' }}>
-          {selectedValues.length === 0 ? placeholder : `${selectedValues.length} item(s) selected`}
+          {selectedValues.length === 0 ? placeholder : 
+           selectedValues.length === 1 ? selectedValues[0] : 
+           `${selectedValues.length} item(s) selected`}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {selectedValues.length > 0 && !disabled && (
