@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, getDocs } from 'firebase/firestore';
 import XLSX from 'xlsx-js-style';
@@ -1095,6 +1095,7 @@ export default function GenerateReport() {
                 headers = pivotCols.map(c => c.displayName || (c.type === 'aggregation' ? c.operation.toUpperCase() + '(' + c.source + ')' : c.source || 'Untitled'));
                 if (isPrimaryGrouped) headers = [primaryGroupField, ...headers];
              }
+             if (template.isRowTotalEnabled) headers.push('TOTAL');
              finalAOA.push(headers);
 
             const pivotResults = [];
@@ -1139,13 +1140,14 @@ export default function GenerateReport() {
                    return pc !== 0 ? pc : String(a._secondary || '').localeCompare(String(b._secondary || ''));
                 });
              }
-             pivotEntries.forEach(([mapKey, rowGroup]) => {
+               pivotEntries.forEach(([mapKey, rowGroup]) => {
                 const rowVal = isPrimaryGrouped ? rowGroup._secondary : mapKey;
                 const _primaryVal = rowGroup._primary || '';
                 const groupResult = isPrimaryGrouped
                    ? { [headers[0]]: _primaryVal, [headers[1]]: rowVal }
                    : { [headers[0]]: rowVal };
                 const reportRow = isPrimaryGrouped ? [_primaryVal, rowVal] : [rowVal];
+                let rowSum = 0;
 
                if (colField) {
                   // CROSS-TAB MODE
@@ -1172,6 +1174,7 @@ export default function GenerateReport() {
                              const headerKey = `${cv} - ${col.displayName || ('Unique(' + dedupCol + ')')}`;
                             groupResult[headerKey] = res;
                             reportRow.push(res);
+                            if (typeof res === 'number') rowSum += res;
                             return;
                          }
                         if (col.operation === 'count_single' || col.operation === 'count_multi') {
@@ -1182,6 +1185,7 @@ export default function GenerateReport() {
                            const headerKey = `${cv} - ${col.displayName || (col.operation === 'count_single' ? 'Single Tx(' + col.source + ')' : 'Multi Tx(' + col.source + ')')}`;
                            groupResult[headerKey] = res;
                            reportRow.push(res);
+                           if (typeof res === 'number') rowSum += res;
                            return;
                         }
                         const vals = rowsToAggregate.map(r => {
@@ -1201,8 +1205,13 @@ export default function GenerateReport() {
                         const headerKey = `${cv} - ${col.displayName || col.operation.toUpperCase() + '(' + col.source + ')'}`;
                         groupResult[headerKey] = val;
                         reportRow.push(val);
+                        if (typeof val === 'number') rowSum += val;
                      });
                   });
+                  if (template.isRowTotalEnabled) {
+                     reportRow.push(Number(rowSum.toFixed(2)));
+                     groupResult['TOTAL'] = Number(rowSum.toFixed(2));
+                  }
                } else {
                   // STANDARD LIST MODE
                   const cg = rowGroup.colGroups['_default'];
@@ -1265,7 +1274,12 @@ export default function GenerateReport() {
                      const colKey = col.displayName || (col.type === 'aggregation' ? (col.operation === 'count_single' ? `Single Tx(${col.source})` : col.operation === 'count_multi' ? `Multi Tx(${col.source})` : `${col.operation.toUpperCase()}(${col.source})`) : col.source || 'Untitled');
                      groupResult[colKey] = val;
                      reportRow.push(val);
+                     if (typeof val === 'number') rowSum += val;
                   });
+                  if (template.isRowTotalEnabled) {
+                     reportRow.push(Number(rowSum.toFixed(2)));
+                     groupResult['TOTAL'] = Number(rowSum.toFixed(2));
+                  }
                }
                
                pivotResults.push({ data: groupResult, rawRow: reportRow });
@@ -1284,9 +1298,11 @@ export default function GenerateReport() {
                const colOffset = isPrimaryGrouped ? 2 : 1; // extra leading columns before aggregations
                const totalRow = ['GRAND TOTAL'];
                if (isPrimaryGrouped) totalRow.push(''); // blank for secondary group col
+               const totalIdx = template.isRowTotalEnabled ? headers.length - 1 : -1;
                for (let i = colOffset; i < headers.length; i++) {
                   let shouldSum = true;
-                  if (!colField) {
+                  if (template.isRowTotalEnabled && i === totalIdx) shouldSum = true;
+                  else if (!colField) {
                      const colDef = pivotCols[i - (colOffset - 1)]; // adjust for leading group cols
                      if (!colDef || (colDef.type !== 'aggregation' && colDef.type !== 'formula') || colDef.showTotal === false) shouldSum = false;
                   }

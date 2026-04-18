@@ -790,14 +790,24 @@ export default function PivotTemplateManager() {
                    <TableIcon size={20} color="var(--secondary)" />
                    <h3 style={{ fontSize: '16px', fontWeight: '600' }}>Pivot Structure</h3>
                 </div>
-                <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: '700' }}>
-                   Show Grand Totals:
-                   <input 
-                     type="checkbox" 
-                     checked={formData.isPivotSummaryEnabled} 
-                     onChange={e => setFormData(prev => ({ ...prev, isPivotSummaryEnabled: e.target.checked }))} 
-                   />
-                </label>
+                <div style={{ display: 'flex', gap: '16px' }}>
+                    <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: '700' }}>
+                       Show Grand Totals (Ver.):
+                       <input 
+                         type="checkbox" 
+                         checked={formData.isPivotSummaryEnabled} 
+                         onChange={e => setFormData(prev => ({ ...prev, isPivotSummaryEnabled: e.target.checked }))} 
+                       />
+                    </label>
+                    <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--secondary)', fontWeight: '700', borderLeft: '1px solid var(--border)', paddingLeft: '12px' }}>
+                       Show Row Totals (Hor.):
+                       <input 
+                         type="checkbox" 
+                         checked={formData.isRowTotalEnabled} 
+                         onChange={e => setFormData(prev => ({ ...prev, isRowTotalEnabled: e.target.checked }))} 
+                       />
+                    </label>
+                 </div>
              </div>
              
              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
