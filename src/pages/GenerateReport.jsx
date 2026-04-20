@@ -322,6 +322,30 @@ export default function GenerateReport() {
         });
       };
 
+      const excelJSExport = async (fAOA, colHdrs, tHdr, cImg, layouts = []) => {
+        const workbook = new ExcelJS.Workbook(); const worksheet = workbook.addWorksheet('Report');
+        let currR = 1;
+        if (tHdr) { worksheet.mergeCells(1, 1, 1, Math.max(colHdrs.length, (fAOA[0] || []).length)); const c = worksheet.getCell(1, 1); c.value = tHdr; c.font = { bold: true, size: 14 }; c.alignment = { horizontal: 'center' }; currR = 2; }
+        if (layouts.length > 0) { layouts.forEach(layout => { if (layout.width > 1) worksheet.mergeCells(currR, layout.startCol, currR, layout.startCol + layout.width - 1); }); }
+        fAOA.forEach((row, idx) => {
+          const excelRow = worksheet.getRow(currR + idx);
+          excelRow.values = row.map(v => (v && typeof v === 'object' && v.v !== undefined) ? v.v : v);
+          excelRow.eachCell(c => {
+            c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+            c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+            if (layouts.length > 0) {
+              if (idx === 1) { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; }
+              else if (idx === 0) { c.font = { bold: true, size: 11 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; }
+            } else {
+              if (idx === 0) { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; }
+            }
+          });
+        });
+        worksheet.columns.forEach(c => c.width = 25);
+        if (cImg) { const imgId = workbook.addImage({ base64: cImg, extension: 'png' }); worksheet.addImage(imgId, { tl: { col: 0, row: currR + fAOA.length + 1 }, ext: { width: 900, height: 450 } }); }
+        return await workbook.xlsx.writeBuffer();
+      };
+
       const evaluateSbFormula = (formula, ctx) => {
         if (!formula) return 0;
         try {
