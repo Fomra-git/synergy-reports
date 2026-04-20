@@ -475,155 +475,97 @@ export default function GenerateReport() {
 
       for (const template of targetTemplates) {
        try {
-        setStatus(`Generating ${template.name || 'Untitled'}...`);
-        if (template.type === 'scoreboard') {
-          const sbBuffer = await generateScoreboardReport(template);
-          const sbFileName = `${(template.name || 'ScoreBoard').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`;
-          const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-          if (isSingle) saveAs(new Blob([sbBuffer], { type: excelMimeType }), sbFileName);
-          else zip.file(sbFileName, sbBuffer);
-          continue;
-        }
-
-         const cleanValue = (val, config, colName) => {
-           if (val === undefined || val === null || val === '') return '';
-           if (!config) return String(val).trim();
-           let cleaned = String(val);
-           let dateObj = (config.normalizeMonth || config.normalizeWeek) ? parseReportDate(val) : null;
-           if (config.simplifyDate) { const m = cleaned.match(/.*,\s+(.*?)\s+,\s+.*/); if (m) cleaned = m[1]; }
-           if (config.simplifyTime) { const m = cleaned.match(/.*,\s+.*?\s+,\s+(.*)/); if (m) cleaned = m[1]; }
-           if (config.normalizeMonth && dateObj) cleaned = dateObj.toLocaleString('default', { month: 'short' });
-           if (config.normalizeWeek && dateObj && colName && minDateMap[colName]) {
-              const dayLocal = new Date(dateObj); dayLocal.setHours(0, 0, 0, 0);
-              const weekNum = Math.floor((dayLocal.getTime() - minDateMap[colName]) / (7 * 24 * 60 * 60 * 1000)) + 1;
-              const weekStart = new Date(minDateMap[colName] + (weekNum - 1) * 7 * 24 * 60 * 60 * 1000);
-              let weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
-              if (maxDateMap[colName] && weekEnd.getTime() > maxDateMap[colName]) weekEnd = new Date(maxDateMap[colName]);
-              const f = (d) => d.toLocaleString('default', { month: 'short', day: 'numeric' });
-              cleaned = `Week ${weekNum} (${f(weekStart)} to ${f(weekEnd)})`;
-           }
-           if (config.findText) { try { cleaned = cleaned.replace(new RegExp(config.findText, 'gi'), config.replaceWith || ''); } catch (e) {} }
-           return cleaned.trim();
-         };
-
-         const generateChartImage = async (chartConfig, pivotResults) => {
-           if (!chartConfig || !pivotResults || pivotResults.length === 0 || !chartConfig.xAxis) return null;
-           const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 700; const ctx = canvas.getContext('2d');
-           const firstResult = pivotResults[0].data; const allKeys = Object.keys(firstResult);
-           const resolveMetrics = (rm) => allKeys.filter(k => k === rm || k.endsWith(' - ' + rm) || k.endsWith('-' + rm)) || [rm];
-           const targetColumns = (chartConfig.yAxes || []).flatMap(m => resolveMetrics(m));
-           const labels = pivotResults.map(r => String(r.data[chartConfig.xAxis] || ''));
-           const colors = ['rgba(99, 102, 241, 0.7)', 'rgba(16, 185, 129, 0.7)', 'rgba(245, 158, 11, 0.7)', 'rgba(236, 72, 153, 0.7)', 'rgba(14, 165, 233, 0.7)'];
-           const datasets = targetColumns.map((colName, idx) => ({ label: colName, data: pivotResults.map(r => parseSafeNum(r.data[colName])), backgroundColor: colors[idx % colors.length], borderWidth: 1 }));
-           return new Promise((resolve) => {
-             new Chart(ctx, { type: chartConfig.type || 'bar', data: { labels, datasets }, options: { animation: false, plugins: { legend: { display: true }, title: { display: true, text: `Pivot Analytics Summary` } } } });
-             setTimeout(() => resolve(canvas.toDataURL('image/png')), 200);
-           });
-         };
-
-         const excelJSExport = async (fAOA, colHdrs, tHdr, cImg) => {
-           const workbook = new ExcelJS.Workbook(); const worksheet = workbook.addWorksheet('Report');
-           let currR = 1;
-           if (tHdr) { worksheet.mergeCells(1, 1, 1, colHdrs.length); const c = worksheet.getCell(1, 1); c.value = tHdr; c.font = { bold: true, size: 14 }; c.alignment = { horizontal: 'center' }; currR = 2; }
-           const hRow = worksheet.getRow(currR); hRow.values = colHdrs; hRow.font = { bold: true };
-           hRow.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; c.alignment = { horizontal: 'center' }; c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }; });
-           currR++;
-           fAOA.slice(tHdr ? 2 : 1).forEach((r) => { const dr = worksheet.getRow(currR); dr.values = r.map(v => (v && typeof v === 'object' && v.v !== undefined) ? v.v : v); dr.eachCell(c => { c.alignment = { horizontal: 'center' }; c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } }; }); currR++; });
-           worksheet.columns.forEach(c => c.width = 25);
-           if (cImg) { const imgId = workbook.addImage({ base64: cImg, extension: 'png' }); worksheet.addImage(imgId, { tl: { col: 0, row: currR + 1 }, ext: { width: 900, height: 450 } }); }
-           return await workbook.xlsx.writeBuffer();
-         };
-
-        let topReportHeader = template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMasterValue(masterData[0], template.headerConfig.sourceCol) : '')) : null;
-        let finalAOA = [], columnHeaders = [], currentChartImage = null, hasMT = (template.mappings || []).some(m => m.target) || !!template.isHighlightEmptyEnabled;
-
-         const evaluateCondition = (row, mapping) => {
-           if (!mapping) return true;
-           const evalRule = (tVal, op, cVals) => {
-             const cv = cVals || [], nMaster = Number(tVal), isNum = !isNaN(nMaster) && tVal !== '' && tVal !== null;
-             if (op === 'between') { if (cv.length < 2) return false; const min = Number(cv[0]), max = Number(cv[1]); return isNum && nMaster >= min && nMaster <= max; }
-             const es = (cVal) => { const nC = Number(cVal), isN = isNum && !isNaN(nC); if (op === '==') return isN ? nMaster === nC : String(tVal) === String(cVal); if (op === '!=') return isN ? nMaster !== nC : String(tVal) !== String(cVal); if (op === '>') return isN ? nMaster > nC : String(tVal) > String(cVal); if (op === '<') return isN ? nMaster < nC : String(tVal) < String(cVal); if (op === 'contains') return String(tVal || '').toLowerCase().includes(String(cVal || '').toLowerCase()); return false; };
-             if (cv.length > 0) return op === '!=' ? cv.every(c => es(c)) : cv.some(c => es(c));
-             return true;
-           };
-           return (mapping.rules && mapping.rules.length > 0) ? mapping.rules.every(r => r.conditionCol ? evalRule(getMasterValue(row, r.conditionCol), r.operator, r.conditionVals) : true) : (mapping.conditionCol ? evalRule(getMasterValue(row, mapping.conditionCol), mapping.operator, mapping.conditionVals) : true);
-         };
-
-        let filteredMD = [...masterData];
-        if (template.isGlobalFilterEnabled !== false && template.globalFilters?.length > 0) template.globalFilters.forEach(gf => { if (gf.conditionCol) filteredMD = filteredMD.filter(r => evaluateCondition(r, gf)); });
-        if (template.mappings?.filter(m => m.type === 'condition' && m.conditionCol).length > 0) filteredMD = filteredMD.filter(r => template.mappings.filter(m => m.type === 'condition' && m.conditionCol).every(m => evaluateCondition(r, m)));
-
-        if (template.type === 'pivot') {
-          let pCols = [...(template.pivotColumns || [])];
-          if (pCols.length === 0 && template.valueFields?.length > 0) pCols = template.valueFields.map((vf, i) => ({ id: `leg-${i}`, type: 'aggregation', ...vf }));
-          const rowField = template.rowField, colField = template.colField, isPG = !!rowField;
-          const rowsByGroup = {};
-          filteredMD.forEach(r => {
-             const gk = isPG ? String(getMasterValue(r, rowField) || '').trim() : '_default';
-             if (!rowsByGroup[gk]) rowsByGroup[gk] = { firstRow: r, colGroups: {} };
-             const ck = colField ? String(getMasterValue(r, colField) || '').trim() : '_default';
-             if (!rowsByGroup[gk].colGroups[ck]) rowsByGroup[gk].colGroups[ck] = { rows: [], aggregations: {} };
-             rowsByGroup[gk].colGroups[ck].rows.push(r);
-          });
-          let allColKs = colField ? Array.from(new Set(filteredMD.map(r => String(getMasterValue(r, colField) || '').trim()))) : ['_default'];
-          
-          if (colField) {
-            allColKs.sort((a, b) => {
-              if (a === '(Blank)') return -1;
-              if (b === '(Blank)') return 1;
-              const dA = parseReportDate(a);
-              const dB = parseReportDate(b);
-              if (dA && dB) return dA.getTime() - dB.getTime();
-              return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-            });
+        try {
+          setStatus(`Generating ${template.name || 'Untitled'}...`);
+          if (template.type === 'scoreboard') {
+            const sbBuffer = await generateScoreboardReport(template);
+            const sbFileName = `${(template.name || 'ScoreBoard').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`;
+            const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            if (isSingle) saveAs(new Blob([sbBuffer], { type: excelMimeType }), sbFileName);
+            else zip.file(sbFileName, sbBuffer);
+            continue;
           }
 
-          const headers = [rowField || 'Group'];
-          if (colField) allColKs.forEach(ck => pCols.filter(p => p.type === 'aggregation').forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
-          else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
-          if (template.isRowTotalEnabled) headers.push('TOTAL');
-          finalAOA.push(headers);
-          Object.entries(rowsByGroup).forEach(([gk, rg]) => {
-             const rr = [gk]; let rSum = 0; const gRes = { [rowField || 'Group']: gk };
-             allColKs.forEach(ck => {
+          let topReportHeader = template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMasterValue(masterData[0], template.headerConfig.sourceCol) : '')) : null;
+          let finalAOA = [], columnHeaders = [], currentChartImage = null;
+
+          let filteredMD = [...masterData];
+          if (template.isGlobalFilterEnabled !== false && template.globalFilters?.length > 0) template.globalFilters.forEach(gf => { if (gf.conditionCol) filteredMD = filteredMD.filter(r => evaluateCondition(r, gf)); });
+          if (template.mappings?.filter(m => m.type === 'condition' && m.conditionCol).length > 0) filteredMD = filteredMD.filter(r => template.mappings.filter(m => m.type === 'condition' && m.conditionCol).every(m => evaluateCondition(r, m)));
+
+          if (template.type === 'pivot') {
+            let pCols = [...(template.pivotColumns || [])];
+            if (pCols.length === 0 && template.valueFields?.length > 0) pCols = template.valueFields.map((vf, i) => ({ id: `leg-${i}`, type: 'aggregation', ...vf }));
+            const rowField = template.rowField, colField = template.colField, isPG = !!rowField;
+            const rowsByGroup = {};
+            filteredMD.forEach(r => {
+              const gk = isPG ? String(getMasterValue(r, rowField) || '').trim() : '_default';
+              if (!rowsByGroup[gk]) rowsByGroup[gk] = { firstRow: r, colGroups: {} };
+              const ck = colField ? cleanValue(getMasterValue(r, colField), { normalizeMonth: template.normalizeMonth, normalizeWeek: template.normalizeWeek }, colField) : '_default';
+              if (!rowsByGroup[gk].colGroups[ck]) rowsByGroup[gk].colGroups[ck] = { rows: [], aggregations: {} };
+              rowsByGroup[gk].colGroups[ck].rows.push(r);
+            });
+            let allColKs = colField ? Array.from(new Set(filteredMD.map(r => cleanValue(getMasterValue(r, colField), { normalizeMonth: template.normalizeMonth, normalizeWeek: template.normalizeWeek }, colField)))) : ['_default'];
+
+            if (colField) {
+              allColKs.sort((a, b) => {
+                if (a === '(Blank)') return -1;
+                if (b === '(Blank)') return 1;
+                const dA = parseReportDate(a);
+                const dB = parseReportDate(b);
+                if (dA && dB) return dA.getTime() - dB.getTime();
+                return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+              });
+            }
+
+            const headers = [rowField || 'Group'];
+            if (colField) allColKs.forEach(ck => pCols.filter(p => p.type === 'aggregation').forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
+            else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
+            if (template.isRowTotalEnabled) headers.push('TOTAL');
+            finalAOA.push(headers);
+            
+            Object.entries(rowsByGroup).forEach(([gk, rg]) => {
+              const rr = [gk]; let rSum = 0;
+              allColKs.forEach(ck => {
                 const cg = rg.colGroups[ck] || { rows: [], aggregations: {} };
                 pCols.forEach(p => {
-                   if (p.type === 'aggregation') {
-                      const fr = applyColRowFilters(cg.rows, p);
-                      let v = 0; if (p.operation === 'count') v = fr.length; else if (fr.length > 0) { const vs = fr.map(f => parseSafeNum(getMasterValue(f, p.source))); if (p.operation==='sum') v = vs.reduce((a,b)=>a+b,0); else if (p.operation==='avg') v = vs.reduce((a,b)=>a+b,0)/vs.length; }
-                      rr.push(v); rSum += v; gRes[`${ck} - ${p.displayName || p.source}`] = v;
-                   }
+                  if (p.type === 'aggregation') {
+                    const fr = applyColRowFilters(cg.rows, p);
+                    let v = 0; if (p.operation === 'count') v = fr.length; else if (fr.length > 0) { const vs = fr.map(f => parseSafeNum(getMasterValue(f, p.source))); if (p.operation === 'sum') v = vs.reduce((a, b) => a + b, 0); else if (p.operation === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length; }
+                    rr.push(v); rSum += v;
+                  }
                 });
-             });
-             if (template.isRowTotalEnabled) rr.push(rSum);
-             finalAOA.push(rr);
-          });
-          hasMT = true; columnHeaders = headers;
-        } else {
-          let reportData = filteredMD.map((row, index) => {
-            const nr = {};
-            (template.mappings || []).forEach(m => {
-              if (!m.target) return;
-              let v = ''; if (m.type === 'serial') v = index + 1; else v = cleanValue(getMasterValue(row, m.source), m, m.source);
-              nr[m.target] = v;
+              });
+              if (template.isRowTotalEnabled) rr.push(rSum);
+              finalAOA.push(rr);
             });
-            return { data: nr };
-          });
-          columnHeaders = (template.mappings || []).filter(m => m.target).map(m => cleanFieldName(m.target));
-          finalAOA.push(columnHeaders);
-          reportData.forEach(item => finalAOA.push(columnHeaders.map(h => item.data[h])));
-        }
+            columnHeaders = headers;
+            if (template.chartConfig) currentChartImage = await generateChartImage(template.chartConfig, finalAOA.slice(1).map(r => ({ data: headers.reduce((acc, h, i) => ({ ...acc, [h]: r[i] }), {}) })));
+          } else {
+            let reportData = filteredMD.map((row, index) => {
+              const nr = {};
+              (template.mappings || []).forEach(m => {
+                if (!m.target) return;
+                let v = ''; if (m.type === 'serial') v = index + 1; else v = cleanValue(getMasterValue(row, m.source), m, m.source);
+                nr[m.target] = v;
+              });
+              return { data: nr };
+            });
+            columnHeaders = (template.mappings || []).filter(m => m.target).map(m => cleanFieldName(m.target));
+            finalAOA.push(columnHeaders);
+            reportData.forEach(item => finalAOA.push(columnHeaders.map(h => item.data[h])));
+          }
 
-        const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(finalAOA);
-        XLSX.utils.book_append_sheet(wb, ws, 'Report');
-        const excelBuffer = currentChartImage ? await excelJSExport(finalAOA, columnHeaders, topReportHeader, currentChartImage) : XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0,10));
-        if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
+          const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(finalAOA);
+          XLSX.utils.book_append_sheet(wb, ws, 'Report');
+          const excelBuffer = currentChartImage ? await excelJSExport(finalAOA, columnHeaders, topReportHeader, currentChartImage) : XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+          let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
+          if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
 
-        const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-        if (isSingle) saveAs(new Blob([excelBuffer], { type: excelMimeType }), fileName); 
-        else zip.file(fileName, excelBuffer);
-       } catch (te) { templateErrors.push(`${template.name}: ${te.message}`); }
+          const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          if (isSingle) saveAs(new Blob([excelBuffer], { type: excelMimeType }), fileName);
+          else zip.file(fileName, excelBuffer);
+        } catch (te) { templateErrors.push(`${template.name}: ${te.message}`); }
       }
 
       if (!isSingle && Object.keys(zip.files).length > 0) saveAs(await zip.generateAsync({ type: 'blob' }), `Reports_${Date.now()}.zip`);
