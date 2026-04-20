@@ -1,19 +1,19 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ConfigProvider } from './context/ConfigContext';
 import { PrivateRoute, AdminRoute } from './components/PrivateRoute';
 
-// Pages
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import AdminPanel from './pages/AdminPanel';
-import TemplateManager from './pages/TemplateManager';
-import GenerateReport from './pages/GenerateReport';
-import VisualExcelMapping from './pages/VisualExcelMapping';
-import PivotTemplateManager from './pages/PivotTemplateManager';
-import ScoreboardDesigner from './pages/ScoreboardDesigner';
+// Pages (lazy loaded for code splitting)
+const Login = lazy(() => import('./pages/Login'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const TemplateManager = lazy(() => import('./pages/TemplateManager'));
+const GenerateReport = lazy(() => import('./pages/GenerateReport'));
+const VisualExcelMapping = lazy(() => import('./pages/VisualExcelMapping'));
+const PivotTemplateManager = lazy(() => import('./pages/PivotTemplateManager'));
+const ScoreboardDesigner = lazy(() => import('./pages/ScoreboardDesigner'));
 
 // Components
 import Layout from './components/Layout';
@@ -24,9 +24,10 @@ function App() {
       <ConfigProvider>
       <ThemeProvider>
       <AuthProvider>
+        <Suspense fallback={null}>
         <Routes>
           <Route path="/login" element={<Login />} />
-          
+
           <Route path="/" element={
             <PrivateRoute>
               <Layout />
@@ -56,9 +57,10 @@ function App() {
               </AdminRoute>
             } />
           </Route>
-          
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </AuthProvider>
       </ThemeProvider>
       </ConfigProvider>

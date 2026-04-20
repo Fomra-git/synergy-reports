@@ -252,6 +252,10 @@ export default function GenerateReport() {
               const max = parseFloat(conditionVals[1] || 'Infinity');
               return !isNaN(num) && num >= min && num <= max;
             }
+            if (operator === '>') { const n = parseFloat(tv), c2 = parseFloat(c); return !isNaN(n) && !isNaN(c2) && n > c2; }
+            if (operator === '<') { const n = parseFloat(tv), c2 = parseFloat(c); return !isNaN(n) && !isNaN(c2) && n < c2; }
+            if (operator === '>=') { const n = parseFloat(tv), c2 = parseFloat(c); return !isNaN(n) && !isNaN(c2) && n >= c2; }
+            if (operator === '<=') { const n = parseFloat(tv), c2 = parseFloat(c); return !isNaN(n) && !isNaN(c2) && n <= c2; }
             return false;
           };
           if (operator === 'between') return evalSingle(null);
@@ -261,6 +265,15 @@ export default function GenerateReport() {
         };
         if (mapping.rules && mapping.rules.length > 0) return mapping.rules.every(r => r.conditionCol ? evalRule(getMasterValue(row, r.conditionCol), r.operator, r.conditionVals) : true);
         return mapping.conditionCol ? evalRule(getMasterValue(row, mapping.conditionCol), mapping.operator, mapping.conditionVals) : true;
+      };
+
+      const applyColRowFilters = (rows, col) => {
+        if (!col || !rows) return rows || [];
+        let result = rows;
+        if (col.rowFilters && col.rowFilters.length > 0) {
+          result = result.filter(r => col.rowFilters.every(f => !f.conditionCol || evaluateCondition(r, f)));
+        }
+        return result;
       };
 
       const generateChartDataFromAOA = (aoa) => {
@@ -361,8 +374,7 @@ export default function GenerateReport() {
              if (!matchingKey) matchingKey = Object.keys(ctx).find(k => k.toLowerCase() === 'sum:' + key);
              return matchingKey ? (ctx[matchingKey] || 0) : 0;
           });
-          // eslint-disable-next-line no-eval
-          const result = eval(f);
+          const result = new Function('return (' + f + ')')();
           return isNaN(result) ? 0 : result;
         } catch (err) {
           console.error('Formula Eval Error:', formula, err);
@@ -622,15 +634,21 @@ export default function GenerateReport() {
             let pCols = [...(template.pivotColumns || [])];
             if (pCols.length === 0 && template.valueFields?.length > 0) pCols = template.valueFields.map((vf, i) => ({ id: `leg-${i}`, type: 'aggregation', ...vf }));
             const rowField = template.rowField, colField = template.colField, isPG = !!rowField;
+            // When colField is set (cross-tab mode), property/grouping columns repeat under every
+            // column group which duplicates the row label — only aggregation & formula make sense.
+            if (colField) pCols = pCols.filter(p => p.type === 'aggregation' || p.type === 'formula');
+            const rowTx = template.rowFieldTransforms || {};
+            const colTx = template.colFieldTransforms || {};
             const rowsByGroup = {};
             filteredMD.forEach(r => {
-              const gk = isPG ? String(getMasterValue(r, rowField) || '').trim() : '_default';
+              const rawGk = isPG ? String(getMasterValue(r, rowField) || '').trim() : '_default';
+              const gk = isPG ? (cleanValue(getMasterValue(r, rowField), rowTx, rowField) || rawGk) : '_default';
               if (!rowsByGroup[gk]) rowsByGroup[gk] = { firstRow: r, colGroups: {} };
-              const ck = colField ? cleanValue(getMasterValue(r, colField), { normalizeMonth: template.normalizeMonth, normalizeWeek: template.normalizeWeek }, colField) : '_default';
+              const ck = colField ? (cleanValue(getMasterValue(r, colField), colTx, colField) || String(getMasterValue(r, colField) || '').trim()) : '_default';
               if (!rowsByGroup[gk].colGroups[ck]) rowsByGroup[gk].colGroups[ck] = { rows: [], aggregations: {} };
               rowsByGroup[gk].colGroups[ck].rows.push(r);
             });
-            let allColKs = colField ? Array.from(new Set(filteredMD.map(r => cleanValue(getMasterValue(r, colField), { normalizeMonth: template.normalizeMonth, normalizeWeek: template.normalizeWeek }, colField)))) : ['_default'];
+            let allColKs = colField ? Array.from(new Set(filteredMD.map(r => cleanValue(getMasterValue(r, colField), colTx, colField) || String(getMasterValue(r, colField) || '').trim()))) : ['_default'];
             if (colField) allColKs.sort((a,b) => { const dA = parseReportDate(a), dB = parseReportDate(b); return (dA && dB) ? dA.getTime() - dB.getTime() : a.localeCompare(b, undefined, { numeric: true }); });
             
             const headers = [rowField || 'Group'];
@@ -643,19 +661,87 @@ export default function GenerateReport() {
               allColKs.forEach(ck => {
                 const cg = rg.colGroups[ck] || { rows: [], aggregations: {} };
                 pCols.forEach(p => {
+                  const fr = applyColRowFilters(cg.rows, p);
                   if (p.type === 'aggregation') {
-                    const fr = applyColRowFilters(cg.rows, p);
-                    let v = 0; if (p.operation === 'count') v = fr.length; else if (fr.length > 0) { const vs = fr.map(f => parseSafeNum(getMasterValue(f, p.source))); if (p.operation === 'sum') v = vs.reduce((a, b) => a + b, 0); else if (p.operation === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length; }
+                    let v = 0;
+                    const op = p.operation;
+                    if (op === 'count') {
+                      v = fr.length;
+                    } else if (op === 'count_single') {
+                      v = fr.filter(row => !String(getMasterValue(row, p.source) || '').includes('/')).length;
+                    } else if (op === 'count_multi') {
+                      v = fr.filter(row => String(getMasterValue(row, p.source) || '').includes('/')).length;
+                    } else if (op === 'count_unique') {
+                      const dedupCol = p.dedupColumn || p.source;
+                      const seen = new Set();
+                      fr.forEach(row => { const k = String(getMasterValue(row, dedupCol) || '').trim(); if (k) seen.add(k); });
+                      v = seen.size;
+                    } else if (fr.length > 0) {
+                      const vs = fr.map(row => parseSafeNum(getMasterValue(row, p.source)));
+                      if (op === 'sum') v = vs.reduce((a, b) => a + b, 0);
+                      else if (op === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length;
+                      else if (op === 'min') v = Math.min(...vs);
+                      else if (op === 'max') v = Math.max(...vs);
+                    }
                     rr.push(v);
                   } else {
-                    const fr = applyColRowFilters(cg.rows, p);
-                    const v = fr.length > 0 ? getMasterValue(fr[0], p.source) : '';
-                    rr.push(v);
+                    rr.push(fr.length > 0 ? getMasterValue(fr[0], p.source) : '');
                   }
                 });
               });
               finalAOA.push(rr);
             });
+
+            if (template.isOutputFilterEnabled !== false && template.outputFilters?.length > 0) {
+              const hdr = finalAOA[0];
+              const filteredRows = finalAOA.slice(1).filter(row => {
+                const rowObj = {};
+                hdr.forEach((h, i) => { if (h) rowObj[h] = row[i]; });
+                return template.outputFilters.every(of => !of.conditionCol || evaluateCondition(rowObj, of));
+              });
+              finalAOA = [hdr, ...filteredRows];
+            }
+
+            if (template.isPivotSummaryEnabled) {
+              const totalRow = ['Grand Total'];
+              allColKs.forEach(ck => {
+                const allRowsForCk = [];
+                Object.values(rowsByGroup).forEach(rg => {
+                  if (rg.colGroups[ck]) allRowsForCk.push(...rg.colGroups[ck].rows);
+                });
+                pCols.forEach(p => {
+                  if (p.showTotal === false) { totalRow.push(''); return; }
+                  const fr = applyColRowFilters(allRowsForCk, p);
+                  if (p.type === 'aggregation') {
+                    let v = 0;
+                    const op = p.operation;
+                    if (op === 'count') {
+                      v = fr.length;
+                    } else if (op === 'count_single') {
+                      v = fr.filter(row => !String(getMasterValue(row, p.source) || '').includes('/')).length;
+                    } else if (op === 'count_multi') {
+                      v = fr.filter(row => String(getMasterValue(row, p.source) || '').includes('/')).length;
+                    } else if (op === 'count_unique') {
+                      const dedupCol = p.dedupColumn || p.source;
+                      const seen = new Set();
+                      fr.forEach(row => { const k = String(getMasterValue(row, dedupCol) || '').trim(); if (k) seen.add(k); });
+                      v = seen.size;
+                    } else if (fr.length > 0) {
+                      const vs = fr.map(row => parseSafeNum(getMasterValue(row, p.source)));
+                      if (op === 'sum') v = vs.reduce((a, b) => a + b, 0);
+                      else if (op === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length;
+                      else if (op === 'min') v = Math.min(...vs);
+                      else if (op === 'max') v = Math.max(...vs);
+                    }
+                    totalRow.push(v);
+                  } else {
+                    totalRow.push('');
+                  }
+                });
+              });
+              finalAOA.push(totalRow);
+            }
+
             columnHeaders = headers;
             if (template.chartConfig) currentChartImage = await generateChartImage(template.chartConfig, generateChartDataFromAOA(finalAOA));
             const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(finalAOA);
@@ -701,16 +787,6 @@ export default function GenerateReport() {
     } catch (err) { setError(`Generation failed: ${err.message}`); } finally { setIsGenerating(false); }
   };
 
-  const applyColRowFilters = (rows, col) => {
-    if (!col || !col.filterColumn) return rows;
-    const fv = col.filterValue, fvs = col.filterValues;
-    if ((!fvs || fvs.length === 0) && (!fv || String(fv).toLowerCase() === 'all')) return rows;
-    const targets = fvs && fvs.length > 0 ? fvs.map(v => String(v).toLowerCase().trim()) : [String(fv).toLowerCase().trim()];
-    return rows.filter(r => { 
-      const val = String(getMasterValue(r, col.filterColumn) || '').toLowerCase().trim(); 
-      return targets.some(t => val === t || val.includes(t)); 
-    });
-  };
 
   const getMasterValue = (row, source) => {
     if (!source || !row) return '';
