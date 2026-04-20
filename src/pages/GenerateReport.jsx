@@ -155,6 +155,11 @@ export default function GenerateReport() {
             if (m) return new Date(2000, 0, parseInt(m[1])); 
           }
 
+          const mOnlyIdx = monthsF.findIndex(mon => mon === s2.substring(0, 3));
+          if (mOnlyIdx >= 0 && s2.length <= 9 && !/\d/.test(s2)) {
+             const md = new Date(); md.setMonth(mOnlyIdx); md.setDate(1); return md;
+          }
+
           const mdy = s.match(/([a-z]+)\s+(\d\d?)\s*[-,]?\s*(\d\d\d\d)/i);
           if (mdy) {
              const mIdx = monthsF.indexOf(mdy[1].toLowerCase().slice(0, 3));
@@ -198,6 +203,10 @@ export default function GenerateReport() {
          if (t.rowFieldTransforms?.normalizeWeek) dateColumns.add(t.rowField);
          if (t.colFieldTransforms?.normalizeWeek) dateColumns.add(t.colField);
          if (t.mappings) t.mappings.forEach(m => { if (m.normalizeWeek) dateColumns.add(m.source); });
+         if (t.normalizeWeek && t.colField) dateColumns.add(t.colField);
+         if (t.normalizeWeek && t.rowField) dateColumns.add(t.rowField);
+         if (t.normalizeMonth && t.colField) dateColumns.add(t.colField);
+         if (t.normalizeMonth && t.rowField) dateColumns.add(t.rowField);
       });
 
       if (dateColumns.size > 0) {
@@ -290,9 +299,19 @@ export default function GenerateReport() {
         if (val === undefined || val === null || val === '') return '';
         if (!config) return String(val).trim();
         let cleaned = String(val);
-        let dateObj = (config.normalizeMonth || config.normalizeWeek) ? parseReportDate(val) : null;
-        if (config.simplifyDate) { const m = cleaned.match(/.*,\s+(.*?)\s+,\s+.*/); if (m) cleaned = m[1]; }
-        if (config.simplifyTime) { const m = cleaned.match(/.*,\s+.*?\s+,\s+(.*)/); if (m) cleaned = m[1]; }
+        let dateObj = (config.normalizeMonth || config.normalizeWeek || config.simplifyDate) ? parseReportDate(val) : null;
+        if (config.simplifyDate) {
+          if (dateObj && !isNaN(dateObj.getTime())) {
+            cleaned = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          } else {
+            const parts = cleaned.split(',').map(s => s.trim()).filter(Boolean);
+            if (parts.length >= 2) cleaned = parts.length > 2 ? parts[1] : parts[0];
+          }
+        }
+        if (config.simplifyTime) {
+          const parts = cleaned.split(',').map(s => s.trim()).filter(Boolean);
+          if (parts.length >= 2) cleaned = parts[parts.length - 1];
+        }
         if (config.normalizeMonth && dateObj) cleaned = dateObj.toLocaleString('default', { month: 'short' });
         if (config.normalizeWeek && dateObj && colName && minDateMap[colName]) {
           const dayLocal = new Date(dateObj); dayLocal.setHours(0, 0, 0, 0);
