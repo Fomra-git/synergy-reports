@@ -147,6 +147,10 @@ export default function GenerateReport() {
           if (longMatch) s = longMatch[1];
           const d = new Date(s);
           if (!isNaN(d.getTime())) return d;
+          let fallbackStr = s.replace(/\s+-\s+/, ' ');
+          let fallbackStr2 = fallbackStr.replace(/\s+-\s+/, ' '); // handle possible double dashes
+          const d2 = new Date(fallbackStr2);
+          if (!isNaN(d2.getTime())) return d2;
           const s2 = s.toLowerCase();
           const monthsF = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
           
@@ -199,14 +203,20 @@ export default function GenerateReport() {
       const maxDateMap = {};
       const dateColumns = new Set();
       targetTemplates.forEach(t => {
-         if (t.pivotColumns) t.pivotColumns.forEach(c => { if (c.normalizeWeek) dateColumns.add(c.source); });
-         if (t.rowFieldTransforms?.normalizeWeek) dateColumns.add(t.rowField);
-         if (t.colFieldTransforms?.normalizeWeek) dateColumns.add(t.colField);
-         if (t.mappings) t.mappings.forEach(m => { if (m.normalizeWeek) dateColumns.add(m.source); });
-         if (t.normalizeWeek && t.colField) dateColumns.add(t.colField);
-         if (t.normalizeWeek && t.rowField) dateColumns.add(t.rowField);
-         if (t.normalizeMonth && t.colField) dateColumns.add(t.colField);
-         if (t.normalizeMonth && t.rowField) dateColumns.add(t.rowField);
+         const processTemplate = (pt) => {
+           if (pt.pivotColumns) pt.pivotColumns.forEach(c => { if (c.normalizeWeek) dateColumns.add(c.source); });
+           if (pt.rowFieldTransforms?.normalizeWeek) dateColumns.add(pt.rowField);
+           if (pt.colFieldTransforms?.normalizeWeek) dateColumns.add(pt.colField);
+           if (pt.mappings) pt.mappings.forEach(m => { if (m.normalizeWeek) dateColumns.add(m.source); });
+           if (pt.normalizeWeek && pt.colField) dateColumns.add(pt.colField);
+           if (pt.normalizeWeek && pt.rowField) dateColumns.add(pt.rowField);
+           if (pt.normalizeMonth && pt.colField) dateColumns.add(pt.colField);
+           if (pt.normalizeMonth && pt.rowField) dateColumns.add(pt.rowField);
+         };
+         processTemplate(t);
+         if (t.isMultiTable && t.subPivots) {
+           t.subPivots.forEach(sp => processTemplate(sp));
+         }
       });
 
       if (dateColumns.size > 0) {
