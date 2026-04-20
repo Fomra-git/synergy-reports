@@ -250,6 +250,42 @@ export default function GenerateReport() {
         return mapping.conditionCol ? evalRule(getMasterValue(row, mapping.conditionCol), mapping.operator, mapping.conditionVals) : true;
       };
 
+      const mergeAOAsSideBySide = (aoas, gapCols = 2) => {
+        if (!aoas || aoas.length === 0) return { merged: [], layouts: [] };
+        if (aoas.length === 1) return { merged: aoas[0], layouts: [{ startCol: 1, width: Math.max(...aoas[0].map(r => r.length)) }] };
+        let merged = [];
+        const maxRows = Math.max(...aoas.map(a => a.length));
+        const aoaWidths = aoas.map(aoa => Math.max(...aoa.map(row => row.length)));
+        const layouts = [];
+        let currentCol = 1;
+        for (let r = 0; r < maxRows; r++) {
+          let row = [];
+          aoas.forEach((aoa, idx) => {
+            const aoaRow = aoa[r] || [];
+            const width = aoaWidths[idx];
+            for (let c = 0; c < width; c++) row.push(aoaRow[c] !== undefined ? aoaRow[c] : null);
+            if (r === 0) layouts.push({ startCol: currentCol, width });
+            if (idx < aoas.length - 1) {
+              for (let i = 0; i < gapCols; i++) row.push(null);
+              if (r === 0) currentCol += (width + gapCols);
+            }
+          });
+          merged.push(row);
+        }
+        return { merged, layouts };
+      };
+
+      const generateChartDataFromAOA = (aoa) => {
+        if (!aoa || aoa.length < 3) return [];
+        const headers = aoa[1];
+        const dataRows = aoa.slice(2);
+        return dataRows.map(row => {
+          const obj = {};
+          headers.forEach((h, i) => { if (h) obj[h] = row[i]; });
+          return { data: obj };
+        });
+      };
+
       const cleanValue = (val, config, colName) => {
         if (val === undefined || val === null || val === '') return '';
         if (!config) return String(val).trim();
@@ -561,53 +597,60 @@ export default function GenerateReport() {
           if (template.mappings?.filter(m => m.type === 'condition' && m.conditionCol).length > 0) filteredMD = filteredMD.filter(r => template.mappings.filter(m => m.type === 'condition' && m.conditionCol).every(m => evaluateCondition(r, m)));
 
           if (template.type === 'pivot') {
-            let pCols = [...(template.pivotColumns || [])];
-            if (pCols.length === 0 && template.valueFields?.length > 0) pCols = template.valueFields.map((vf, i) => ({ id: `leg-${i}`, type: 'aggregation', ...vf }));
-            const rowField = template.rowField, colField = template.colField, isPG = !!rowField;
-            const rowsByGroup = {};
-            filteredMD.forEach(r => {
-              const gk = isPG ? String(getMasterValue(r, rowField) || '').trim() : '_default';
-              if (!rowsByGroup[gk]) rowsByGroup[gk] = { firstRow: r, colGroups: {} };
-              const ck = colField ? cleanValue(getMasterValue(r, colField), { normalizeMonth: template.normalizeMonth, normalizeWeek: template.normalizeWeek }, colField) : '_default';
-              if (!rowsByGroup[gk].colGroups[ck]) rowsByGroup[gk].colGroups[ck] = { rows: [], aggregations: {} };
-              rowsByGroup[gk].colGroups[ck].rows.push(r);
-            });
-            let allColKs = colField ? Array.from(new Set(filteredMD.map(r => cleanValue(getMasterValue(r, colField), { normalizeMonth: template.normalizeMonth, normalizeWeek: template.normalizeWeek }, colField)))) : ['_default'];
-
-            if (colField) {
-              allColKs.sort((a, b) => {
-                if (a === '(Blank)') return -1;
-                if (b === '(Blank)') return 1;
-                const dA = parseReportDate(a);
-                const dB = parseReportDate(b);
-                if (dA && dB) return dA.getTime() - dB.getTime();
-                return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+            const subPivots = template.isMultiTable && template.subPivots?.length > 0 ? template.subPivots : [{ ...template, name: template.name || 'Pivot Table' }];
+            const aoasToMerge = [];
+            for (const sp of subPivots) {
+              let pCols = [...(sp.pivotColumns || [])];
+              if (pCols.length === 0 && sp.valueFields?.length > 0) pCols = sp.valueFields.map((vf, i) => ({ id: `leg-${i}`, type: 'aggregation', ...vf }));
+              const rowField = sp.rowField, colField = sp.colField, isPG = !!rowField;
+              let subFilteredMD = [...filteredMD];
+              if (template.isGlobalFilterEnabled !== false && sp.globalFilters?.length > 0) sp.globalFilters.forEach(gf => { if (gf.conditionCol) subFilteredMD = subFilteredMD.filter(r => evaluateCondition(r, gf)); });
+              const rowsByGroup = {};
+              subFilteredMD.forEach(r => {
+                const gk = isPG ? String(getMasterValue(r, rowField) || '').trim() : '_default';
+                if (!rowsByGroup[gk]) rowsByGroup[gk] = { firstRow: r, colGroups: {} };
+                const ck = colField ? cleanValue(getMasterValue(r, colField), { normalizeMonth: sp.normalizeMonth, normalizeWeek: sp.normalizeWeek }, colField) : '_default';
+                if (!rowsByGroup[gk].colGroups[ck]) rowsByGroup[gk].colGroups[ck] = { rows: [], aggregations: {} };
+                rowsByGroup[gk].colGroups[ck].rows.push(r);
               });
-            }
-
-            const headers = [rowField || 'Group'];
-            if (colField) allColKs.forEach(ck => pCols.filter(p => p.type === 'aggregation').forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
-            else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
-            if (template.isRowTotalEnabled) headers.push('TOTAL');
-            finalAOA.push(headers);
-            
-            Object.entries(rowsByGroup).forEach(([gk, rg]) => {
-              const rr = [gk]; let rSum = 0;
-              allColKs.forEach(ck => {
-                const cg = rg.colGroups[ck] || { rows: [], aggregations: {} };
-                pCols.forEach(p => {
-                  if (p.type === 'aggregation') {
-                    const fr = applyColRowFilters(cg.rows, p);
-                    let v = 0; if (p.operation === 'count') v = fr.length; else if (fr.length > 0) { const vs = fr.map(f => parseSafeNum(getMasterValue(f, p.source))); if (p.operation === 'sum') v = vs.reduce((a, b) => a + b, 0); else if (p.operation === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length; }
-                    rr.push(v); rSum += v;
-                  }
+              const allColKs = colField ? Array.from(new Set(subFilteredMD.map(r => cleanValue(getMasterValue(r, colField), { normalizeMonth: sp.normalizeMonth, normalizeWeek: sp.normalizeWeek }, colField)))) : ['_default'];
+              if (colField) allColKs.sort((a,b) => { const dA = parseReportDate(a), dB = parseReportDate(b); return (dA && dB) ? dA.getTime() - dB.getTime() : a.localeCompare(b, undefined, { numeric: true }); });
+              const tableAOA = [[sp.name || 'Untitled Table']];
+              const headers = [rowField || 'Group'];
+              if (colField) allColKs.forEach(ck => pCols.filter(p => p.type === 'aggregation').forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
+              else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
+              if (sp.isRowTotalEnabled || template.isRowTotalEnabled) headers.push('TOTAL');
+              tableAOA.push(headers);
+              Object.entries(rowsByGroup).forEach(([gk, rg]) => {
+                const rr = [gk]; let rSum = 0;
+                allColKs.forEach(ck => {
+                  const cg = rg.colGroups[ck] || { rows: [], aggregations: {} };
+                  pCols.forEach(p => {
+                    if (p.type === 'aggregation') {
+                      const fr = applyColRowFilters(cg.rows, p);
+                      let v = 0; if (p.operation === 'count') v = fr.length; else if (fr.length > 0) { const vs = fr.map(f => parseSafeNum(getMasterValue(f, p.source))); if (p.operation === 'sum') v = vs.reduce((a, b) => a + b, 0); else if (p.operation === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length; }
+                      rr.push(v); rSum += v;
+                    }
+                  });
                 });
+                if (sp.isRowTotalEnabled || template.isRowTotalEnabled) rr.push(rSum);
+                tableAOA.push(rr);
               });
-              if (template.isRowTotalEnabled) rr.push(rSum);
-              finalAOA.push(rr);
-            });
-            columnHeaders = headers;
-            if (template.chartConfig) currentChartImage = await generateChartImage(template.chartConfig, finalAOA.slice(1).map(r => ({ data: headers.reduce((acc, h, i) => ({ ...acc, [h]: r[i] }), {}) })));
+              aoasToMerge.push(tableAOA);
+            }
+            let layouts = [];
+            if (template.isMultiTable) {
+              const mergeResult = mergeAOAsSideBySide(aoasToMerge, 2);
+              finalAOA = mergeResult.merged; layouts = mergeResult.layouts; columnHeaders = finalAOA[1];
+            } else {
+              finalAOA = aoasToMerge[0]; columnHeaders = finalAOA[1];
+            }
+            if (template.chartConfig) currentChartImage = await generateChartImage(template.chartConfig, generateChartDataFromAOA(finalAOA));
+            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, currentChartImage, layouts);
+            const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
+            if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
+            if (isSingle) saveAs(new Blob([excelBuffer], { type: excelMimeType }), fileName); else zip.file(fileName, excelBuffer);
           } else {
             let reportData = filteredMD.map((row, index) => {
               const nr = {};
@@ -621,17 +664,15 @@ export default function GenerateReport() {
             columnHeaders = (template.mappings || []).filter(m => m.target).map(m => cleanFieldName(m.target));
             finalAOA.push(columnHeaders);
             reportData.forEach(item => finalAOA.push(columnHeaders.map(h => item.data[h])));
+            const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(finalAOA);
+            XLSX.utils.book_append_sheet(wb, ws, 'Report');
+            const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
+            if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
+            const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            if (isSingle) saveAs(new Blob([excelBuffer], { type: excelMimeType }), fileName);
+            else zip.file(fileName, excelBuffer);
           }
-
-          const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(finalAOA);
-          XLSX.utils.book_append_sheet(wb, ws, 'Report');
-          const excelBuffer = currentChartImage ? await excelJSExport(finalAOA, columnHeaders, topReportHeader, currentChartImage) : XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-          let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
-          if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
-
-          const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-          if (isSingle) saveAs(new Blob([excelBuffer], { type: excelMimeType }), fileName);
-          else zip.file(fileName, excelBuffer);
         } catch (te) { templateErrors.push(`${template.name}: ${te.message}`); }
       }
 
