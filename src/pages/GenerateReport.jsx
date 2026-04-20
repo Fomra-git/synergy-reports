@@ -672,21 +672,19 @@ export default function GenerateReport() {
               const headers = [rowField || 'Group'];
               if (colField) allColKs.forEach(ck => pCols.filter(p => p.type === 'aggregation').forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
               else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
-              if (sp.isRowTotalEnabled || template.isRowTotalEnabled) headers.push('TOTAL');
               tableAOA.push(headers);
               Object.entries(rowsByGroup).forEach(([gk, rg]) => {
-                const rr = [gk]; let rSum = 0;
+                const rr = [gk];
                 allColKs.forEach(ck => {
                   const cg = rg.colGroups[ck] || { rows: [], aggregations: {} };
                   pCols.forEach(p => {
                     if (p.type === 'aggregation') {
                       const fr = applyColRowFilters(cg.rows, p);
                       let v = 0; if (p.operation === 'count') v = fr.length; else if (fr.length > 0) { const vs = fr.map(f => parseSafeNum(getMasterValue(f, p.source))); if (p.operation === 'sum') v = vs.reduce((a, b) => a + b, 0); else if (p.operation === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length; }
-                      rr.push(v); rSum += v;
+                      rr.push(v);
                     }
                   });
                 });
-                if (sp.isRowTotalEnabled || template.isRowTotalEnabled) rr.push(rSum);
                 tableAOA.push(rr);
               });
               aoasToMerge.push(tableAOA);
