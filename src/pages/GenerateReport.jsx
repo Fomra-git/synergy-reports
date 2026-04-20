@@ -271,6 +271,21 @@ export default function GenerateReport() {
         return cleaned.trim();
       };
       
+      const generateChartImage = async (chartConfig, pivotResults) => {
+        if (!chartConfig || !pivotResults || pivotResults.length === 0 || !chartConfig.xAxis) return null;
+        const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 700; const ctx = canvas.getContext('2d');
+        const firstResult = pivotResults[0].data; const allKeys = Object.keys(firstResult);
+        const resolveMetrics = (rm) => allKeys.filter(k => k === rm || k.endsWith(' - ' + rm) || k.endsWith('-' + rm)) || [rm];
+        const targetColumns = (chartConfig.yAxes || []).flatMap(m => resolveMetrics(m));
+        const labels = pivotResults.map(r => String(r.data[chartConfig.xAxis] || ''));
+        const colors = ['rgba(99, 102, 241, 0.7)', 'rgba(16, 185, 129, 0.7)', 'rgba(245, 158, 11, 0.7)', 'rgba(236, 72, 153, 0.7)', 'rgba(14, 165, 233, 0.7)'];
+        const datasets = targetColumns.map((colName, idx) => ({ label: colName, data: pivotResults.map(r => parseSafeNum(r.data[colName])), backgroundColor: colors[idx % colors.length], borderWidth: 1 }));
+        return new Promise((resolve) => {
+          new Chart(ctx, { type: chartConfig.type || 'bar', data: { labels, datasets }, options: { animation: false, plugins: { legend: { display: true }, title: { display: true, text: `Pivot Analytics Summary` } } } });
+          setTimeout(() => resolve(canvas.toDataURL('image/png')), 200);
+        });
+      };
+
       const evaluateSbFormula = (formula, ctx) => {
         if (!formula) return 0;
         try {
