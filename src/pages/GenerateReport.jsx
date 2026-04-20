@@ -474,7 +474,6 @@ export default function GenerateReport() {
       };
 
       for (const template of targetTemplates) {
-       try {
         try {
           setStatus(`Generating ${template.name || 'Untitled'}...`);
           if (template.type === 'scoreboard') {
