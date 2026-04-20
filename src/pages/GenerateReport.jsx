@@ -147,7 +147,14 @@ export default function GenerateReport() {
           if (longMatch) s = longMatch[1];
           const d = new Date(s);
           if (!isNaN(d.getTime())) return d;
+          const s2 = s.toLowerCase();
           const monthsF = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+          
+          if (s2.includes('week')) {
+            const m = s.match(/Week\s+(\d+)/i);
+            if (m) return new Date(2000, 0, parseInt(m[1])); 
+          }
+
           const mdy = s.match(/([a-z]+)\s+(\d\d?)\s*[-,]?\s*(\d\d\d\d)/i);
           if (mdy) {
              const mIdx = monthsF.indexOf(mdy[1].toLowerCase().slice(0, 3));
@@ -411,7 +418,7 @@ export default function GenerateReport() {
               rowContext[group.id + ':' + col.id + ':cur'] = cur;
               rowContext[group.id + ':' + col.id + ':total'] = total;
               rowContext[group.id + ':' + col.id + ':conv'] = conv;
-              return { id: col.id, mode: col.displayMode, cur, total, conv, isCalculated: false };
+              return { id: col.id, mode: col.displayMode, cur, total, conv, isCalculated: false, isConsultation: !!col.isConsultation };
             });
             return { groupId: group.id, colData };
           });
@@ -614,14 +621,25 @@ export default function GenerateReport() {
       }
 
       if (!isSingle && Object.keys(zip.files).length > 0) saveAs(await zip.generateAsync({ type: 'blob' }), `Reports_${Date.now()}.zip`);
-      setStatus('Completed!');
+      
+      if (templateErrors.length > 0) {
+        setError(`Processing completed with ${templateErrors.length} errors:\n${templateErrors.join('\n')}`);
+        setStatus('Completed with errors');
+      } else {
+        setStatus('Completed!');
+      }
     } catch (err) { setError(`Generation failed: ${err.message}`); } finally { setIsGenerating(false); }
   };
 
   const applyColRowFilters = (rows, col) => {
-    if (!col.filterColumn || (!col.filterValues?.length && !col.filterValue)) return rows;
-    const fvs = col.filterValues?.length ? col.filterValues.map(v => String(v).toLowerCase().trim()) : [String(col.filterValue).toLowerCase().trim()];
-    return rows.filter(r => { const v = String(getMasterValue(r, col.filterColumn) || '').toLowerCase().trim(); return fvs.some(fv => v === fv || v.includes(fv)); });
+    if (!col || !col.filterColumn) return rows;
+    const fv = col.filterValue, fvs = col.filterValues;
+    if ((!fvs || fvs.length === 0) && (!fv || String(fv).toLowerCase() === 'all')) return rows;
+    const targets = fvs && fvs.length > 0 ? fvs.map(v => String(v).toLowerCase().trim()) : [String(fv).toLowerCase().trim()];
+    return rows.filter(r => { 
+      const val = String(getMasterValue(r, col.filterColumn) || '').toLowerCase().trim(); 
+      return targets.some(t => val === t || val.includes(t)); 
+    });
   };
 
   const getMasterValue = (row, source) => {
