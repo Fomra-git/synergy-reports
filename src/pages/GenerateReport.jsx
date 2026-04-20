@@ -88,7 +88,7 @@ export default function GenerateReport() {
     
     try {
       const data = await masterFile.arrayBuffer();
-      const workbook = XLSX.read(data);
+      const workbook = XLSX.read(data, { type: 'array' });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       const masterData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
@@ -217,6 +217,52 @@ export default function GenerateReport() {
              }
          });
       }
+      const evaluateCondition = (row, mapping) => {
+        if (!mapping) return true;
+        const evalRule = (targetVal, operator, conditionVals = []) => {
+          const tv = String(targetVal || '').toLowerCase().trim();
+          const evalSingle = (cv) => {
+            const c = String(cv || '').toLowerCase().trim();
+            if (operator === '==') return tv === c;
+            if (operator === '!=') return tv !== c;
+            if (operator === 'contains') return tv.includes(c);
+            if (operator === 'between') {
+              const num = parseFloat(tv);
+              const min = parseFloat(conditionVals[0] || '-Infinity');
+              const max = parseFloat(conditionVals[1] || 'Infinity');
+              return !isNaN(num) && num >= min && num <= max;
+            }
+            return false;
+          };
+          if (operator === 'between') return evalSingle(null);
+          if (!conditionVals || conditionVals.length === 0) return true;
+          if (operator === '!=') return conditionVals.every(c => evalSingle(c));
+          return conditionVals.some(c => evalSingle(c));
+        };
+        if (mapping.rules && mapping.rules.length > 0) return mapping.rules.every(r => r.conditionCol ? evalRule(getMasterValue(row, r.conditionCol), r.operator, r.conditionVals) : true);
+        return mapping.conditionCol ? evalRule(getMasterValue(row, mapping.conditionCol), mapping.operator, mapping.conditionVals) : true;
+      };
+
+      const cleanValue = (val, config, colName) => {
+        if (val === undefined || val === null || val === '') return '';
+        if (!config) return String(val).trim();
+        let cleaned = String(val);
+        let dateObj = (config.normalizeMonth || config.normalizeWeek) ? parseReportDate(val) : null;
+        if (config.simplifyDate) { const m = cleaned.match(/.*,\s+(.*?)\s+,\s+.*/); if (m) cleaned = m[1]; }
+        if (config.simplifyTime) { const m = cleaned.match(/.*,\s+.*?\s+,\s+(.*)/); if (m) cleaned = m[1]; }
+        if (config.normalizeMonth && dateObj) cleaned = dateObj.toLocaleString('default', { month: 'short' });
+        if (config.normalizeWeek && dateObj && colName && minDateMap[colName]) {
+          const dayLocal = new Date(dateObj); dayLocal.setHours(0, 0, 0, 0);
+          const weekNum = Math.floor((dayLocal.getTime() - minDateMap[colName]) / (7 * 24 * 60 * 60 * 1000)) + 1;
+          const weekStart = new Date(minDateMap[colName] + (weekNum - 1) * 7 * 24 * 60 * 60 * 1000);
+          let weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+          if (maxDateMap[colName] && weekEnd.getTime() > maxDateMap[colName]) weekEnd = new Date(maxDateMap[colName]);
+          const f = (d) => d.toLocaleString('default', { month: 'short', day: 'numeric' });
+          cleaned = `Week ${weekNum} (${f(weekStart)} to ${f(weekEnd)})`;
+        }
+        if (config.findText) { try { cleaned = cleaned.replace(new RegExp(config.findText, 'gi'), config.replaceWith || ''); } catch (e) {} }
+        return cleaned.trim();
+      };
       
       const evaluateSbFormula = (formula, ctx) => {
         if (!formula) return 0;
