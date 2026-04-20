@@ -479,7 +479,8 @@ export default function GenerateReport() {
         if (template.type === 'scoreboard') {
           const sbBuffer = await generateScoreboardReport(template);
           const sbFileName = `${(template.name || 'ScoreBoard').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`;
-          if (isSingle) saveAs(new Blob([sbBuffer], { type: 'application/octet-stream' }), sbFileName);
+          const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          if (isSingle) saveAs(new Blob([sbBuffer], { type: excelMimeType }), sbFileName);
           else zip.file(sbFileName, sbBuffer);
           continue;
         }
@@ -564,7 +565,19 @@ export default function GenerateReport() {
              if (!rowsByGroup[gk].colGroups[ck]) rowsByGroup[gk].colGroups[ck] = { rows: [], aggregations: {} };
              rowsByGroup[gk].colGroups[ck].rows.push(r);
           });
-          const allColKs = colField ? Array.from(new Set(filteredMD.map(r => String(getMasterValue(r, colField) || '').trim()))).sort() : ['_default'];
+          let allColKs = colField ? Array.from(new Set(filteredMD.map(r => String(getMasterValue(r, colField) || '').trim()))) : ['_default'];
+          
+          if (colField) {
+            allColKs.sort((a, b) => {
+              if (a === '(Blank)') return -1;
+              if (b === '(Blank)') return 1;
+              const dA = parseReportDate(a);
+              const dB = parseReportDate(b);
+              if (dA && dB) return dA.getTime() - dB.getTime();
+              return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+            });
+          }
+
           const headers = [rowField || 'Group'];
           if (colField) allColKs.forEach(ck => pCols.filter(p => p.type === 'aggregation').forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
           else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
@@ -582,6 +595,7 @@ export default function GenerateReport() {
                    }
                 });
              });
+             if (template.isRowTotalEnabled) rr.push(rSum);
              finalAOA.push(rr);
           });
           hasMT = true; columnHeaders = headers;
@@ -603,8 +617,12 @@ export default function GenerateReport() {
         const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(finalAOA);
         XLSX.utils.book_append_sheet(wb, ws, 'Report');
         const excelBuffer = currentChartImage ? await excelJSExport(finalAOA, columnHeaders, topReportHeader, currentChartImage) : XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        const fileName = (template.fileNameFormat || `${template.name}.xlsx`).replace('{date}', new Date().toISOString().slice(0,10));
-        if (isSingle) saveAs(new Blob([excelBuffer], { type: 'application/octet-stream' }), fileName); else zip.file(fileName, excelBuffer);
+        let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0,10));
+        if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
+
+        const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        if (isSingle) saveAs(new Blob([excelBuffer], { type: excelMimeType }), fileName); 
+        else zip.file(fileName, excelBuffer);
        } catch (te) { templateErrors.push(`${template.name}: ${te.message}`); }
       }
 
