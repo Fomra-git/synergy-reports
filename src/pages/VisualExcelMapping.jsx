@@ -85,7 +85,8 @@ export default function VisualExcelMapping() {
     headerConfig: { type: 'custom', text: '', sourceCol: '' },
     isSummaryMode: false,
     isHighlightEmptyEnabled: false,
-    mappings: []
+    mappings: [],
+    sortConfig: { enabled: false, column: '', direction: 'asc', type: 'auto' }
   });
 
   const fileInputRef = useRef(null);
@@ -156,7 +157,8 @@ export default function VisualExcelMapping() {
         outputFilters: (t.outputFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
         isOutputFilterEnabled: t.isOutputFilterEnabled !== false,
         pivotConfig: t.pivotConfig || { rowField: '', colField: '', valField: '', aggType: 'count' },
-        headerConfig: t.headerConfig || { type: 'custom', text: '', sourceCol: '' }
+        headerConfig: t.headerConfig || { type: 'custom', text: '', sourceCol: '' },
+        sortConfig: t.sortConfig || { enabled: false, column: '', direction: 'asc', type: 'auto' }
       });
     }
   };
@@ -375,7 +377,7 @@ export default function VisualExcelMapping() {
   const handleAddGlobalFilter = () => {
     setFormData(prev => ({
       ...prev,
-      globalFilters: [...(prev.globalFilters || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false }]
+      globalFilters: [...(prev.globalFilters || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false, mode: 'filter' }]
     }));
   };
 
@@ -565,14 +567,65 @@ export default function VisualExcelMapping() {
                       <span style={{ fontSize: '13px' }}>Highlight Empty Cells</span>
                     </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={formData.isSummaryMode || false} 
+                      <input
+                        type="checkbox"
+                        checked={formData.isSummaryMode || false}
                         onChange={e => setFormData(prev => ({ ...prev, isSummaryMode: e.target.checked }))}
                         style={{ width: '16px', height: '16px' }}
                       />
                       <span style={{ fontSize: '13px' }}>Single Row Summary</span>
                     </label>
+                  </div>
+
+                  {/* Sort Configuration */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px', background: 'var(--glass-subtle)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.sortConfig?.enabled || false}
+                        onChange={e => setFormData(prev => ({ ...prev, sortConfig: { ...(prev.sortConfig || {}), enabled: e.target.checked } }))}
+                        style={{ width: '16px', height: '16px' }}
+                      />
+                      <span style={{ fontSize: '13px', fontWeight: '600' }}>Sort Report Rows</span>
+                    </label>
+                    {formData.sortConfig?.enabled && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Sort Column</label>
+                          <SearchableDropdown
+                            options={(formData.mappings || []).map(m => (m.target || m.source || '').trim()).filter(Boolean)}
+                            value={formData.sortConfig?.column || ''}
+                            onChange={val => setFormData(prev => ({ ...prev, sortConfig: { ...(prev.sortConfig || {}), column: val } }))}
+                            placeholder="Select column to sort by..."
+                          />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Direction</label>
+                            <select
+                              value={formData.sortConfig?.direction || 'asc'}
+                              onChange={e => setFormData(prev => ({ ...prev, sortConfig: { ...(prev.sortConfig || {}), direction: e.target.value } }))}
+                              style={{ padding: '6px', fontSize: '12px', width: '100%' }}
+                            >
+                              <option value="asc">Ascending (A→Z / 0→9)</option>
+                              <option value="desc">Descending (Z→A / 9→0)</option>
+                            </select>
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Sort Type</label>
+                            <select
+                              value={formData.sortConfig?.type || 'auto'}
+                              onChange={e => setFormData(prev => ({ ...prev, sortConfig: { ...(prev.sortConfig || {}), type: e.target.value } }))}
+                              style={{ padding: '6px', fontSize: '12px', width: '100%' }}
+                            >
+                              <option value="auto">Auto-detect</option>
+                              <option value="alpha">Alphabetical</option>
+                              <option value="numeric">Numeric</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -599,20 +652,31 @@ export default function VisualExcelMapping() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {(formData.globalFilters || []).map((filter, index) => (
                           <div key={index} style={{ padding: '12px', background: 'var(--input-bg)', borderRadius: '10px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700' }}>PRE-FILTER #{index+1}</span>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  onClick={() => handleGlobalFilterChange(index, 'mode', 'filter')}
+                                  style={{ padding: '2px 8px', fontSize: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: filter.mode !== 'exclude' ? 'var(--primary)' : 'var(--glass-bg)', color: filter.mode !== 'exclude' ? 'white' : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}
+                                >Filter Rows</button>
+                                <button
+                                  onClick={() => handleGlobalFilterChange(index, 'mode', 'exclude')}
+                                  style={{ padding: '2px 8px', fontSize: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: filter.mode === 'exclude' ? '#CD5C5C' : 'var(--glass-bg)', color: filter.mode === 'exclude' ? 'white' : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}
+                                >Exclude Column</button>
+                              </div>
                               <button onClick={() => handleRemoveGlobalFilter(index)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}><Plus size={12} style={{ transform: 'rotate(45deg)' }} /></button>
                             </div>
-                          
-                          <SearchableDropdown 
-                            options={masterHeaders} 
-                            value={filter.conditionCol} 
-                            onChange={(val) => handleGlobalFilterChange(index, 'conditionCol', val)} 
-                            placeholder="Select Col..."
+
+                          <SearchableDropdown
+                            options={masterHeaders}
+                            value={filter.conditionCol}
+                            onChange={(val) => handleGlobalFilterChange(index, 'conditionCol', val)}
+                            placeholder={filter.mode === 'exclude' ? 'Select column to exclude...' : 'Select Col...'}
                           />
 
-                          <select 
-                            value={filter.operator || '=='} 
+                          {filter.mode !== 'exclude' && (
+                            <>
+                          <select
+                            value={filter.operator || '=='}
                             onChange={e => handleGlobalFilterChange(index, 'operator', e.target.value)}
                             style={{ padding: '6px', fontSize: '12px' }}
                           >
@@ -630,7 +694,7 @@ export default function VisualExcelMapping() {
                           {filter.operator !== 'unique' && (
                             <div style={{ position: 'relative' }}>
                               <div style={{ position: 'absolute', top: '-18px', right: '0' }}>
-                                <button 
+                                <button
                                   onClick={() => handleGlobalFilterChange(index, 'isManual', !filter.isManual)}
                                   style={{ background: 'none', border: 'none', color: filter.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
                                 >
@@ -646,15 +710,15 @@ export default function VisualExcelMapping() {
                                 </div>
                               ) : (
                                 filter.isManual ? (
-                                  <input 
-                                    placeholder="e.g. Val1, Val2" 
-                                    value={Array.isArray(filter.conditionVals) ? filter.conditionVals.join(', ') : filter.conditionVals || ''} 
+                                  <input
+                                    placeholder="e.g. Val1, Val2"
+                                    value={Array.isArray(filter.conditionVals) ? filter.conditionVals.join(', ') : filter.conditionVals || ''}
                                     onChange={e => handleGlobalFilterChange(index, 'conditionVals', e.target.value.split(',').map(s => s.trim()))}
                                     style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}
                                   />
                                 ) : (
                                   masterUniqueValues[filter.conditionCol] ? (
-                                    <MultiSelectDropdown 
+                                    <MultiSelectDropdown
                                       options={masterUniqueValues[filter.conditionCol]}
                                       selectedValues={filter.conditionVals || []}
                                       onChange={vals => handleGlobalFilterChange(index, 'conditionVals', vals)}
@@ -666,6 +730,8 @@ export default function VisualExcelMapping() {
                                 )
                               )}
                             </div>
+                          )}
+                            </>
                           )}
                         </div>
                       ))}

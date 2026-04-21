@@ -12,7 +12,8 @@ import {
   Sun,
   Moon,
   BarChart4,
-  Trophy
+  Trophy,
+  Layers
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
@@ -84,6 +85,10 @@ export default function Layout() {
               <NavLink to="/scoreboard-designer" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                 <Trophy size={20} />
                 Score Board
+              </NavLink>
+              <NavLink to="/multi-table-designer" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                <Layers size={20} />
+                Multi-Table
               </NavLink>
             </>
           )}

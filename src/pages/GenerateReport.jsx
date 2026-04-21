@@ -1,14 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { db } from '../firebase/config';
-import { collection, query, getDocs } from 'firebase/firestore';
+import { collection, query, getDocs, addDoc } from 'firebase/firestore';
 import XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
-import { Chart, registerables } from 'chart.js';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
-Chart.register(...registerables);
-import { 
+import {
   Upload, 
   FileSpreadsheet, 
   CheckCircle2, 
@@ -239,26 +237,30 @@ export default function GenerateReport() {
       }
       const evaluateCondition = (row, mapping) => {
         if (!mapping) return true;
+        const toNum = (s) => parseFloat(String(s || '').replace(/,/g, '').trim());
         const evalRule = (targetVal, operator, conditionVals = []) => {
-          const tv = String(targetVal || '').toLowerCase().trim();
+          const tv = String(targetVal ?? '').toLowerCase().trim();
+          const tvNum = toNum(tv);
           const evalSingle = (cv) => {
-            const c = String(cv || '').toLowerCase().trim();
+            const c = String(cv ?? '').toLowerCase().trim();
             if (operator === '==') return tv === c;
             if (operator === '!=') return tv !== c;
             if (operator === 'contains') return tv.includes(c);
+            if (operator === 'not_contains') return !tv.includes(c);
             if (operator === 'between') {
-              const num = parseFloat(tv);
-              const min = parseFloat(conditionVals[0] || '-Infinity');
-              const max = parseFloat(conditionVals[1] || 'Infinity');
-              return !isNaN(num) && num >= min && num <= max;
+              const min = toNum(conditionVals[0]);
+              const max = toNum(conditionVals[1]);
+              return !isNaN(tvNum) && !isNaN(min) && !isNaN(max) && tvNum >= min && tvNum <= max;
             }
-            if (operator === '>') { const n = parseFloat(tv), c2 = parseFloat(c); return !isNaN(n) && !isNaN(c2) && n > c2; }
-            if (operator === '<') { const n = parseFloat(tv), c2 = parseFloat(c); return !isNaN(n) && !isNaN(c2) && n < c2; }
-            if (operator === '>=') { const n = parseFloat(tv), c2 = parseFloat(c); return !isNaN(n) && !isNaN(c2) && n >= c2; }
-            if (operator === '<=') { const n = parseFloat(tv), c2 = parseFloat(c); return !isNaN(n) && !isNaN(c2) && n <= c2; }
+            const cNum = toNum(c);
+            if (operator === '>') return !isNaN(tvNum) && !isNaN(cNum) && tvNum > cNum;
+            if (operator === '<') return !isNaN(tvNum) && !isNaN(cNum) && tvNum < cNum;
+            if (operator === '>=') return !isNaN(tvNum) && !isNaN(cNum) && tvNum >= cNum;
+            if (operator === '<=') return !isNaN(tvNum) && !isNaN(cNum) && tvNum <= cNum;
             return false;
           };
           if (operator === 'between') return evalSingle(null);
+          if (operator === 'unique') return true; // handled separately via dedup at filter site
           if (!conditionVals || conditionVals.length === 0) return true;
           if (operator === '!=') return conditionVals.every(c => evalSingle(c));
           return conditionVals.some(c => evalSingle(c));
@@ -271,26 +273,49 @@ export default function GenerateReport() {
         if (!col || !rows) return rows || [];
         let result = rows;
         if (col.rowFilters && col.rowFilters.length > 0) {
-          result = result.filter(r => col.rowFilters.every(f => !f.conditionCol || evaluateCondition(r, f)));
+          result = result.filter(r => col.rowFilters.every(f => {
+            if (!f.conditionCol) return true;
+            if (f.operator === 'unique') return true; // unique handled at global level
+            return evaluateCondition(r, f);
+          }));
         }
         return result;
       };
 
-      const generateChartDataFromAOA = (aoa) => {
-        if (!aoa || aoa.length < 2) return [];
-        const headers = aoa[0];
-        const dataRows = aoa.slice(1);
-        return dataRows.map(row => {
-          const obj = {};
-          headers.forEach((h, i) => { if (h) obj[h] = row[i]; });
-          return { data: obj };
-        });
+      const applyColValueFilters = (rows, col) => {
+        if (!col || !rows || !col.valueFilters || col.valueFilters.length === 0) return rows;
+        const toNum = (s) => parseFloat(String(s ?? '').replace(/,/g, '').trim());
+        return rows.filter(row => col.valueFilters.every(vf => {
+          const raw = getMasterValue(row, col.source);
+          const tv = String(raw ?? '').toLowerCase().trim();
+          const tvNum = toNum(tv);
+          const val = String(vf.value ?? '').toLowerCase().trim();
+          if (vf.operator === '==') return tv === val;
+          if (vf.operator === '!=') return tv !== val;
+          if (vf.operator === 'contains') return tv.includes(val);
+          if (vf.operator === 'between') {
+            const min = toNum(vf.value), max = toNum(vf.valueTo);
+            return !isNaN(tvNum) && !isNaN(min) && !isNaN(max) && tvNum >= min && tvNum <= max;
+          }
+          const cNum = toNum(val);
+          if (vf.operator === '>') return !isNaN(tvNum) && !isNaN(cNum) && tvNum > cNum;
+          if (vf.operator === '<') return !isNaN(tvNum) && !isNaN(cNum) && tvNum < cNum;
+          if (vf.operator === '>=') return !isNaN(tvNum) && !isNaN(cNum) && tvNum >= cNum;
+          if (vf.operator === '<=') return !isNaN(tvNum) && !isNaN(cNum) && tvNum <= cNum;
+          return true;
+        }));
       };
 
       const cleanValue = (val, config, colName) => {
-        if (val === undefined || val === null || val === '') return '';
+        const isBlank = val === undefined || val === null || String(val).trim() === '';
+        if (isBlank) {
+          if (config && config.replaceWith !== undefined && config.replaceWith !== null && String(config.replaceWith).trim() !== '') {
+            return String(config.replaceWith).trim();
+          }
+          return '';
+        }
         if (!config) return String(val).trim();
-        let cleaned = String(val);
+        let cleaned = String(val).trim();
         let dateObj = (config.normalizeMonth || config.normalizeWeek || config.simplifyDate) ? parseReportDate(val) : null;
         if (config.simplifyDate) {
           if (dateObj && !isNaN(dateObj.getTime())) {
@@ -317,43 +342,156 @@ export default function GenerateReport() {
         if (config.findText) { try { cleaned = cleaned.replace(new RegExp(config.findText, 'gi'), config.replaceWith || ''); } catch (e) {} }
         return cleaned.trim();
       };
-      
-      const generateChartImage = async (chartConfig, pivotResults) => {
-        if (!chartConfig || !pivotResults || pivotResults.length === 0 || !chartConfig.xAxis) return null;
-        const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 700; const ctx = canvas.getContext('2d');
-        const firstResult = pivotResults[0].data; const allKeys = Object.keys(firstResult);
-        const resolveMetrics = (rm) => allKeys.filter(k => k === rm || k.endsWith(' - ' + rm) || k.endsWith('-' + rm)) || [rm];
-        const targetColumns = (chartConfig.yAxes || []).flatMap(m => resolveMetrics(m));
-        const labels = pivotResults.map(r => String(r.data[chartConfig.xAxis] || ''));
-        const colors = ['rgba(99, 102, 241, 0.7)', 'rgba(16, 185, 129, 0.7)', 'rgba(245, 158, 11, 0.7)', 'rgba(236, 72, 153, 0.7)', 'rgba(14, 165, 233, 0.7)'];
-        const datasets = targetColumns.map((colName, idx) => ({ label: colName, data: pivotResults.map(r => parseSafeNum(r.data[colName])), backgroundColor: colors[idx % colors.length], borderWidth: 1 }));
-        return new Promise((resolve) => {
-          new Chart(ctx, { type: chartConfig.type || 'bar', data: { labels, datasets }, options: { animation: false, plugins: { legend: { display: true }, title: { display: true, text: `Pivot Analytics Summary` } } } });
-          setTimeout(() => resolve(canvas.toDataURL('image/png')), 200);
-        });
+
+      const parseTimeValue = (val) => {
+        if (val === undefined || val === null || val === '') return null;
+        // Excel stores time-only as a fractional day in [0, 1)
+        if (typeof val === 'number') {
+          if (val >= 0 && val < 1) return val * 24 * 60 * 60 * 1000;
+          return val;
+        }
+        const s = String(val).trim();
+        if (s === '') return null;
+        const num = Number(s);
+        if (!isNaN(num)) {
+          if (num >= 0 && num < 1) return num * 24 * 60 * 60 * 1000;
+          return num;
+        }
+        // HH:MM AM/PM or H:MM AM/PM
+        const ampm = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+        if (ampm) {
+          let h = parseInt(ampm[1], 10);
+          const m = parseInt(ampm[2], 10);
+          const sec = ampm[3] ? parseInt(ampm[3], 10) : 0;
+          if (ampm[4].toUpperCase() === 'PM' && h !== 12) h += 12;
+          if (ampm[4].toUpperCase() === 'AM' && h === 12) h = 0;
+          return h * 3600000 + m * 60000 + sec * 1000;
+        }
+        // HH:MM or HH:MM:SS (24-hour)
+        const parts = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (parts) {
+          return parseInt(parts[1], 10) * 3600000 + parseInt(parts[2], 10) * 60000 + (parts[3] ? parseInt(parts[3], 10) * 1000 : 0);
+        }
+        const date = new Date(s);
+        if (!isNaN(date.getTime())) return date.getTime();
+        return null;
       };
 
-      const excelJSExport = async (fAOA, colHdrs, tHdr, cImg, layouts = []) => {
+      const formatDuration = (minutes) => {
+        const total = Math.round(minutes);
+        const sign = total < 0 ? '-' : '';
+        const absMinutes = Math.abs(total);
+        const h = Math.floor(absMinutes / 60);
+        const m = absMinutes % 60;
+        return `${sign}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      };
+
+      const evaluateReportFormula = (formula, row, rowContext = {}) => {
+        if (!formula) return '';
+        try {
+          let f = formula;
+          f = f.replace(/\{([^}]+)\}/g, (match, token) => {
+            const key = token.trim();
+            const exact = Object.keys(rowContext).find(k => String(k).trim().toLowerCase() === key.toLowerCase());
+            const value = exact ? rowContext[exact] : rowContext[key];
+            const str = value === undefined || value === null || value === '' ? '0' : String(value);
+            return str.replace(/,/g, '');
+          });
+          f = f.replace(/\[([^\]]+)\]/g, (match, token) => {
+            const val = getMasterValue(row, token);
+            return val === undefined || val === null || val === '' ? '0' : String(val).replace(/,/g, '');
+          });
+          const result = new Function('Math', `return (${f})`)(Math);
+          return (result === undefined || result === null || isNaN(result)) ? '' : result;
+        } catch (err) {
+          return '';
+        }
+      };
+
+      const resolveReportMappingValue = (row, index, mapping, rowContext = {}) => {
+        if (!mapping) return '';
+        const type = mapping.type || 'direct';
+        const sourceField = mapping.source || mapping.sourceCol || mapping.target || '';
+        if (type === 'serial') return index + 1;
+        if (type === 'count') {
+          return String(getMasterValue(row, sourceField)).trim() ? 1 : 0;
+        }
+        if (type === 'condition_count') {
+          return evaluateCondition(row, mapping) ? 1 : 0;
+        }
+        if (type === 'math') {
+          const value = evaluateReportFormula(mapping.formula, row, rowContext);
+          return cleanValue(value, mapping, sourceField);
+        }
+        if (type === 'time_diff') {
+          const start = parseTimeValue(getMasterValue(row, mapping.colB || mapping.colA || sourceField));
+          const end = parseTimeValue(getMasterValue(row, mapping.colA || mapping.colB || sourceField));
+          if (start === null || end === null) return '';
+          const diffMinutes = Math.round((end - start) / 60000);
+          const threshold = parseFloat(mapping.threshold) || 0;
+          switch (mapping.outType) {
+            case 'duration_hhmm': return formatDuration(diffMinutes);
+            case 'duration_mins': return diffMinutes;
+            case 'exceeds_yn': return diffMinutes > threshold ? 'Yes' : 'No';
+            case 'excess_mins': return Math.max(0, diffMinutes - threshold);
+            case 'excess_hhmm': return formatDuration(Math.max(0, diffMinutes - threshold));
+            case 'remaining_mins': return Math.max(0, threshold - diffMinutes);
+            case 'remaining_hhmm': return formatDuration(Math.max(0, threshold - diffMinutes));
+            default: return formatDuration(diffMinutes);
+          }
+        }
+        return cleanValue(getMasterValue(row, sourceField), mapping, sourceField);
+      };
+      
+      const excelJSExport = async (fAOA, colHdrs, tHdr, layouts = [], highlightEmpty = true, mergeColIndices = []) => {
         const workbook = new ExcelJS.Workbook(); const worksheet = workbook.addWorksheet('Report');
         let currR = 1;
-        if (tHdr) { worksheet.mergeCells(1, 1, 1, Math.max(colHdrs.length, (fAOA[0] || []).length)); const c = worksheet.getCell(1, 1); c.value = tHdr; c.font = { bold: true, size: 14 }; c.alignment = { horizontal: 'center' }; currR = 2; }
+        if (tHdr) { const mergeEnd = Math.max(1, colHdrs.length, (fAOA[0] || []).length); worksheet.mergeCells(1, 1, 1, mergeEnd); const c = worksheet.getCell(1, 1); c.value = tHdr; c.font = { bold: true, size: 14 }; c.alignment = { horizontal: 'center' }; currR = 2; }
         if (layouts.length > 0) { layouts.forEach(layout => { if (layout.width > 1) worksheet.mergeCells(currR, layout.startCol, currR, layout.startCol + layout.width - 1); }); }
+        const numCols = (fAOA[0] || []).length;
         fAOA.forEach((row, idx) => {
           const excelRow = worksheet.getRow(currR + idx);
           excelRow.values = row.map(v => (v && typeof v === 'object' && v.v !== undefined) ? v.v : v);
-          excelRow.eachCell(c => {
+          const isHeader = (layouts.length > 0) ? (idx === 0 || idx === 1) : idx === 0;
+          for (let col = 1; col <= numCols; col++) {
+            const c = excelRow.getCell(col);
             c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
             c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
             if (layouts.length > 0) {
               if (idx === 1) { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; }
               else if (idx === 0) { c.font = { bold: true, size: 11 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; }
+              else if (!isHeader && highlightEmpty && (c.value === '' || c.value === null || c.value === undefined)) { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCD5C5C' } }; }
             } else {
               if (idx === 0) { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }; }
+              else if (!isHeader && highlightEmpty && (c.value === '' || c.value === null || c.value === undefined)) { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCD5C5C' } }; }
+            }
+          }
+        });
+        // Merge consecutive identical values in columns marked enableMerging
+        if (mergeColIndices.length > 0 && fAOA.length > 2) {
+          const dataStart = 1; // fAOA index of first data row (0 = header)
+          mergeColIndices.forEach(colIdx => {
+            const excelCol = colIdx + 1;
+            let runStart = dataStart;
+            let runVal = fAOA[dataStart] ? fAOA[dataStart][colIdx] : undefined;
+            for (let i = dataStart + 1; i < fAOA.length; i++) {
+              const val = fAOA[i][colIdx];
+              const sameVal = val === runVal && val !== '' && val !== null && val !== undefined;
+              if (!sameVal) {
+                if (i - runStart > 1) {
+                  try { worksheet.mergeCells(currR + runStart, excelCol, currR + i - 1, excelCol); } catch (_) {}
+                }
+                runStart = i;
+                runVal = val;
+              }
+            }
+            // flush last run
+            if (fAOA.length - 1 - runStart > 0) {
+              try { worksheet.mergeCells(currR + runStart, excelCol, currR + fAOA.length - 1, excelCol); } catch (_) {}
             }
           });
-        });
+        }
         worksheet.columns.forEach(c => c.width = 25);
-        if (cImg) { const imgId = workbook.addImage({ base64: cImg, extension: 'png' }); worksheet.addImage(imgId, { tl: { col: 0, row: currR + fAOA.length + 1 }, ext: { width: 900, height: 450 } }); }
         return await workbook.xlsx.writeBuffer();
       };
 
@@ -611,6 +749,181 @@ export default function GenerateReport() {
         return await sbWb.xlsx.writeBuffer();
       };
 
+      // ── Multi-table helper: generate AOA for one section ──────────────────
+      const generatePivotSectionAOA = (section, sectionData) => {
+        const sAOA = [];
+        let pCols = [...(section.pivotColumns || [])];
+        const rowField = section.rowField || '';
+        const colField = section.colField || '';
+        const isPG = !!rowField;
+        if (colField) pCols = pCols.filter(p => p.type === 'aggregation' || p.type === 'formula');
+        if (rowField) {
+          const rfKey = cleanFieldName(rowField).toLowerCase();
+          pCols = pCols.filter(p => !((p.type === 'property' || p.type === 'grouping') && cleanFieldName(p.source || '').toLowerCase() === rfKey));
+        }
+        const rowTx = section.rowFieldTransforms || {};
+        const colTx = section.colFieldTransforms || {};
+        const rowsByGroup = {};
+        sectionData.forEach(r => {
+          const rawGk = isPG ? String(getMasterValue(r, rowField) || '').trim() : '_default';
+          const gk = isPG ? (cleanValue(getMasterValue(r, rowField), rowTx, rowField) || rawGk) : '_default';
+          if (!rowsByGroup[gk]) rowsByGroup[gk] = { firstRow: r, colGroups: {} };
+          const ck = colField ? (cleanValue(getMasterValue(r, colField), colTx, colField) || String(getMasterValue(r, colField) || '').trim()) : '_default';
+          if (!rowsByGroup[gk].colGroups[ck]) rowsByGroup[gk].colGroups[ck] = { rows: [] };
+          rowsByGroup[gk].colGroups[ck].rows.push(r);
+        });
+        let allColKs = colField ? Array.from(new Set(sectionData.map(r => cleanValue(getMasterValue(r, colField), colTx, colField) || String(getMasterValue(r, colField) || '').trim()))) : ['_default'];
+        if (colField) allColKs.sort((a, b) => { const dA = parseReportDate(a), dB = parseReportDate(b); return (dA && dB) ? dA.getTime() - dB.getTime() : a.localeCompare(b, undefined, { numeric: true }); });
+        const rowLabel = section.rowFieldDisplayName || rowField || 'Group';
+        const headers = [rowLabel];
+        if (colField) allColKs.forEach(ck => pCols.forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
+        else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
+        if (section.isRowTotalEnabled && colField) pCols.forEach(p => headers.push(`Row Total - ${p.displayName || p.source}`));
+        sAOA.push(headers);
+        const sApplyDedup = (rows, p) => {
+          if (!p.isUniqueCount || !p.dedupColumn) return rows;
+          const seen = new Set();
+          return rows.filter(row => { const k = String(getMasterValue(row, p.dedupColumn) || '').trim(); if (!k || seen.has(k)) return false; seen.add(k); return true; });
+        };
+        const sComputeAgg = (fr, p, ctx, isTotal = false) => {
+          let v;
+          if (p.type === 'formula') { v = evaluateReportFormula(p.formula, fr[0] || {}, ctx); }
+          else if (p.type === 'aggregation') {
+            if (fr.length === 0) { v = ''; } else {
+              v = 0; const op = p.operation;
+              if (op === 'count') v = fr.length;
+              else if (op === 'count_single') v = fr.filter(r => !String(getMasterValue(r, p.source) || '').includes('/')).length;
+              else if (op === 'count_multi') v = fr.filter(r => String(getMasterValue(r, p.source) || '').includes('/')).length;
+              else if (op === 'count_unique') { const dc = p.dedupColumn || p.source; const seen = new Set(); fr.forEach(r => { const k = String(getMasterValue(r, dc) || '').trim(); if (k) seen.add(k); }); v = seen.size; }
+              else { const vs = fr.map(r => parseSafeNum(getMasterValue(r, p.source))); if (op === 'sum') v = vs.reduce((a, b) => a + b, 0); else if (op === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length; else if (op === 'min') v = Math.min(...vs); else if (op === 'max') v = Math.max(...vs); }
+            }
+          } else { v = (!isTotal && fr.length > 0) ? getMasterValue(fr[0], p.source) : ''; }
+          const key = p.displayName || p.source || ''; if (key) ctx[key] = v; return v;
+        };
+        Object.entries(rowsByGroup).forEach(([gk, rg]) => {
+          const rr = [gk === '_default' ? '' : gk];
+          allColKs.forEach(ck => {
+            const cg = rg.colGroups[ck] || { rows: [] }; const ctx = {};
+            pCols.forEach(p => { const fr = sApplyDedup(applyColValueFilters(applyColRowFilters(cg.rows, p), p), p); rr.push(sComputeAgg(fr, p, ctx)); });
+          });
+          if (section.isRowTotalEnabled && colField) {
+            const all = Object.values(rg.colGroups).flatMap(cg => cg.rows); const ctx = {};
+            pCols.forEach(p => { const fr = sApplyDedup(applyColValueFilters(applyColRowFilters(all, p), p), p); const v = sComputeAgg(fr, p, ctx, true); rr.push(p.showTotal === false ? '' : v); });
+          }
+          sAOA.push(rr);
+        });
+        if (section.isOutputFilterEnabled !== false && section.outputFilters?.length > 0) {
+          const hdr = sAOA[0];
+          const filtered = sAOA.slice(1).filter(row => {
+            const rowObj = {}; hdr.forEach((h, i) => { if (h != null) rowObj[h] = row[i]; });
+            return section.outputFilters.every(of => {
+              if (!of.conditionCol) return true;
+              if (rowObj[of.conditionCol] !== undefined) return evaluateCondition(rowObj, of);
+              const suffix = ` - ${of.conditionCol}`; const matchKeys = hdr.filter(h => h && h.endsWith(suffix));
+              if (matchKeys.length === 0) return true;
+              return matchKeys.some(k => evaluateCondition({ [of.conditionCol]: rowObj[k] }, of));
+            });
+          });
+          sAOA.splice(0, sAOA.length, hdr, ...filtered);
+        }
+        if (section.isPivotSummaryEnabled) {
+          const hdrGT = sAOA[0]; const dataRowsGT = sAOA.slice(1); const hdrToPCol = {};
+          if (!colField) { pCols.forEach(p => { hdrToPCol[p.displayName || p.source || 'Untitled'] = p; }); }
+          else { allColKs.forEach(ck => pCols.forEach(p => { hdrToPCol[`${ck} - ${p.displayName || p.source}`] = p; })); if (section.isRowTotalEnabled) pCols.forEach(p => { hdrToPCol[`Row Total - ${p.displayName || p.source}`] = p; }); }
+          const totalRow = hdrGT.map((h, ci) => {
+            if (ci === 0) return 'Grand Total'; const p = hdrToPCol[h]; if (p && p.showTotal === false) return '';
+            const numVals = dataRowsGT.map(r => r[ci]).filter(v => typeof v === 'number');
+            return numVals.length > 0 ? numVals.reduce((a, b) => a + b, 0) : '';
+          });
+          sAOA.push(totalRow);
+        }
+        return sAOA;
+      };
+
+      // ── Multi-table Excel export ──────────────────────────────────────────
+      const exportMultiSectionExcel = async (sectionInfos, topHeader, layout) => {
+        const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Report');
+        const thin = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+        const applyS = (c, opts = {}) => {
+          c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; c.border = thin;
+          if (opts.bold) c.font = { bold: true, size: opts.size || 11 };
+          if (opts.fill) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: opts.fill } };
+        };
+        let currR = 1;
+        if (topHeader) {
+          const totalCols = layout === 'horizontal'
+            ? sectionInfos.reduce((s, si) => s + ((si.aoa[0] || []).length || 1), 0) + Math.max(0, sectionInfos.length - 1)
+            : Math.max(...sectionInfos.map(si => (si.aoa[0] || []).length || 1), 1);
+          if (totalCols > 1) try { ws.mergeCells(currR, 1, currR, totalCols); } catch (_) {}
+          const c = ws.getCell(currR, 1); c.value = topHeader; applyS(c, { bold: true, size: 14, fill: 'FFF8FAFF' });
+          ws.getRow(currR).height = 28; currR++;
+        }
+        if (layout === 'horizontal') {
+          const offsets = []; let off = 1;
+          sectionInfos.forEach(si => { offsets.push(off); off += ((si.aoa[0] || []).length || 1) + 1; });
+          const titleR = currR; const dataStartR = currR + 1;
+          sectionInfos.forEach((si, idx) => {
+            const { title, aoa } = si; const numCols = (aoa[0] || []).length || 1; const colStart = offsets[idx];
+            if (title) {
+              if (numCols > 1) try { ws.mergeCells(titleR, colStart, titleR, colStart + numCols - 1); } catch (_) {}
+              const c = ws.getCell(titleR, colStart); c.value = title; applyS(c, { bold: true, size: 12, fill: 'FFE2E8F0' });
+            }
+            aoa.forEach((row, ri) => {
+              const exRow = ws.getRow(dataStartR + ri);
+              row.forEach((val, ci) => {
+                const c = exRow.getCell(colStart + ci); c.value = (val && typeof val === 'object' && val.v !== undefined) ? val.v : val;
+                applyS(c, ri === 0 ? { bold: true, fill: 'FFF1F5F9' } : {});
+              });
+            });
+          });
+          let c = 1; sectionInfos.forEach(si => { const n = (si.aoa[0] || []).length || 1; for (let i = 0; i < n; i++) ws.getColumn(c + i).width = 25; c += n + 1; });
+        } else {
+          sectionInfos.forEach((si, idx) => {
+            const { title, aoa } = si; const numCols = (aoa[0] || []).length || 1;
+            if (title) {
+              if (numCols > 1) try { ws.mergeCells(currR, 1, currR, numCols); } catch (_) {}
+              const c = ws.getCell(currR, 1); c.value = title; applyS(c, { bold: true, size: 12, fill: 'FFE2E8F0' });
+              ws.getRow(currR).height = 22; currR++;
+            }
+            aoa.forEach((row, ri) => {
+              const exRow = ws.getRow(currR); exRow.values = row.map(v => (v && typeof v === 'object' && v.v !== undefined) ? v.v : v);
+              for (let col = 1; col <= numCols; col++) applyS(exRow.getCell(col), ri === 0 ? { bold: true, fill: 'FFF1F5F9' } : {});
+              currR++;
+            });
+            if (idx < sectionInfos.length - 1) currR++;
+          });
+          ws.columns.forEach(c => c.width = 25);
+        }
+        return await wb.xlsx.writeBuffer();
+      };
+
+      const applyFinalSort = (aoa, sortConfig) => {
+        if (!sortConfig?.enabled || !sortConfig.column) return aoa;
+        const hdr = aoa[0];
+        if (!hdr || aoa.length <= 1) return aoa;
+        const colIdx = hdr.indexOf(sortConfig.column);
+        if (colIdx < 0) return aoa;
+        const dataRows = aoa.slice(1);
+        const isDesc = sortConfig.direction === 'desc';
+        const type = sortConfig.type || 'auto';
+        dataRows.sort((a, b) => {
+          const av = a[colIdx], bv = b[colIdx];
+          let cmp;
+          if (type === 'numeric') {
+            cmp = (parseFloat(String(av ?? '').replace(/,/g, '')) || 0) - (parseFloat(String(bv ?? '').replace(/,/g, '')) || 0);
+          } else if (type === 'alpha') {
+            cmp = String(av ?? '').localeCompare(String(bv ?? ''), undefined, { sensitivity: 'base' });
+          } else {
+            const an = parseFloat(String(av ?? '').replace(/,/g, '')), bn = parseFloat(String(bv ?? '').replace(/,/g, ''));
+            const aStr = String(av ?? '').trim(), bStr = String(bv ?? '').trim();
+            if (!isNaN(an) && !isNaN(bn) && aStr !== '' && bStr !== '') cmp = an - bn;
+            else cmp = String(av ?? '').localeCompare(String(bv ?? ''), undefined, { numeric: true, sensitivity: 'base' });
+          }
+          return isDesc ? -cmp : cmp;
+        });
+        return [hdr, ...dataRows];
+      };
+
       for (const template of targetTemplates) {
         try {
           setStatus(`Generating ${template.name || 'Untitled'}...`);
@@ -624,10 +937,30 @@ export default function GenerateReport() {
           }
 
           let topReportHeader = template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMasterValue(masterData[0], template.headerConfig.sourceCol) : '')) : null;
-          let finalAOA = [], columnHeaders = [], currentChartImage = null;
+          let finalAOA = [], columnHeaders = [];
 
           let filteredMD = [...masterData];
-          if (template.isGlobalFilterEnabled !== false && template.globalFilters?.length > 0) template.globalFilters.forEach(gf => { if (gf.conditionCol) filteredMD = filteredMD.filter(r => evaluateCondition(r, gf)); });
+          // Collect excluded columns (mode === 'exclude' filters don't filter rows, they exclude columns from output)
+          const excludedCols = new Set(
+            (template.isGlobalFilterEnabled !== false ? (template.globalFilters || []) : [])
+              .filter(gf => gf.mode === 'exclude' && gf.conditionCol)
+              .map(gf => cleanFieldName(gf.conditionCol))
+          );
+          if (template.isGlobalFilterEnabled !== false && template.globalFilters?.length > 0) {
+            template.globalFilters.forEach(gf => {
+              if (!gf.conditionCol || gf.mode === 'exclude') return;
+              if (gf.operator === 'unique') {
+                const seen = new Set();
+                filteredMD = filteredMD.filter(r => {
+                  const k = String(getMasterValue(r, gf.conditionCol) ?? '').trim();
+                  if (seen.has(k)) return false;
+                  seen.add(k); return true;
+                });
+              } else {
+                filteredMD = filteredMD.filter(r => evaluateCondition(r, gf));
+              }
+            });
+          }
           if (template.mappings?.filter(m => m.type === 'condition' && m.conditionCol).length > 0) filteredMD = filteredMD.filter(r => template.mappings.filter(m => m.type === 'condition' && m.conditionCol).every(m => evaluateCondition(r, m)));
 
           if (template.type === 'pivot') {
@@ -637,6 +970,12 @@ export default function GenerateReport() {
             // When colField is set (cross-tab mode), property/grouping columns repeat under every
             // column group which duplicates the row label — only aggregation & formula make sense.
             if (colField) pCols = pCols.filter(p => p.type === 'aggregation' || p.type === 'formula');
+            if (excludedCols.size > 0) pCols = pCols.filter(p => !excludedCols.has(cleanFieldName(p.source || '')));
+            // Remove property/grouping columns that duplicate the rowField (row label already shown as first column)
+            if (rowField) {
+              const rowFieldKey = cleanFieldName(rowField).toLowerCase();
+              pCols = pCols.filter(p => !((p.type === 'property' || p.type === 'grouping') && cleanFieldName(p.source || '').toLowerCase() === rowFieldKey));
+            }
             const rowTx = template.rowFieldTransforms || {};
             const colTx = template.colFieldTransforms || {};
             const rowsByGroup = {};
@@ -654,43 +993,256 @@ export default function GenerateReport() {
             const headers = [rowField || 'Group'];
             if (colField) allColKs.forEach(ck => pCols.forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
             else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
+            if (template.isRowTotalEnabled && colField) pCols.forEach(p => headers.push(`Row Total - ${p.displayName || p.source}`));
             finalAOA.push(headers);
-            
+
+            const applyDedup = (rows, p) => {
+              if (!p.isUniqueCount || !p.dedupColumn) return rows;
+              const seen = new Set();
+              return rows.filter(row => {
+                const k = String(getMasterValue(row, p.dedupColumn) || '').trim();
+                if (!k || seen.has(k)) return false;
+                seen.add(k); return true;
+              });
+            };
+
+            // Compute a single pivot column value; updates rowContext so later formula columns can reference it.
+            // isTotal=true: property/grouping columns return '' (no first-row value in summary rows)
+            const computePivotAgg = (fr, p, rowContext, isTotal = false) => {
+              let v;
+              if (p.type === 'formula') {
+                v = evaluateReportFormula(p.formula, fr[0] || {}, rowContext);
+              } else if (p.type === 'aggregation') {
+                if (fr.length === 0) { v = ''; }
+                else {
+                  v = 0;
+                  const op = p.operation;
+                  if (op === 'count') v = fr.length;
+                  else if (op === 'count_single') v = fr.filter(r => !String(getMasterValue(r, p.source) || '').includes('/')).length;
+                  else if (op === 'count_multi') v = fr.filter(r => String(getMasterValue(r, p.source) || '').includes('/')).length;
+                  else if (op === 'count_unique') {
+                    const dedupCol = p.dedupColumn || p.source;
+                    const seen = new Set();
+                    fr.forEach(r => { const k = String(getMasterValue(r, dedupCol) || '').trim(); if (k) seen.add(k); });
+                    v = seen.size;
+                  } else {
+                    const vs = fr.map(r => parseSafeNum(getMasterValue(r, p.source)));
+                    if (op === 'sum') v = vs.reduce((a, b) => a + b, 0);
+                    else if (op === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length;
+                    else if (op === 'min') v = Math.min(...vs);
+                    else if (op === 'max') v = Math.max(...vs);
+                  }
+                }
+              } else {
+                // property / grouping — never show a data value in total rows
+                v = (!isTotal && fr.length > 0) ? getMasterValue(fr[0], p.source) : '';
+              }
+              const key = p.displayName || p.source || '';
+              if (key) rowContext[key] = v;
+              return v;
+            };
+
             Object.entries(rowsByGroup).forEach(([gk, rg]) => {
               const rr = [gk];
               allColKs.forEach(ck => {
                 const cg = rg.colGroups[ck] || { rows: [], aggregations: {} };
+                const rowContext = {};
                 pCols.forEach(p => {
-                  const fr = applyColRowFilters(cg.rows, p);
-                  if (p.type === 'aggregation') {
-                    let v = 0;
-                    const op = p.operation;
-                    if (op === 'count') {
-                      v = fr.length;
-                    } else if (op === 'count_single') {
-                      v = fr.filter(row => !String(getMasterValue(row, p.source) || '').includes('/')).length;
-                    } else if (op === 'count_multi') {
-                      v = fr.filter(row => String(getMasterValue(row, p.source) || '').includes('/')).length;
-                    } else if (op === 'count_unique') {
-                      const dedupCol = p.dedupColumn || p.source;
-                      const seen = new Set();
-                      fr.forEach(row => { const k = String(getMasterValue(row, dedupCol) || '').trim(); if (k) seen.add(k); });
-                      v = seen.size;
-                    } else if (fr.length > 0) {
-                      const vs = fr.map(row => parseSafeNum(getMasterValue(row, p.source)));
-                      if (op === 'sum') v = vs.reduce((a, b) => a + b, 0);
-                      else if (op === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length;
-                      else if (op === 'min') v = Math.min(...vs);
-                      else if (op === 'max') v = Math.max(...vs);
-                    }
-                    rr.push(v);
-                  } else {
-                    rr.push(fr.length > 0 ? getMasterValue(fr[0], p.source) : '');
-                  }
+                  const fr = applyDedup(applyColValueFilters(applyColRowFilters(cg.rows, p), p), p);
+                  rr.push(computePivotAgg(fr, p, rowContext));
                 });
               });
+              if (template.isRowTotalEnabled && colField) {
+                const allRowsForGroup = Object.values(rg.colGroups).flatMap(cg => cg.rows);
+                const rowTotalContext = {};
+                pCols.forEach(p => {
+                  const fr = applyDedup(applyColValueFilters(applyColRowFilters(allRowsForGroup, p), p), p);
+                  const v = computePivotAgg(fr, p, rowTotalContext, true);
+                  rr.push(p.showTotal === false ? '' : v);
+                });
+              }
               finalAOA.push(rr);
             });
+
+            if (template.isOutputFilterEnabled !== false && template.outputFilters?.length > 0) {
+              const hdr = finalAOA[0];
+              const filteredRows = finalAOA.slice(1).filter(row => {
+                const rowObj = {};
+                hdr.forEach((h, i) => { if (h != null) rowObj[h] = row[i]; });
+                return template.outputFilters.every(of => {
+                  if (!of.conditionCol) return true;
+                  if (rowObj[of.conditionCol] !== undefined) return evaluateCondition(rowObj, of);
+                  // Cross-tab: match headers ending with " - {conditionCol}"
+                  const suffix = ` - ${of.conditionCol}`;
+                  const matchKeys = hdr.filter(h => h && h.endsWith(suffix));
+                  if (matchKeys.length === 0) return true;
+                  return matchKeys.some(k => evaluateCondition({ [of.conditionCol]: rowObj[k] }, of));
+                });
+              });
+              finalAOA = [hdr, ...filteredRows];
+            }
+
+            finalAOA = applyFinalSort(finalAOA, template.sortConfig);
+
+            if (template.isPivotSummaryEnabled) {
+              // Build grand total by summing the already-filtered data rows in finalAOA.
+              // This ensures output-filtered reports (e.g. "Balance > 0") show totals that
+              // match what is visible, not totals across the entire master dataset.
+              const hdrGT = finalAOA[0];
+              const dataRowsGT = finalAOA.slice(1);
+
+              // Map each header position → its pCol (to respect showTotal === false)
+              const hdrToPCol = {};
+              if (!colField) {
+                pCols.forEach(p => { hdrToPCol[p.displayName || p.source || 'Untitled'] = p; });
+              } else {
+                allColKs.forEach(ck => pCols.forEach(p => { hdrToPCol[`${ck} - ${p.displayName || p.source}`] = p; }));
+                if (template.isRowTotalEnabled) pCols.forEach(p => { hdrToPCol[`Row Total - ${p.displayName || p.source}`] = p; });
+              }
+
+              const totalRow = hdrGT.map((h, colIdx) => {
+                if (colIdx === 0) return 'Grand Total';
+                const p = hdrToPCol[h];
+                if (p && p.showTotal === false) return '';
+                // Sum numeric values from filtered data rows
+                const numVals = dataRowsGT.map(r => r[colIdx]).filter(v => typeof v === 'number');
+                return numVals.length > 0 ? numVals.reduce((a, b) => a + b, 0) : '';
+              });
+              finalAOA.push(totalRow);
+            }
+
+            columnHeaders = headers;
+            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, [], false);
+            let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
+            if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
+            const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            if (isSingle) saveAs(new Blob([excelBuffer], { type: excelMimeType }), fileName); else zip.file(fileName, excelBuffer);
+          } else if (template.type === 'multi_table') {
+            const sectionInfos = [];
+            for (const section of (template.sections || [])) {
+              let sectionData = [...masterData];
+              if (section.isGlobalFilterEnabled !== false && section.globalFilters?.length > 0) {
+                section.globalFilters.forEach(gf => {
+                  if (!gf.conditionCol || gf.mode === 'exclude') return;
+                  if (gf.operator === 'unique') {
+                    const seen = new Set();
+                    sectionData = sectionData.filter(r => { const k = String(getMasterValue(r, gf.conditionCol) ?? '').trim(); if (seen.has(k)) return false; seen.add(k); return true; });
+                  } else { sectionData = sectionData.filter(r => evaluateCondition(r, gf)); }
+                });
+              }
+              sectionInfos.push({ title: section.title || '', aoa: generatePivotSectionAOA(section, sectionData) });
+            }
+            const topHdr = template.isHeaderEnabled && template.headerConfig?.text ? template.headerConfig.text : null;
+            const mtBuffer = await exportMultiSectionExcel(sectionInfos, topHdr, template.layout || 'vertical');
+            let mtFileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
+            if (!mtFileName.toLowerCase().endsWith('.xlsx')) mtFileName += '.xlsx';
+            const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            if (isSingle) saveAs(new Blob([mtBuffer], { type: excelMimeType }), mtFileName); else zip.file(mtFileName, mtBuffer);
+          } else {
+            const activeMappings = (template.mappings || [])
+              .filter(m => {
+                if (!m) return false;
+                if (m.type === 'serial') return !!cleanFieldName(m.target || '');
+                return !!(cleanFieldName(m.source || '') || cleanFieldName(m.target || '') || m.formula || m.colA || m.colB);
+              })
+              .filter(m => {
+                const colName = cleanFieldName(m.source || m.target || '');
+                return !excludedCols.has(colName);
+              });
+            const useFallback = activeMappings.length === 0 && filteredMD.length > 0;
+
+            let reportData;
+            if (useFallback) {
+              columnHeaders = Object.keys(filteredMD[0]).filter(k => {
+                const cleaned = cleanFieldName(k);
+                return cleaned !== '' && !String(k).startsWith('__') && !excludedCols.has(cleaned);
+              });
+              reportData = filteredMD.map(row => {
+                const data = {};
+                columnHeaders.forEach(h => { data[h] = row[h] !== undefined ? row[h] : ''; });
+                return { data };
+              });
+            } else {
+              reportData = filteredMD.map((row, index) => {
+                const nr = {};
+                const rowContext = {};
+                activeMappings.forEach((m, mappingIndex) => {
+                  const rawTarget = m.target || m.source || `Column${mappingIndex + 1}`;
+                  const targetKey = String(rawTarget).trim() || `Column${mappingIndex + 1}`;
+                  const cleanTargetKey = cleanFieldName(targetKey) || `Column${mappingIndex + 1}`;
+                  const value = resolveReportMappingValue(row, index, m, rowContext);
+                  nr[cleanTargetKey] = value;
+                  rowContext[targetKey] = value;
+                  rowContext[cleanTargetKey] = value;
+                });
+                return { data: nr };
+              });
+              columnHeaders = activeMappings.map((m, mappingIndex) => {
+                const rawTarget = m.target || m.source || `Column${mappingIndex + 1}`;
+                return cleanFieldName(rawTarget) || `Column${mappingIndex + 1}`;
+              });
+            }
+
+            // Strip any empty-string headers that slipped through
+            const validHeaders = columnHeaders.filter(h => h !== null && h !== undefined && cleanFieldName(String(h)) !== '');
+            columnHeaders = validHeaders;
+
+            // Group-aggregate by merge columns, then sort for contiguous visual merging
+            if (!useFallback) {
+              const mergeSortKeys = activeMappings
+                .filter(m => m.enableMerging)
+                .map(m => cleanFieldName(m.target || m.source || '') || '');
+
+              if (mergeSortKeys.length > 0) {
+                // Collapse rows sharing the same merge-column values into one row,
+                // summing count/condition_count columns across the group.
+                const groupMap = new Map();
+                const groupOrder = [];
+                reportData.forEach(item => {
+                  const key = mergeSortKeys
+                    .map(k => String(item.data[k] ?? '').toLowerCase().trim())
+                    .join('\0');
+                  if (!groupMap.has(key)) {
+                    groupMap.set(key, { data: { ...item.data } });
+                    groupOrder.push(key);
+                  } else {
+                    const existing = groupMap.get(key).data;
+                    activeMappings.forEach((m, mi) => {
+                      if (m.type === 'count' || m.type === 'condition_count') {
+                        const col = cleanFieldName(m.target || m.source || `Column${mi + 1}`) || `Column${mi + 1}`;
+                        existing[col] = (Number(existing[col]) || 0) + (Number(item.data[col]) || 0);
+                      }
+                    });
+                  }
+                });
+
+                // Rebuild reportData from groups and reassign serial numbers
+                reportData = groupOrder.map((key, idx) => {
+                  const item = groupMap.get(key);
+                  activeMappings.forEach((m, mi) => {
+                    if (m.type === 'serial') {
+                      const col = cleanFieldName(m.target || m.source || `Column${mi + 1}`) || `Column${mi + 1}`;
+                      item.data[col] = idx + 1;
+                    }
+                  });
+                  return { data: item.data };
+                });
+
+                // Sort so primary merge column groups are contiguous
+                reportData.sort((a, b) => {
+                  for (const key of mergeSortKeys) {
+                    const av = String(a.data[key] ?? '').toLowerCase();
+                    const bv = String(b.data[key] ?? '').toLowerCase();
+                    if (av < bv) return -1;
+                    if (av > bv) return 1;
+                  }
+                  return 0;
+                });
+              }
+            }
+
+            finalAOA.push(columnHeaders);
+            reportData.forEach(item => finalAOA.push(columnHeaders.map(h => item.data[h] !== undefined ? item.data[h] : '')));
 
             if (template.isOutputFilterEnabled !== false && template.outputFilters?.length > 0) {
               const hdr = finalAOA[0];
@@ -702,71 +1254,38 @@ export default function GenerateReport() {
               finalAOA = [hdr, ...filteredRows];
             }
 
-            if (template.isPivotSummaryEnabled) {
-              const totalRow = ['Grand Total'];
-              allColKs.forEach(ck => {
-                const allRowsForCk = [];
-                Object.values(rowsByGroup).forEach(rg => {
-                  if (rg.colGroups[ck]) allRowsForCk.push(...rg.colGroups[ck].rows);
-                });
-                pCols.forEach(p => {
-                  if (p.showTotal === false) { totalRow.push(''); return; }
-                  const fr = applyColRowFilters(allRowsForCk, p);
-                  if (p.type === 'aggregation') {
-                    let v = 0;
-                    const op = p.operation;
-                    if (op === 'count') {
-                      v = fr.length;
-                    } else if (op === 'count_single') {
-                      v = fr.filter(row => !String(getMasterValue(row, p.source) || '').includes('/')).length;
-                    } else if (op === 'count_multi') {
-                      v = fr.filter(row => String(getMasterValue(row, p.source) || '').includes('/')).length;
-                    } else if (op === 'count_unique') {
-                      const dedupCol = p.dedupColumn || p.source;
-                      const seen = new Set();
-                      fr.forEach(row => { const k = String(getMasterValue(row, dedupCol) || '').trim(); if (k) seen.add(k); });
-                      v = seen.size;
-                    } else if (fr.length > 0) {
-                      const vs = fr.map(row => parseSafeNum(getMasterValue(row, p.source)));
-                      if (op === 'sum') v = vs.reduce((a, b) => a + b, 0);
-                      else if (op === 'avg') v = vs.reduce((a, b) => a + b, 0) / vs.length;
-                      else if (op === 'min') v = Math.min(...vs);
-                      else if (op === 'max') v = Math.max(...vs);
-                    }
-                    totalRow.push(v);
-                  } else {
-                    totalRow.push('');
-                  }
-                });
-              });
-              finalAOA.push(totalRow);
+            if (!activeMappings.some(m => m.enableMerging)) {
+              finalAOA = applyFinalSort(finalAOA, template.sortConfig);
             }
 
-            columnHeaders = headers;
-            if (template.chartConfig) currentChartImage = await generateChartImage(template.chartConfig, generateChartDataFromAOA(finalAOA));
-            const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(finalAOA);
-            XLSX.utils.book_append_sheet(wb, ws, 'Report');
-            const excelBuffer = currentChartImage ? await excelJSExport(finalAOA, columnHeaders, topReportHeader, currentChartImage) : XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-            let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
-            if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
-            const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-            if (isSingle) saveAs(new Blob([excelBuffer], { type: excelMimeType }), fileName); else zip.file(fileName, excelBuffer);
-          } else {
-            let reportData = filteredMD.map((row, index) => {
-              const nr = {};
-              (template.mappings || []).forEach(m => {
-                if (!m.target) return;
-                let v = ''; if (m.type === 'serial') v = index + 1; else v = cleanValue(getMasterValue(row, m.source), m, m.source);
-                nr[m.target] = v;
-              });
-              return { data: nr };
-            });
-            columnHeaders = (template.mappings || []).filter(m => m.target).map(m => cleanFieldName(m.target));
-            finalAOA.push(columnHeaders);
-            reportData.forEach(item => finalAOA.push(columnHeaders.map(h => item.data[h])));
-            const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(finalAOA);
-            XLSX.utils.book_append_sheet(wb, ws, 'Report');
-            const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            // Always reassign serial columns last so S.No is 1,2,3... after all sorting/filtering
+            if (!useFallback) {
+              const serialColIndices = activeMappings.reduce((acc, m, i) => {
+                if (m.type === 'serial') {
+                  const sh = cleanFieldName(m.target || m.source || `Column${i + 1}`) || `Column${i + 1}`;
+                  const si = validHeaders.indexOf(sh);
+                  if (si >= 0) acc.push(si);
+                }
+                return acc;
+              }, []);
+              if (serialColIndices.length > 0) {
+                finalAOA.slice(1).forEach((row, idx) => {
+                  serialColIndices.forEach(ci => { row[ci] = idx + 1; });
+                });
+              }
+            }
+
+            // Compute which column indices (0-based in finalAOA) have enableMerging set
+            const mergeColIndices = useFallback ? [] : activeMappings.reduce((acc, m, i) => {
+              if (m.enableMerging) {
+                // map from activeMappings index to validHeaders index
+                const hdr = cleanFieldName(m.target || m.source || `Column${i + 1}`) || `Column${i + 1}`;
+                const hi = validHeaders.indexOf(hdr);
+                if (hi >= 0) acc.push(hi);
+              }
+              return acc;
+            }, []);
+            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, [], !!template.isHighlightEmptyEnabled, mergeColIndices);
             let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
             if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
             const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -777,7 +1296,19 @@ export default function GenerateReport() {
       }
 
       if (!isSingle && Object.keys(zip.files).length > 0) saveAs(await zip.generateAsync({ type: 'blob' }), `Reports_${Date.now()}.zip`);
-      
+
+      const successCount = targetTemplates.length - templateErrors.length;
+      if (successCount > 0) {
+        try {
+          await addDoc(collection(db, 'reportLogs'), {
+            timestamp: new Date().toISOString(),
+            templateCount: successCount,
+            templateNames: targetTemplates.slice(0, successCount).map(t => t.name || 'Untitled'),
+            isBatch: !isSingle,
+          });
+        } catch (_) {}
+      }
+
       if (templateErrors.length > 0) {
         setError(`Processing completed with ${templateErrors.length} errors:\n${templateErrors.join('\n')}`);
         setStatus('Completed with errors');

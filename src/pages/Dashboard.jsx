@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { 
   FileSpreadsheet, 
   Users, 
@@ -20,22 +20,23 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    // Mock simulation for stats fetch
-    // In a real app, these would come from Firestore counts
-    const fetchStats = async () => {
+    const fetchStatic = async () => {
       try {
-        const templatesQuery = await getDocs(collection(db, 'templates'));
-        setStats(prev => ({ ...prev, templates: templatesQuery.docs.length }));
-        
+        const templatesSnap = await getDocs(collection(db, 'templates'));
+        setStats(prev => ({ ...prev, templates: templatesSnap.docs.length }));
         if (isAdmin) {
-          const usersQuery = await getDocs(collection(db, 'users'));
-          setStats(prev => ({ ...prev, users: usersQuery.docs.length }));
+          const usersSnap = await getDocs(collection(db, 'users'));
+          setStats(prev => ({ ...prev, users: usersSnap.docs.length }));
         }
-      } catch (error) {
-        console.error('Error fetching stats:', error);
-      }
+      } catch (err) { console.error(err); }
     };
-    fetchStats();
+    fetchStatic();
+
+    // Real-time listener for report generation count
+    const unsub = onSnapshot(collection(db, 'reportLogs'), snap => {
+      setStats(prev => ({ ...prev, reports: snap.size }));
+    }, () => {});
+    return () => unsub();
   }, [isAdmin]);
 
   return (
@@ -69,7 +70,7 @@ export default function Dashboard() {
             <FileSpreadsheet size={24} />
           </div>
           <p className="stat-label">Reports Generated (Total)</p>
-          <h2 className="stat-value">124</h2>
+          <h2 className="stat-value">{stats.reports}</h2>
         </div>
       </div>
 

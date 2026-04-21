@@ -28,9 +28,6 @@ import {
   Layout,
   Sparkles,
   Check,
-  PieChart,
-  BarChart2,
-  TrendingUp,
   Keyboard,
   List
 } from 'lucide-react';
@@ -71,8 +68,8 @@ export default function PivotTemplateManager() {
     isHeaderEnabled: false,
     headerConfig: { type: 'custom', text: '', sourceCol: '' },
     isPivotSummaryEnabled: false,
-    isChartEnabled: false,
-    chartConfig: { type: 'bar', xAxis: '', yAxes: [] }
+    isRowTotalEnabled: false,
+    sortConfig: { enabled: false, column: '', direction: 'asc', type: 'auto' },
   });
 
   const [modal, setModal] = useState({
@@ -135,8 +132,6 @@ export default function PivotTemplateManager() {
         pivotColumns: [],
         rowFieldTransforms: { findText: '', replaceWith: '', simplifyDate: false, simplifyTime: false, normalizeMonth: false, normalizeWeek: false },
         colFieldTransforms: { findText: '', replaceWith: '', simplifyDate: false, simplifyTime: false, normalizeMonth: false, normalizeWeek: false },
-        isChartEnabled: false,
-        chartConfig: { type: 'bar', xAxis: '', yAxes: [] }
       });
       return;
     }
@@ -171,12 +166,12 @@ export default function PivotTemplateManager() {
         isOutputFilterEnabled: t.isOutputFilterEnabled !== false,
         rowFieldTransforms: t.rowFieldTransforms || { findText: '', replaceWith: '', simplifyDate: false, simplifyTime: false, normalizeMonth: false, normalizeWeek: false },
         colFieldTransforms: t.colFieldTransforms || { findText: '', replaceWith: '', simplifyDate: false, simplifyTime: false, normalizeMonth: false, normalizeWeek: false },
-        isChartEnabled: t.isChartEnabled || false,
-        chartConfig: t.chartConfig || { type: 'bar', xAxis: '', yAxes: [] },
         fileNameFormat: t.fileNameFormat || 'Pivot_Report_{date}',
         isHeaderEnabled: !!t.isHeaderEnabled,
         headerConfig: t.headerConfig || { type: 'custom', text: '', sourceCol: '' },
         isPivotSummaryEnabled: !!t.isPivotSummaryEnabled,
+        isRowTotalEnabled: !!t.isRowTotalEnabled,
+        sortConfig: t.sortConfig || { enabled: false, column: '', direction: 'asc', type: 'auto' },
         // Initialize isManual for old templates
         globalFilters: (t.globalFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
         outputFilters: (t.outputFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
@@ -401,7 +396,7 @@ export default function PivotTemplateManager() {
   const addFilter = (listType) => {
     setFormData(prev => ({
       ...prev,
-      [listType]: [...(prev[listType] || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false }]
+      [listType]: [...(prev[listType] || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false, mode: 'filter' }]
     }));
   };
 
@@ -632,11 +627,17 @@ export default function PivotTemplateManager() {
                       {formData.globalFilters.map((f, i) => (
                         <div key={i} className="glass" style={{ padding: '12px', borderRadius: '12px', border: '1px solid var(--border)', position: 'relative' }}>
                           <button onClick={() => removeFilter('globalFilters', i)} style={{ position: 'absolute', top: '8px', right: '8px', background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}><X size={14} /></button>
-                          
-                          <div className="form-group" style={{ marginBottom: '8px' }}>
-                            <SearchableDropdown options={masterHeaders} value={f.conditionCol} onChange={v => updateFilter('globalFilters', i, 'conditionCol', v)} placeholder="Select Field..." />
+
+                          <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                            <button onClick={() => updateFilter('globalFilters', i, 'mode', 'filter')} style={{ padding: '2px 8px', fontSize: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: f.mode !== 'exclude' ? 'var(--primary)' : 'var(--glass-bg)', color: f.mode !== 'exclude' ? 'white' : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>Filter Rows</button>
+                            <button onClick={() => updateFilter('globalFilters', i, 'mode', 'exclude')} style={{ padding: '2px 8px', fontSize: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: f.mode === 'exclude' ? '#CD5C5C' : 'var(--glass-bg)', color: f.mode === 'exclude' ? 'white' : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>Exclude Column</button>
                           </div>
-                          
+
+                          <div className="form-group" style={{ marginBottom: '8px' }}>
+                            <SearchableDropdown options={masterHeaders} value={f.conditionCol} onChange={v => updateFilter('globalFilters', i, 'conditionCol', v)} placeholder={f.mode === 'exclude' ? 'Select column to exclude...' : 'Select Field...'} />
+                          </div>
+
+                          {f.mode !== 'exclude' && (
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <select value={f.operator} onChange={e => updateFilter('globalFilters', i, 'operator', e.target.value)} style={{ padding: '6px', fontSize: '11px', flex: 1 }}>
                               <option value="==">Equals</option>
@@ -645,10 +646,10 @@ export default function PivotTemplateManager() {
                               <option value="unique">Unique Only</option>
                               <option value="between">Between</option>
                             </select>
-                            
+
                             <div style={{ flex: 1.5, position: 'relative' }}>
                               <div style={{ position: 'absolute', top: '-18px', right: '0', display: 'flex', gap: '8px' }}>
-                                <button 
+                                <button
                                   onClick={() => updateFilter('globalFilters', i, 'isManual', !f.isManual)}
                                   style={{ background: 'none', border: 'none', color: f.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
                                   title={f.isManual ? "Switch to Pick from List" : "Switch to Manual Type"}
@@ -665,16 +666,16 @@ export default function PivotTemplateManager() {
                                 </div>
                               ) : f.operator !== 'unique' && (
                                 f.isManual ? (
-                                  <input 
-                                    placeholder="e.g. Value1, Value2" 
-                                    value={Array.isArray(f.conditionVals) ? f.conditionVals.join(', ') : f.conditionVals || ''} 
+                                  <input
+                                    placeholder="e.g. Value1, Value2"
+                                    value={Array.isArray(f.conditionVals) ? f.conditionVals.join(', ') : f.conditionVals || ''}
                                     onChange={e => updateFilter('globalFilters', i, 'conditionVals', e.target.value.split(',').map(s => s.trim()))}
                                     style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}
                                   />
                                 ) : (
-                                  <MultiSelectDropdown 
-                                    options={masterUniqueValues[f.conditionCol] || []} 
-                                    selectedValues={f.conditionVals || []} 
+                                  <MultiSelectDropdown
+                                    options={masterUniqueValues[f.conditionCol] || []}
+                                    selectedValues={f.conditionVals || []}
                                     onChange={vals => updateFilter('globalFilters', i, 'conditionVals', vals)}
                                     placeholder="Values..."
                                   />
@@ -682,6 +683,7 @@ export default function PivotTemplateManager() {
                               )}
                             </div>
                           </div>
+                          )}
                         </div>
                       ))}
                       <button onClick={() => addFilter('globalFilters')} className="btn-secondary" style={{ width: '100%', padding: '10px', fontSize: '11px', borderStyle: 'dashed' }}>
@@ -790,15 +792,72 @@ export default function PivotTemplateManager() {
                    <TableIcon size={20} color="var(--secondary)" />
                    <h3 style={{ fontSize: '16px', fontWeight: '600' }}>Pivot Structure</h3>
                 </div>
-                <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: '700' }}>
-                   Show Grand Totals:
-                   <input 
-                     type="checkbox" 
-                     checked={formData.isPivotSummaryEnabled} 
-                     onChange={e => setFormData(prev => ({ ...prev, isPivotSummaryEnabled: e.target.checked }))} 
-                   />
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                   <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: '700' }}>
+                     Show Row Totals:
+                     <input
+                       type="checkbox"
+                       checked={formData.isRowTotalEnabled}
+                       onChange={e => setFormData(prev => ({ ...prev, isRowTotalEnabled: e.target.checked }))}
+                     />
+                   </label>
+                   <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: '700' }}>
+                     Show Grand Totals:
+                     <input
+                       type="checkbox"
+                       checked={formData.isPivotSummaryEnabled}
+                       onChange={e => setFormData(prev => ({ ...prev, isPivotSummaryEnabled: e.target.checked }))}
+                     />
+                   </label>
+                   <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: '700' }}>
+                     Sort Rows:
+                     <input
+                       type="checkbox"
+                       checked={formData.sortConfig?.enabled || false}
+                       onChange={e => setFormData(prev => ({ ...prev, sortConfig: { ...(prev.sortConfig || {}), enabled: e.target.checked } }))}
+                     />
+                   </label>
+                </div>
              </div>
+             {formData.sortConfig?.enabled && (
+               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', padding: '12px 16px', background: 'var(--glass-subtle)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                 <div className="form-group" style={{ marginBottom: 0 }}>
+                   <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Sort by Column</label>
+                   <SearchableDropdown
+                     options={[
+                       formData.rowField || '',
+                       ...((formData.pivotColumns || []).map(p => p.displayName || p.source || '').filter(Boolean))
+                     ].filter(Boolean)}
+                     value={formData.sortConfig?.column || ''}
+                     onChange={val => setFormData(prev => ({ ...prev, sortConfig: { ...(prev.sortConfig || {}), column: val } }))}
+                     placeholder="Select column..."
+                   />
+                 </div>
+                 <div className="form-group" style={{ marginBottom: 0 }}>
+                   <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Direction</label>
+                   <select
+                     value={formData.sortConfig?.direction || 'asc'}
+                     onChange={e => setFormData(prev => ({ ...prev, sortConfig: { ...(prev.sortConfig || {}), direction: e.target.value } }))}
+                     style={{ padding: '6px', fontSize: '12px', width: '100%' }}
+                   >
+                     <option value="asc">Ascending</option>
+                     <option value="desc">Descending</option>
+                   </select>
+                 </div>
+                 <div className="form-group" style={{ marginBottom: 0 }}>
+                   <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Sort Type</label>
+                   <select
+                     value={formData.sortConfig?.type || 'auto'}
+                     onChange={e => setFormData(prev => ({ ...prev, sortConfig: { ...(prev.sortConfig || {}), type: e.target.value } }))}
+                     style={{ padding: '6px', fontSize: '12px', width: '100%' }}
+                   >
+                     <option value="auto">Auto-detect</option>
+                     <option value="alpha">Alphabetical</option>
+                     <option value="numeric">Numeric</option>
+                   </select>
+                 </div>
+               </div>
+             )}
              
              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -957,81 +1016,6 @@ export default function PivotTemplateManager() {
                       <Calculator size={14} /> Add Formula
                     </button>
                   </div>
-               </div>
-
-               {/* CHARTS CONFIGURATION SECTION */}
-               <div className="glass" style={{ marginBottom: '24px', padding: '24px', borderRadius: '16px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                           <BarChart2 size={20} />
-                        </div>
-                        <div>
-                           <h4 style={{ fontSize: '15px', fontWeight: '700' }}>Charts & Visualization</h4>
-                           <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Embed a visual summary at the bottom of the report</p>
-                        </div>
-                     </div>
-                     <label className="switch-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                        <input 
-                           type="checkbox" 
-                           checked={formData.isChartEnabled} 
-                           onChange={e => setFormData(prev => ({ ...prev, isChartEnabled: e.target.checked }))} 
-                        />
-                        <span style={{ fontSize: '12px', fontWeight: '600' }}>{formData.isChartEnabled ? 'Enabled' : 'Disabled'}</span>
-                     </label>
-                  </div>
-
-                  {formData.isChartEnabled && formData.chartConfig && (
-                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: '20px' }}>
-                        <div className="form-group">
-                           <label style={{ fontSize: '11px' }}>Chart Type</label>
-                           <select 
-                              value={formData.chartConfig.type || 'bar'} 
-                              onChange={e => setFormData(p => ({...p, chartConfig: {...(p.chartConfig || {}), type: e.target.value}}))}
-                              style={{ padding: '10px' }}
-                           >
-                              <option value="bar">Bar Chart</option>
-                              <option value="line">Line Chart</option>
-                              <option value="pie">Pie Chart (Single Metric Only)</option>
-                           </select>
-                        </div>
-                        <div className="form-group">
-                           <label style={{ fontSize: '11px' }}>Label Column (X-Axis)</label>
-                           <select 
-                              value={formData.chartConfig?.xAxis || ''} 
-                              onChange={e => setFormData(p => ({...p, chartConfig: {...(p.chartConfig || {}), xAxis: e.target.value}}))}
-                              style={{ padding: '10px' }}
-                           >
-                              <option value="">Select Column...</option>
-                              {formData.pivotColumns.filter(c => c.type === 'grouping' || c.type === 'property').map(c => (
-                                 <option key={c.id} value={c.displayName || c.source}>{c.displayName || c.source}</option>
-                               ))}
-                           </select>
-                        </div>
-                        <div className="form-group">
-                           <label style={{ fontSize: '11px' }}>Metric Columns (Y-Axis)</label>
-                           <div className="glass" style={{ maxHeight: '120px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                              {formData.pivotColumns.filter(c => (c.type === 'aggregation' || c.type === 'formula') && (c.displayName || c.source)).map(c => {
-                                 const val = c.displayName || (c.type === 'aggregation' ? `${c.operation.toUpperCase()}(${c.source})` : c.source || 'Untitled');
-                                 return (
-                                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', marginBottom: '6px', cursor: 'pointer' }}>
-                                       <input 
-                                          type="checkbox" 
-                                          checked={(formData.chartConfig?.yAxes || []).includes(val)}
-                                          onChange={e => {
-                                             const current = formData.chartConfig?.yAxes || [];
-                                             const next = e.target.checked ? [...current, val] : current.filter(v => v !== val);
-                                             setFormData(p => ({...p, chartConfig: {...(p.chartConfig || {}), yAxes: next}}));
-                                          }}
-                                       />
-                                       {val}
-                                    </label>
-                                 );
-                              })}
-                           </div>
-                        </div>
-                     </div>
-                  )}
                </div>
 
                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

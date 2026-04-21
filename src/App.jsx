@@ -14,6 +14,7 @@ const GenerateReport = lazy(() => import('./pages/GenerateReport'));
 const VisualExcelMapping = lazy(() => import('./pages/VisualExcelMapping'));
 const PivotTemplateManager = lazy(() => import('./pages/PivotTemplateManager'));
 const ScoreboardDesigner = lazy(() => import('./pages/ScoreboardDesigner'));
+const MultiTableDesigner = lazy(() => import('./pages/MultiTableDesigner'));
 
 // Components
 import Layout from './components/Layout';
@@ -54,6 +55,11 @@ function App() {
             <Route path="scoreboard-designer" element={
               <AdminRoute>
                 <ScoreboardDesigner />
+              </AdminRoute>
+            } />
+            <Route path="multi-table-designer" element={
+              <AdminRoute>
+                <MultiTableDesigner />
               </AdminRoute>
             } />
           </Route>
