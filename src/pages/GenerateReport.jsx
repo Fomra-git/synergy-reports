@@ -7,21 +7,29 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
 import {
-  Upload, 
-  FileSpreadsheet, 
-  CheckCircle2, 
-  AlertCircle, 
-  Loader2, 
-  Download, 
+  Upload,
+  FileSpreadsheet,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Download,
   FileArchive,
   ArrowRight,
-  Search
+  Search,
+  FolderOpen,
+  Tag,
+  ChevronLeft,
+  LayoutGrid,
+  AlignLeft
 } from 'lucide-react';
 
 export default function GenerateReport() {
   const [templates, setTemplates] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [selectedTemplates, setSelectedTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [step, setStep] = useState(0); // 0 = category selection, 1 = upload & generate
+  const [selectedCategory, setSelectedCategory] = useState(null); // null = all templates
   const [masterFile, setMasterFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [templateSearchTerm, setTemplateSearchTerm] = useState('');
@@ -31,17 +39,38 @@ export default function GenerateReport() {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    fetchTemplates();
+    const fetchAll = async () => {
+      try {
+        const [tplSnap, catSnap] = await Promise.all([
+          getDocs(query(collection(db, 'templates'))),
+          getDocs(query(collection(db, 'reportCategories')))
+        ]);
+        setTemplates(tplSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error('Error fetching data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAll();
   }, []);
 
-  const fetchTemplates = async () => {
-    try {
-      const q = query(collection(db, 'templates'));
-      const snapshot = await getDocs(q);
-      setTemplates(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    } catch (err) {
-      console.error('Error fetching templates:', err);
-    }
+  const handleCategorySelect = (cat) => {
+    setSelectedCategory(cat);
+    setSelectedTemplates([]);
+    setTemplateSearchTerm('');
+    setStep(1);
+  };
+
+  const handleBackToCategories = () => {
+    setStep(0);
+    setSelectedCategory(null);
+    setSelectedTemplates([]);
+    setTemplateSearchTerm('');
+    setMasterFile(null);
+    setError(null);
+    setStatus('');
   };
 
   const handleFileChange = (e) => {
@@ -55,7 +84,7 @@ export default function GenerateReport() {
   };
 
   const toggleTemplateSelection = (id) => {
-    setSelectedTemplates(prev => 
+    setSelectedTemplates(prev =>
       prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
     );
   };
@@ -68,10 +97,13 @@ export default function GenerateReport() {
     }
   };
 
-  const filteredTemplates = templates.filter(t => 
-    t.name.toLowerCase().includes(templateSearchTerm.toLowerCase()) || 
-    (t.description || '').toLowerCase().includes(templateSearchTerm.toLowerCase())
-  );
+  // Filter by selected category then by search term
+  const filteredTemplates = templates
+    .filter(t => !selectedCategory || (selectedCategory.templateIds || []).includes(t.id))
+    .filter(t =>
+      t.name.toLowerCase().includes(templateSearchTerm.toLowerCase()) ||
+      (t.description || '').toLowerCase().includes(templateSearchTerm.toLowerCase())
+    );
 
   const processFile = async (explicitTemplateId = null) => {
     const isSingle = !!explicitTemplateId;
@@ -1332,12 +1364,127 @@ export default function GenerateReport() {
     return mk ? row[mk] : '';
   };
 
+  // ── Step 0: Category Selection ──────────────────────────────────────────────
+  if (step === 0) {
+    return (
+      <div className="generate-report">
+        <header className="page-header">
+          <h1 className="page-title">Generate Reports</h1>
+          <p className="page-description">Select a report category to get started.</p>
+        </header>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '80px', color: 'var(--text-muted)' }}>
+            <Loader2 size={32} className="spinner" style={{ margin: '0 auto 16px', display: 'block' }} />
+            Loading categories...
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+            {/* All Templates card */}
+            <div
+              onClick={() => handleCategorySelect(null)}
+              className="glass"
+              style={{ padding: '32px', cursor: 'pointer', borderRadius: '20px', transition: 'transform 0.15s, box-shadow 0.15s', border: '1px solid var(--border)' }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(99,102,241,0.15)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+            >
+              <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'linear-gradient(135deg, var(--primary), var(--secondary))', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                <LayoutGrid size={26} color="white" />
+              </div>
+              <h3 style={{ fontSize: '17px', fontWeight: '700', marginBottom: '8px' }}>All Templates</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>Access every available report template.</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '12px', background: 'var(--glass-bg)', border: '1px solid var(--border)', padding: '3px 10px', borderRadius: '8px', color: 'var(--text-muted)' }}>
+                  {templates.length} templates
+                </span>
+                <ArrowRight size={16} color="var(--primary)" />
+              </div>
+            </div>
+
+            {/* Category cards */}
+            {categories.map(cat => {
+              const count = (cat.templateIds || []).length;
+              return (
+                <div
+                  key={cat.id}
+                  onClick={() => handleCategorySelect(cat)}
+                  className="glass"
+                  style={{ padding: '32px', cursor: 'pointer', borderRadius: '20px', transition: 'transform 0.15s, box-shadow 0.15s', border: '1px solid var(--border)' }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(99,102,241,0.15)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+                >
+                  <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(99, 102, 241, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                    <Tag size={26} color="var(--primary)" />
+                  </div>
+                  <h3 style={{ fontSize: '17px', fontWeight: '700', marginBottom: '6px' }}>{cat.name}</h3>
+                  {cat.description && (
+                    <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.5' }}>{cat.description}</p>
+                  )}
+                  {cat.masterExcelFormatNotes && (
+                    <div style={{ background: 'var(--glass-subtle)', borderRadius: '10px', padding: '10px 12px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '12px', maxHeight: '72px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                      <AlignLeft size={11} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'text-top' }} />
+                      {cat.masterExcelFormatNotes}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'auto' }}>
+                    <span style={{ fontSize: '12px', background: 'var(--glass-bg)', border: '1px solid var(--border)', padding: '3px 10px', borderRadius: '8px', color: 'var(--text-muted)' }}>
+                      {count} template{count !== 1 ? 's' : ''}
+                    </span>
+                    <ArrowRight size={16} color="var(--primary)" />
+                  </div>
+                </div>
+              );
+            })}
+
+            {categories.length === 0 && templates.length > 0 && (
+              <div className="glass" style={{ gridColumn: '1/-1', padding: '40px', textAlign: 'center', color: 'var(--text-muted)', borderRadius: '20px' }}>
+                <FolderOpen size={32} style={{ display: 'block', margin: '0 auto 12px', opacity: 0.4 }} />
+                <p>No categories created yet. <strong>Click "All Templates"</strong> to continue, or ask an admin to set up categories.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="generate-report">
-      <header className="page-header">
-        <h1 className="page-title">Generate Reports</h1>
-        <p className="page-description">Process your master data through multiple templates simultaneously.</p>
+      <header className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+            <button
+              onClick={handleBackToCategories}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '13px', padding: '4px 0', fontFamily: 'inherit' }}
+            >
+              <ChevronLeft size={16} /> Back to Categories
+            </button>
+          </div>
+          <h1 className="page-title">
+            {selectedCategory ? selectedCategory.name : 'All Templates'}
+          </h1>
+          <p className="page-description">
+            {selectedCategory?.description || 'Process your master data through multiple templates simultaneously.'}
+          </p>
+        </div>
+        {selectedCategory && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '12px', padding: '8px 14px' }}>
+            <Tag size={16} color="var(--primary)" />
+            <span style={{ fontSize: '13px', color: 'var(--primary)', fontWeight: '600' }}>{selectedCategory.name}</span>
+          </div>
+        )}
       </header>
+
+      {/* Master Excel Format Notes banner */}
+      {selectedCategory?.masterExcelFormatNotes && (
+        <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '16px', padding: '16px 20px', marginBottom: '24px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+          <AlignLeft size={18} color="var(--warning)" style={{ flexShrink: 0, marginTop: '1px' }} />
+          <div>
+            <p style={{ fontSize: '12px', fontWeight: '700', color: 'var(--warning)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Master Excel Format Notes</p>
+            <p style={{ fontSize: '13px', color: 'var(--text-main)', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>{selectedCategory.masterExcelFormatNotes}</p>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 1fr) 320px', gap: '32px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>

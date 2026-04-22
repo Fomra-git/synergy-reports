@@ -342,6 +342,7 @@ input:focus, select:focus {
 
 .main-content {
   flex: 1;
+  min-width: 0;
   padding: 40px;
   background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.05), transparent 40%);
 }

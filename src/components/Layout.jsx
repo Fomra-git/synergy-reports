@@ -1,19 +1,20 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  LayoutDashboard, 
-  FilePlus, 
-  Settings, 
-  Users, 
-  LogOut, 
+import {
+  LayoutDashboard,
+  FilePlus,
+  Settings,
+  Users,
+  LogOut,
   FileSpreadsheet,
   LayoutGrid,
   Sun,
   Moon,
   BarChart4,
   Trophy,
-  Layers
+  Layers,
+  Eye
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
@@ -63,6 +64,10 @@ export default function Layout() {
           <NavLink to="/generate" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <FilePlus size={20} />
             Generate Report
+          </NavLink>
+          <NavLink to="/view-report" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            <Eye size={20} />
+            View Report
           </NavLink>
           <NavLink to="/templates" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <LayoutGrid size={20} />

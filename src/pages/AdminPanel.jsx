@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, getDocs, addDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { UserPlus, UserMinus, Shield, Mail, Search, AlertCircle, Settings, BarChart4 } from 'lucide-react';
+import { UserPlus, UserMinus, Shield, Mail, Search, AlertCircle, Settings, BarChart4, FolderOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AdminSettings from '../components/AdminSettings';
 import ModernModal from '../components/ModernModal';
+import ReportCategoriesAdmin from './ReportCategoriesAdmin';
 
 export default function AdminPanel() {
   const navigate = useNavigate();
@@ -103,19 +104,25 @@ export default function AdminPanel() {
            <p className="page-description">Authorize users and configure global app settings.</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', background: 'var(--glass-subtle)', padding: '6px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-            <button 
+            <button
                onClick={() => setActiveTab('users')}
                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: activeTab === 'users' ? 'var(--primary)' : 'transparent', color: activeTab === 'users' ? 'white' : 'var(--text-main)', cursor: 'pointer', fontWeight: '600' }}
             >
                User Management
             </button>
-            <button 
+            <button
+               onClick={() => setActiveTab('categories')}
+               style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: activeTab === 'categories' ? 'var(--primary)' : 'transparent', color: activeTab === 'categories' ? 'white' : 'var(--text-main)', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+               <FolderOpen size={14} /> Report Categories
+            </button>
+            <button
                onClick={() => setActiveTab('settings')}
                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: activeTab === 'settings' ? 'var(--primary)' : 'transparent', color: activeTab === 'settings' ? 'white' : 'var(--text-main)', cursor: 'pointer', fontWeight: '600' }}
             >
                App Settings
             </button>
-            <button 
+            <button
                onClick={() => navigate('/pivot-designer')}
                style={{ marginLeft: '8px', padding: '8px 16px', borderRadius: '8px', border: 'none', background: 'var(--glass-bg)', color: 'var(--secondary)', cursor: 'pointer', fontWeight: '600', border: '1px solid var(--border)' }}
             >
@@ -247,6 +254,8 @@ export default function AdminPanel() {
            </div>
         </div>
       </div>
+      ) : activeTab === 'categories' ? (
+        <ReportCategoriesAdmin />
       ) : (
         <AdminSettings />
       )}
