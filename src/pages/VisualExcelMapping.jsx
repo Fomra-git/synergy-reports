@@ -1139,7 +1139,8 @@ export default function VisualExcelMapping() {
                    <option value="count">Occurrence Count (Running Total)</option>
                    <option value="math">Mathematical Formula</option>
                    <option value="condition_count">Conditional Count (Dashboard Summary)</option>
-                    <option value="time_diff">Time Difference</option>
+                   <option value="time_diff">Time Difference</option>
+                   <option value="last_visit_date">Last Visit Date</option>
                  </select>
                </div>
 
@@ -1153,6 +1154,20 @@ export default function VisualExcelMapping() {
                       placeholder="Select header..."
                       zIndex={1100} 
                     />
+                 </div>
+               )}
+
+               {modalData.type === 'last_visit_date' && (
+                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(99,102,241,0.05)', padding: '14px', borderRadius: '12px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                   <div className="form-group">
+                     <label style={{ fontSize: '11px' }}>Date Column (Visit Date)</label>
+                     <SearchableDropdown options={masterHeaders} value={modalData.source || ''} onChange={val => setModalData(prev => ({ ...prev, source: val }))} placeholder="Select date column..." zIndex={1100} />
+                   </div>
+                   <div className="form-group">
+                     <label style={{ fontSize: '11px' }}>Patient / Group By Column</label>
+                     <SearchableDropdown options={masterHeaders} value={modalData.groupByCol || ''} onChange={val => setModalData(prev => ({ ...prev, groupByCol: val }))} placeholder="Select patient ID column..." zIndex={1100} />
+                   </div>
+                   <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Shows the latest date found in the date column for each unique value in the group-by column.</p>
                  </div>
                )}
 

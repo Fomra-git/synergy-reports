@@ -29,7 +29,8 @@ import {
   Sparkles,
   Check,
   Keyboard,
-  List
+  List,
+  Calendar
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -1059,6 +1060,9 @@ export default function PivotTemplateManager() {
                     <button onClick={() => addPivotColumn('formula')} className="btn-secondary" style={{ padding: '8px 12px', fontSize: '11px', gap: '6px' }}>
                       <Calculator size={14} /> Add Formula
                     </button>
+                    <button onClick={() => addPivotColumn('last_visit_date')} className="btn-secondary" style={{ padding: '8px 12px', fontSize: '11px', gap: '6px' }}>
+                      <Calendar size={14} /> Last Visit Date
+                    </button>
                   </div>
                </div>
 
@@ -1107,16 +1111,23 @@ export default function PivotTemplateManager() {
                         <div style={{ display: 'grid', gridTemplateColumns: (col.type === 'formula') ? '1fr' : '1fr 1fr', gap: '16px' }}>
                            {col.type !== 'formula' && (
                              <div className="form-group">
-                                <label style={{ fontSize: '11px' }}>{col.type === 'grouping' ? 'Master Column to Group By' : 'Source Master Column'}</label>
-                                <SearchableDropdown 
-                                  options={masterHeaders} 
-                                  value={col.source} 
+                                <label style={{ fontSize: '11px' }}>{col.type === 'grouping' ? 'Master Column to Group By' : col.type === 'last_visit_date' ? 'Date Column (Visit Date)' : 'Source Master Column'}</label>
+                                <SearchableDropdown
+                                  options={masterHeaders}
+                                  value={col.source}
                                   onChange={val => updatePivotColumn(col.id, 'source', val)}
                                   placeholder="Select column..."
                                 />
                              </div>
                            )}
-                           
+
+                           {col.type === 'last_visit_date' && (
+                             <div className="form-group">
+                               <label style={{ fontSize: '11px' }}>Patient / Group By Column</label>
+                               <SearchableDropdown options={masterHeaders} value={col.groupByCol || ''} onChange={val => updatePivotColumn(col.id, 'groupByCol', val)} placeholder="Patient ID column..." />
+                             </div>
+                           )}
+
                            {col.type === 'aggregation' && (
                              <div className="form-group">
                                 <label style={{ fontSize: '11px' }}>Operation</label>

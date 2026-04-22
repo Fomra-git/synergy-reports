@@ -185,8 +185,21 @@ async function processTemplateForView(template, masterFile) {
       if (f.operator === 'not_seen_within_days' && f.conditionCol && f.groupByCol)
         nsPairs.push({ dateCol: cleanFieldName(f.conditionCol), groupByCol: cleanFieldName(f.groupByCol) });
     });
+    const fmtLastVisit = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     collectNS(template.globalFilters);
-    (template.mappings || []).forEach(m => { collectNS(m.columnFilters); collectNS(m.rules); });
+    (template.mappings || []).forEach(m => {
+      collectNS(m.columnFilters); collectNS(m.rules);
+      if (m.type === 'last_visit_date' && m.source && m.groupByCol)
+        nsPairs.push({ dateCol: cleanFieldName(m.source), groupByCol: cleanFieldName(m.groupByCol) });
+    });
+    (template.pivotColumns || []).forEach(p => {
+      if (p.type === 'last_visit_date' && p.source && p.groupByCol)
+        nsPairs.push({ dateCol: cleanFieldName(p.source), groupByCol: cleanFieldName(p.groupByCol) });
+    });
+    (template.sections || []).forEach(s => (s.pivotColumns || []).forEach(p => {
+      if (p.type === 'last_visit_date' && p.source && p.groupByCol)
+        nsPairs.push({ dateCol: cleanFieldName(p.source), groupByCol: cleanFieldName(p.groupByCol) });
+    }));
     nsPairs.forEach(({ dateCol, groupByCol }) => {
       const key = `${dateCol}__${groupByCol}`;
       if (notSeenContext[key]) return;
@@ -354,6 +367,15 @@ async function processTemplateForView(template, masterFile) {
         default: return formatDuration(diff);
       }
     }
+    if (type === 'last_visit_date') {
+      const dateCol = cleanFieldName(src);
+      const gbCol = cleanFieldName(mapping.groupByCol || '');
+      const ctx = notSeenContext[`${dateCol}__${gbCol}`];
+      if (!ctx || !gbCol) return '';
+      const gv = String(getMV(row, mapping.groupByCol || '') || '').trim();
+      const ls = gv ? ctx.lastSeen[gv] : null;
+      return ls ? fmtLastVisit(ls) : '';
+    }
     return cleanVal(getMV(row, src), mapping, src);
   }
 
@@ -415,7 +437,7 @@ async function processTemplateForView(template, masterFile) {
     let pCols = [...(template.pivotColumns || [])];
     if (pCols.length === 0 && template.valueFields?.length) pCols = template.valueFields.map((vf, i) => ({ id: `leg-${i}`, type: 'aggregation', ...vf }));
     const rowField = template.rowField, colField = template.colField;
-    if (colField) pCols = pCols.filter(p => p.type === 'aggregation' || p.type === 'formula');
+    if (colField) pCols = pCols.filter(p => p.type === 'aggregation' || p.type === 'formula' || p.type === 'last_visit_date');
     if (excludedCols.size) pCols = pCols.filter(p => !excludedCols.has(cleanFieldName(p.source || '')));
     if (rowField) { const rfk = cleanFieldName(rowField).toLowerCase(); pCols = pCols.filter(p => !((p.type === 'property' || p.type === 'grouping') && cleanFieldName(p.source || '').toLowerCase() === rfk)); }
     const rowTx = template.rowFieldTransforms || {}, colTx = template.colFieldTransforms || {};
@@ -506,7 +528,7 @@ async function processTemplateForView(template, masterFile) {
       let pCols = [...(section.pivotColumns || [])];
       const rowField = section.rowField || '';
       const colField = section.colField || '';
-      if (colField) pCols = pCols.filter(p => p.type === 'aggregation' || p.type === 'formula');
+      if (colField) pCols = pCols.filter(p => p.type === 'aggregation' || p.type === 'formula' || p.type === 'last_visit_date');
       if (rowField) {
         const rfk = cleanFieldName(rowField).toLowerCase();
         pCols = pCols.filter(p => !((p.type === 'property' || p.type === 'grouping') && cleanFieldName(p.source || '').toLowerCase() === rfk));
@@ -547,6 +569,10 @@ async function processTemplateForView(template, masterFile) {
             else if (op === 'count_unique') { const dc = p.dedupColumn || p.source; const seen = new Set(); fr.forEach(r => { const k = String(getMV(r, dc) || '').trim(); if (k) seen.add(k); }); v = seen.size; }
             else { const vs = fr.map(r => parseSafeNum(getMV(r, p.source))); if (op === 'sum') v = vs.reduce((a,b)=>a+b,0); else if (op === 'avg') v = vs.reduce((a,b)=>a+b,0)/vs.length; else if (op === 'min') v = Math.min(...vs); else if (op === 'max') v = Math.max(...vs); }
           }
+        } else if (p.type === 'last_visit_date') {
+          let maxD = null;
+          fr.forEach(r => { const d = parseReportDatePure(getMV(r, p.source)); if (d && !isNaN(d.getTime()) && (!maxD || d > maxD)) maxD = d; });
+          v = maxD ? fmtLastVisit(maxD) : '';
         } else { v = (!isTotal && fr.length > 0) ? getMV(fr[0], p.source) : ''; }
         const key = p.displayName || p.source || ''; if (key) ctx[key] = v;
         return v;

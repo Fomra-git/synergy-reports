@@ -4,7 +4,7 @@ import { collection, query, getDocs, addDoc, updateDoc, doc, deleteDoc, arrayUni
 import {
   Plus, Trash2, Save, ArrowLeft, CheckCircle2, Loader2, Upload,
   Layers, Filter, Settings2, Database, Calculator, BarChart4,
-  ArrowUp, ArrowDown, AlignJustify, Columns, Table as TableIcon
+  ArrowUp, ArrowDown, AlignJustify, Columns, Table as TableIcon, Calendar
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -461,6 +461,7 @@ export default function MultiTableDesigner() {
                             { type: 'grouping', icon: <Database size={11} />, label: 'Property' },
                             { type: 'aggregation', icon: <Calculator size={11} />, label: 'Aggregation' },
                             { type: 'formula', icon: <BarChart4 size={11} />, label: 'Formula' },
+                            { type: 'last_visit_date', icon: <Calendar size={11} />, label: 'Last Visit Date' },
                           ].map(bt => (
                             <button key={bt.type} onClick={() => addPivotCol(bt.type)}
                               style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 10px', background: 'var(--glass-bg)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>
@@ -497,11 +498,18 @@ export default function MultiTableDesigner() {
                                 </div>
                                 {col.type !== 'formula' && (
                                   <div className="form-group">
-                                    <label style={labelSty}>Source Field</label>
+                                    <label style={labelSty}>{col.type === 'last_visit_date' ? 'Date Column (Visit Date)' : 'Source Field'}</label>
                                     <SearchableDropdown options={masterHeaders} value={col.source || ''} onChange={v => updatePivotCol(col.id, 'source', v)} placeholder="Select field..." />
                                   </div>
                                 )}
                               </div>
+
+                              {col.type === 'last_visit_date' && (
+                                <div className="form-group" style={{ marginTop: '8px' }}>
+                                  <label style={labelSty}>Patient / Group By Column</label>
+                                  <SearchableDropdown options={masterHeaders} value={col.groupByCol || ''} onChange={v => updatePivotCol(col.id, 'groupByCol', v)} placeholder="Patient ID column..." />
+                                </div>
+                              )}
 
                               {col.type === 'aggregation' && (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px' }}>
