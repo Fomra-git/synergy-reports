@@ -410,6 +410,11 @@ export default function GenerateReport() {
 
       const resolveReportMappingValue = (row, index, mapping, rowContext = {}) => {
         if (!mapping) return '';
+        // Column-level conditions: blank this cell if the row fails any condition
+        if (mapping.columnFilters && mapping.columnFilters.length > 0) {
+          const passes = mapping.columnFilters.every(f => !f.conditionCol || evaluateCondition(row, f));
+          if (!passes) return '';
+        }
         const type = mapping.type || 'direct';
         const sourceField = mapping.source || mapping.sourceCol || mapping.target || '';
         if (type === 'serial') return index + 1;

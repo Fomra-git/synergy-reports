@@ -310,7 +310,8 @@ export default function VisualExcelMapping() {
         operator: '==',
         conditionVals: [],
         trueOut: '',
-        falseOut: ''
+        falseOut: '',
+        columnFilters: []
       });
       setShowModal(true);
     }
@@ -335,7 +336,8 @@ export default function VisualExcelMapping() {
       operator: '==',
       conditionVals: [],
       trueOut: '',
-      falseOut: ''
+      falseOut: '',
+      columnFilters: []
     });
     setShowModal(true);
   };
@@ -1026,7 +1028,7 @@ export default function VisualExcelMapping() {
                         const newIdx = (formData.mappings || []).length;
                         const newLetter = String.fromCharCode(65 + newIdx);
                         setActiveCell({ colIndex: newIdx, colLetter: newLetter });
-                        setModalData({ type: 'direct', target: '', source: '', enableMerging: false, totalType: 'none', totalLabel: '', findText: '', replaceWith: '' });
+                        setModalData({ type: 'direct', target: '', source: '', enableMerging: false, totalType: 'none', totalLabel: '', findText: '', replaceWith: '', columnFilters: [] });
                         setShowModal(true);
                       }}
                     >
@@ -1562,6 +1564,129 @@ export default function VisualExcelMapping() {
                     </div>
                   </div>
                 )}
+
+               {/* COLUMN CONDITIONS */}
+               <div style={{ background: 'var(--glass-subtle)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                   <label style={{ fontSize: '12px', fontWeight: '700', color: '#f59e0b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                     <Filter size={14} /> Column Conditions
+                   </label>
+                   <button
+                     type="button"
+                     onClick={() => setModalData(prev => ({ ...prev, columnFilters: [...(prev.columnFilters || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false }] }))}
+                     style={{ padding: '4px 10px', fontSize: '11px', fontWeight: '700', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--glass-bg)', cursor: 'pointer', color: 'var(--text-main)' }}
+                   >+ Add Condition</button>
+                 </div>
+                 <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px' }}>Show this cell's value only when all conditions are met. Rows that fail will show blank for this column.</p>
+
+                 {(modalData.columnFilters || []).length === 0 && (
+                   <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No conditions — shows for all rows.</p>
+                 )}
+
+                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                   {(modalData.columnFilters || []).map((f, fi) => (
+                     <div key={fi} style={{ padding: '12px', background: 'var(--glass-bg)', borderRadius: '10px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                         <button
+                           type="button"
+                           onClick={() => setModalData(prev => ({ ...prev, columnFilters: (prev.columnFilters || []).filter((_, i) => i !== fi) }))}
+                           style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}
+                         ><X size={14} /></button>
+                       </div>
+                       <SearchableDropdown
+                         options={masterHeaders}
+                         value={f.conditionCol}
+                         onChange={val => {
+                           const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], conditionCol: val };
+                           setModalData(prev => ({ ...prev, columnFilters: upd }));
+                         }}
+                         placeholder="Condition column..."
+                         zIndex={1200}
+                       />
+                       <select
+                         value={f.operator || '=='}
+                         onChange={e => {
+                           const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], operator: e.target.value };
+                           setModalData(prev => ({ ...prev, columnFilters: upd }));
+                         }}
+                         style={{ padding: '6px', fontSize: '12px' }}
+                       >
+                         <option value="==">Equals (In)</option>
+                         <option value="!=">Not Equals</option>
+                         <option value=">">Greater Than</option>
+                         <option value="<">Less Than</option>
+                         <option value=">=">Greater or Equal</option>
+                         <option value="<=">Less or Equal</option>
+                         <option value="contains">Contains</option>
+                         <option value="between">Between</option>
+                       </select>
+                       <div style={{ position: 'relative', paddingTop: '20px' }}>
+                         <div style={{ position: 'absolute', top: '2px', right: '0' }}>
+                           <button
+                             type="button"
+                             onClick={() => {
+                               const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], isManual: !upd[fi].isManual };
+                               setModalData(prev => ({ ...prev, columnFilters: upd }));
+                             }}
+                             style={{ background: 'none', border: 'none', color: f.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                           >
+                             {f.isManual ? <List size={10} /> : <Keyboard size={10} />}
+                             {f.isManual ? 'List' : 'Manual'}
+                           </button>
+                         </div>
+                         {f.operator === 'between' ? (
+                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                             <input
+                               placeholder="Min value..."
+                               value={(f.conditionVals || [])[0] || ''}
+                               onChange={e => {
+                                 const upd = [...(modalData.columnFilters || [])];
+                                 const vals = [...(upd[fi].conditionVals || [])]; vals[0] = e.target.value;
+                                 upd[fi] = { ...upd[fi], conditionVals: vals };
+                                 setModalData(prev => ({ ...prev, columnFilters: upd }));
+                               }}
+                               style={{ padding: '6px 8px', fontSize: '12px' }}
+                             />
+                             <input
+                               placeholder="Max value..."
+                               value={(f.conditionVals || [])[1] || ''}
+                               onChange={e => {
+                                 const upd = [...(modalData.columnFilters || [])];
+                                 const vals = [...(upd[fi].conditionVals || [])]; vals[1] = e.target.value;
+                                 upd[fi] = { ...upd[fi], conditionVals: vals };
+                                 setModalData(prev => ({ ...prev, columnFilters: upd }));
+                               }}
+                               style={{ padding: '6px 8px', fontSize: '12px' }}
+                             />
+                           </div>
+                         ) : f.isManual ? (
+                           <input
+                             placeholder="Comma-separated values..."
+                             value={(f.conditionVals || []).join(', ')}
+                             onChange={e => {
+                               const upd = [...(modalData.columnFilters || [])];
+                               upd[fi] = { ...upd[fi], conditionVals: e.target.value.split(',').map(v => v.trim()).filter(Boolean) };
+                               setModalData(prev => ({ ...prev, columnFilters: upd }));
+                             }}
+                             style={{ padding: '6px 8px', fontSize: '12px', width: '100%' }}
+                           />
+                         ) : (
+                           <MultiSelectDropdown
+                             options={f.conditionCol && masterUniqueValues[f.conditionCol] ? masterUniqueValues[f.conditionCol] : []}
+                             selectedValues={f.conditionVals || []}
+                             onChange={vals => {
+                               const upd = [...(modalData.columnFilters || [])];
+                               upd[fi] = { ...upd[fi], conditionVals: vals };
+                               setModalData(prev => ({ ...prev, columnFilters: upd }));
+                             }}
+                             placeholder="Select values..."
+                           />
+                         )}
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               </div>
 
                 <button onClick={confirmMapping} className="btn-primary btn-full" style={{ padding: '16px' }}>
                   Confirm Mapping for Column {activeCell?.colLetter}
