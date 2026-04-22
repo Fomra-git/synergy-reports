@@ -50,6 +50,17 @@ function parseReportDatePure(rawVal) {
   return null;
 }
 
+function parseDateForMonth(rawVal) {
+  if (!rawVal) return null;
+  const s = String(rawVal).trim();
+  const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const m = s.match(/([A-Za-z]{3,9})\s+(\d{1,2})\s*[-–]\s*(\d{4})/);
+  if (m) { const idx = months.indexOf(m[1].slice(0,3).toLowerCase()); if (idx >= 0) return { year: parseInt(m[3]), month: idx }; }
+  const d = parseReportDatePure(rawVal);
+  if (d && !isNaN(d.getTime())) return { year: d.getFullYear(), month: d.getMonth() };
+  return null;
+}
+
 function applyFinalSort(aoa, sortConfig) {
   if (!sortConfig?.enabled || !sortConfig.column) return aoa;
   const hdr = aoa[0];
@@ -143,6 +154,29 @@ async function processTemplateForView(template, masterFile) {
     });
   }
 
+  // ── Month context for this_month / prev_month operators ─────────────────────
+  const monthContext = {};
+  {
+    const mfCols = new Set();
+    const collectMFC = (filters) => (filters || []).forEach(f => {
+      if ((f.operator === 'this_month' || f.operator === 'prev_month') && f.conditionCol) mfCols.add(cleanFieldName(f.conditionCol));
+    });
+    collectMFC(template.globalFilters);
+    collectMFC(template.outputFilters);
+    (template.mappings || []).forEach(m => { collectMFC(m.columnFilters); collectMFC(m.rules); });
+    mfCols.forEach(col => {
+      let maxYear = -Infinity, maxMonth = -1;
+      masterData.forEach(row => {
+        const val = row[col] !== undefined ? row[col] : Object.entries(row).find(([k]) => k.toLowerCase().replace(/[^a-z0-9]/g,'') === col.toLowerCase().replace(/[^a-z0-9]/g,''))?.[1] ?? '';
+        const p = parseDateForMonth(val);
+        if (p && (p.year > maxYear || (p.year === maxYear && p.month > maxMonth))) { maxYear = p.year; maxMonth = p.month; }
+      });
+      if (maxYear > -Infinity) {
+        monthContext[col] = { endYear: maxYear, endMonth: maxMonth, prevYear: maxMonth === 0 ? maxYear - 1 : maxYear, prevMonth: maxMonth === 0 ? 11 : maxMonth - 1 };
+      }
+    });
+  }
+
   // ── Helpers that close over masterData / date maps ──────────────────────────
 
   function getMV(row, source) {
@@ -186,7 +220,19 @@ async function processTemplateForView(template, masterFile) {
   function evalCond(row, mapping) {
     if (!mapping) return true;
     const toNum = s => parseFloat(String(s || '').replace(/,/g, '').trim());
-    const evalRule = (targetVal, operator, conditionVals = []) => {
+    const evalRule = (targetVal, operator, conditionVals = [], conditionCol = '') => {
+      if (operator === 'this_month') {
+        const ctx = monthContext[cleanFieldName(conditionCol)];
+        if (!ctx) return false;
+        const p = parseDateForMonth(targetVal);
+        return !!p && p.year === ctx.endYear && p.month === ctx.endMonth;
+      }
+      if (operator === 'prev_month') {
+        const ctx = monthContext[cleanFieldName(conditionCol)];
+        if (!ctx) return false;
+        const p = parseDateForMonth(targetVal);
+        return !!p && p.year === ctx.prevYear && p.month === ctx.prevMonth;
+      }
       const tv = String(targetVal ?? '').toLowerCase().trim();
       const tvNum = toNum(tv);
       const evalSingle = cv => {
@@ -209,8 +255,8 @@ async function processTemplateForView(template, masterFile) {
       if (operator === '!=') return conditionVals.every(c => evalSingle(c));
       return conditionVals.some(c => evalSingle(c));
     };
-    if (mapping.rules && mapping.rules.length > 0) return mapping.rules.every(r => r.conditionCol ? evalRule(getMV(row, r.conditionCol), r.operator, r.conditionVals) : true);
-    return mapping.conditionCol ? evalRule(getMV(row, mapping.conditionCol), mapping.operator, mapping.conditionVals) : true;
+    if (mapping.rules && mapping.rules.length > 0) return mapping.rules.every(r => r.conditionCol ? evalRule(getMV(row, r.conditionCol), r.operator, r.conditionVals, r.conditionCol) : true);
+    return mapping.conditionCol ? evalRule(getMV(row, mapping.conditionCol), mapping.operator, mapping.conditionVals, mapping.conditionCol) : true;
   }
 
   function parseTimeValue(val) {

@@ -720,9 +720,16 @@ export default function VisualExcelMapping() {
                             <option value="<=">Less or Equal (&lt;=)</option>
                             <option value="contains">Contains</option>
                             <option value="between">Between</option>
+                            <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
+                            <option value="this_month">This Month</option>
+                            <option value="prev_month">Previous Month</option>
                           </select>
 
-                          {filter.operator !== 'unique' && (
+                          {filter.operator === 'this_month' || filter.operator === 'prev_month' ? (
+                            <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                              Auto-detects from data
+                            </div>
+                          ) : filter.operator !== 'unique' && (
                             <div style={{ position: 'relative' }}>
                               <div style={{ position: 'absolute', top: '-18px', right: '0' }}>
                                 <button
@@ -762,7 +769,7 @@ export default function VisualExcelMapping() {
                               )}
                             </div>
                           )}
-                            </>
+                          </>
                           )}
                         </div>
                       ))}
@@ -807,8 +814,8 @@ export default function VisualExcelMapping() {
                                 ))}
                             </select>
 
-                            <select 
-                              value={filter.operator || '=='} 
+                            <select
+                              value={filter.operator || '=='}
                               onChange={e => handleOutputFilterChange(index, 'operator', e.target.value)}
                               style={{ padding: '6px', fontSize: '12px' }}
                             >
@@ -820,11 +827,19 @@ export default function VisualExcelMapping() {
                               <option value="<=">Less or Equal (&lt;=)</option>
                               <option value="contains">Has String</option>
                               <option value="between">Between</option>
+                              <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
+                              <option value="this_month">This Month</option>
+                              <option value="prev_month">Previous Month</option>
                             </select>
 
+                            {filter.operator === 'this_month' || filter.operator === 'prev_month' ? (
+                              <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                Auto-detects from data
+                              </div>
+                            ) : (
                             <div style={{ position: 'relative' }}>
                                <div style={{ position: 'absolute', top: '-18px', right: '0' }}>
-                                <button 
+                                <button
                                   onClick={() => handleOutputFilterChange(index, 'isManual', !filter.isManual)}
                                   style={{ background: 'none', border: 'none', color: filter.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
                                 >
@@ -851,6 +866,7 @@ export default function VisualExcelMapping() {
                                 )
                               )}
                             </div>
+                            )}
                           </div>
                         ))}
                         <button onClick={handleAddOutputFilter} className="btn-secondary" style={{ width: '100%', padding: '8px', fontSize: '11px' }}>
@@ -1648,7 +1664,15 @@ export default function VisualExcelMapping() {
                          <option value="<=">Less or Equal</option>
                          <option value="contains">Contains</option>
                          <option value="between">Between</option>
+                         <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
+                         <option value="this_month">This Month</option>
+                         <option value="prev_month">Previous Month</option>
                        </select>
+                       {f.operator === 'this_month' || f.operator === 'prev_month' ? (
+                         <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                           Auto-detects from data
+                         </div>
+                       ) : (
                        <div style={{ position: 'relative', paddingTop: '20px' }}>
                          <div style={{ position: 'absolute', top: '2px', right: '0' }}>
                            <button
@@ -1712,6 +1736,7 @@ export default function VisualExcelMapping() {
                            />
                          )}
                        </div>
+                       )}
                      </div>
                    ))}
                  </div>
