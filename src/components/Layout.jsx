@@ -69,12 +69,12 @@ export default function Layout() {
             <Eye size={20} />
             View Report
           </NavLink>
-          <NavLink to="/templates" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-            <LayoutGrid size={20} />
-            Manage Templates
-          </NavLink>
           {isAdmin && (
             <>
+              <NavLink to="/templates" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                <LayoutGrid size={20} />
+                Manage Templates
+              </NavLink>
               <NavLink to="/admin" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                 <Users size={20} />
                 Admin Panel

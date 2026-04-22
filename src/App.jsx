@@ -38,7 +38,7 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="generate" element={<GenerateReport />} />
             <Route path="view-report" element={<ViewReport />} />
-            <Route path="templates" element={<TemplateManager />} />
+            <Route path="templates" element={<AdminRoute><TemplateManager /></AdminRoute>} />
             <Route path="admin" element={
               <AdminRoute>
                 <AdminPanel />
