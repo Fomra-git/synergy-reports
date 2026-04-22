@@ -723,11 +723,17 @@ export default function VisualExcelMapping() {
                             <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
                             <option value="this_month">This Month</option>
                             <option value="prev_month">Previous Month</option>
+                            <option value="not_seen_within_days">Not Seen Within Days</option>
                           </select>
 
-                          {filter.operator === 'this_month' || filter.operator === 'prev_month' ? (
+                          {(filter.operator === 'this_month' || filter.operator === 'prev_month') ? (
                             <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
                               Auto-detects from data
+                            </div>
+                          ) : filter.operator === 'not_seen_within_days' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <input type="number" min="1" placeholder="Days (e.g. 3)" value={filter.conditionVals?.[0] || ''} onChange={e => handleGlobalFilterChange(index, 'conditionVals', [e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
+                              <SearchableDropdown options={masterHeaders} value={filter.groupByCol || ''} onChange={v => handleGlobalFilterChange(index, 'groupByCol', v)} placeholder="Patient / Group By Column..." />
                             </div>
                           ) : filter.operator !== 'unique' && (
                             <div style={{ position: 'relative' }}>
@@ -1667,10 +1673,20 @@ export default function VisualExcelMapping() {
                          <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
                          <option value="this_month">This Month</option>
                          <option value="prev_month">Previous Month</option>
+                         <option value="not_seen_within_days">Not Seen Within Days</option>
                        </select>
-                       {f.operator === 'this_month' || f.operator === 'prev_month' ? (
+                       {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
                          <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
                            Auto-detects from data
+                         </div>
+                       ) : f.operator === 'not_seen_within_days' ? (
+                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                           <input type="number" min="1" placeholder="Days (e.g. 3)" value={(f.conditionVals || [])[0] || ''}
+                             onChange={e => { const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], conditionVals: [e.target.value] }; setModalData(prev => ({ ...prev, columnFilters: upd })); }}
+                             style={{ padding: '6px 8px', fontSize: '12px' }} />
+                           <SearchableDropdown options={masterHeaders} value={f.groupByCol || ''}
+                             onChange={v => { const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], groupByCol: v }; setModalData(prev => ({ ...prev, columnFilters: upd })); }}
+                             placeholder="Patient / Group By Column..." />
                          </div>
                        ) : (
                        <div style={{ position: 'relative', paddingTop: '20px' }}>

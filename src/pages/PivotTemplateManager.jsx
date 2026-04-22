@@ -674,9 +674,23 @@ export default function PivotTemplateManager() {
                               <option value="contains">Contains</option>
                               <option value="unique">Unique Only</option>
                               <option value="between">Between</option>
+                            <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
+                            <option value="this_month">This Month</option>
+                            <option value="prev_month">Previous Month</option>
+                            <option value="not_seen_within_days">Not Seen Within Days</option>
                             </select>
 
                             <div style={{ flex: 1.5, position: 'relative' }}>
+                              {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
+                                <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                  Auto-detects from data
+                                </div>
+                              ) : f.operator === 'not_seen_within_days' ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  <input type="number" min="1" placeholder="Days (e.g. 3)" value={f.conditionVals?.[0] || ''} onChange={e => updateFilter('globalFilters', i, 'conditionVals', [e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
+                                  <SearchableDropdown options={masterHeaders} value={f.groupByCol || ''} onChange={v => updateFilter('globalFilters', i, 'groupByCol', v)} placeholder="Patient / Group By Column..." />
+                                </div>
+                              ) : (<>
                               <div style={{ position: 'absolute', top: '-18px', right: '0', display: 'flex', gap: '8px' }}>
                                 <button
                                   onClick={() => updateFilter('globalFilters', i, 'isManual', !f.isManual)}
@@ -710,6 +724,7 @@ export default function PivotTemplateManager() {
                                   />
                                 )
                               )}
+                              </>)}
                             </div>
                           </div>
                           )}

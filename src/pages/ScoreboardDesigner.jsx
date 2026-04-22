@@ -935,12 +935,25 @@ export default function ScoreboardDesigner() {
                               <option value="!=">Not Equals</option>
                               <option value="contains">Contains</option>
                               <option value="between">Between</option>
+                              <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
+                              <option value="this_month">This Month</option>
+                              <option value="prev_month">Previous Month</option>
+                              <option value="not_seen_within_days">Not Seen Within Days</option>
                             </select>
                           </div>
 
                           <div style={{ flex: 1 }}>
                             <label style={{ fontSize: '10px', display: 'block', marginBottom: '4px' }}>Value(s)</label>
-                            {f.operator === 'between' ? (
+                            {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
+                              <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                Auto-detects from data
+                              </div>
+                            ) : f.operator === 'not_seen_within_days' ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <input type="number" min="1" placeholder="Days (e.g. 3)" value={f.conditionVals?.[0] || ''} onChange={e => updateGlobalFilter(i, 'conditionVals', [e.target.value])} style={{ width: '100%', padding: '8px', fontSize: '12px' }} />
+                                <SearchableDropdown options={masterHeaders} value={f.groupByCol || ''} onChange={v => updateGlobalFilter(i, 'groupByCol', v)} placeholder="Patient / Group By Column..." />
+                              </div>
+                            ) : f.operator === 'between' ? (
                               <div style={{ display: 'flex', gap: '6px' }}>
                                 <input placeholder="Min" value={f.conditionVals?.[0] || ''}
                                   onChange={e => updateGlobalFilter(i, 'conditionVals', [e.target.value, f.conditionVals?.[1] || ''])}

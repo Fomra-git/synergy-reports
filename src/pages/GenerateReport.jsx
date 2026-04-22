@@ -304,10 +304,51 @@ export default function GenerateReport() {
         });
       }
 
+      // ── Not-seen context for not_seen_within_days operator ───────────────────
+      const notSeenContext = {};
+      {
+        const nsPairs = [];
+        const collectNS = (filters) => (filters || []).forEach(f => {
+          if (f.operator === 'not_seen_within_days' && f.conditionCol && f.groupByCol)
+            nsPairs.push({ dateCol: cleanFieldName(f.conditionCol), groupByCol: cleanFieldName(f.groupByCol) });
+        });
+        targetTemplates.forEach(t => {
+          collectNS(t.globalFilters);
+          (t.mappings || []).forEach(m => { collectNS(m.columnFilters); collectNS(m.rules); });
+        });
+        nsPairs.forEach(({ dateCol, groupByCol }) => {
+          const key = `${dateCol}__${groupByCol}`;
+          if (notSeenContext[key]) return;
+          let endDate = null;
+          const lastSeen = {};
+          masterData.forEach(row => {
+            const d = parseReportDate(getMasterValue(row, dateCol));
+            if (d && !isNaN(d.getTime())) {
+              if (!endDate || d > endDate) endDate = d;
+              const gv = String(getMasterValue(row, groupByCol) || '').trim();
+              if (gv && (!lastSeen[gv] || d > lastSeen[gv])) lastSeen[gv] = d;
+            }
+          });
+          if (endDate) notSeenContext[key] = { endDate, lastSeen };
+        });
+      }
+
       const evaluateCondition = (row, mapping) => {
         if (!mapping) return true;
         const toNum = (s) => parseFloat(String(s || '').replace(/,/g, '').trim());
-        const evalRule = (targetVal, operator, conditionVals = [], conditionCol = '') => {
+        const evalRule = (targetVal, operator, conditionVals = [], conditionCol = '', row = null, groupByCol = '') => {
+          if (operator === 'not_seen_within_days') {
+            const days = parseInt(conditionVals[0]) || 3;
+            const gbCol = cleanFieldName(groupByCol || '');
+            const key = `${cleanFieldName(conditionCol)}__${gbCol}`;
+            const ctx = notSeenContext[key];
+            if (!ctx || !row || !gbCol) return false;
+            const gv = String(getMasterValue(row, gbCol) || '').trim();
+            if (!gv) return false;
+            const ls = ctx.lastSeen[gv];
+            if (!ls) return true;
+            return (ctx.endDate - ls) / 86400000 > days;
+          }
           if (operator === 'this_month') {
             const ctx = monthContext[cleanFieldName(conditionCol)];
             if (!ctx) return false;
@@ -346,8 +387,8 @@ export default function GenerateReport() {
           if (operator === '!=') return conditionVals.every(c => evalSingle(c));
           return conditionVals.some(c => evalSingle(c));
         };
-        if (mapping.rules && mapping.rules.length > 0) return mapping.rules.every(r => r.conditionCol ? evalRule(getMasterValue(row, r.conditionCol), r.operator, r.conditionVals, r.conditionCol) : true);
-        return mapping.conditionCol ? evalRule(getMasterValue(row, mapping.conditionCol), mapping.operator, mapping.conditionVals, mapping.conditionCol) : true;
+        if (mapping.rules && mapping.rules.length > 0) return mapping.rules.every(r => r.conditionCol ? evalRule(getMasterValue(row, r.conditionCol), r.operator, r.conditionVals, r.conditionCol, row, r.groupByCol) : true);
+        return mapping.conditionCol ? evalRule(getMasterValue(row, mapping.conditionCol), mapping.operator, mapping.conditionVals, mapping.conditionCol, row, mapping.groupByCol) : true;
       };
 
       const applyColRowFilters = (rows, col) => {

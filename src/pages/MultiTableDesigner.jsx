@@ -618,12 +618,25 @@ function FilterBlock({ label, desc, enabledKey, listKey, activeSection, updateSe
 
 function FilterRow({ f, masterHeaders, masterUniqueValues, onChange, onRemove }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 1fr auto', gap: '8px', alignItems: 'start', background: 'var(--glass-subtle)', padding: '10px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 1fr auto', gap: '8px', alignItems: 'start', background: 'var(--glass-subtle)', padding: '10px', borderRadius: '10px', border: '1px solid var(--border)' }}>
       <SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => onChange('conditionCol', v)} placeholder="Field..." />
       <select value={f.operator || '=='} onChange={e => onChange('operator', e.target.value)} style={{ padding: '8px', fontSize: '12px' }}>
         {['==', '!=', 'contains', 'not_contains', '>', '<', '>=', '<=', 'between', 'unique'].map(op => <option key={op} value={op}>{op}</option>)}
+        <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
+        <option value="this_month">This Month</option>
+        <option value="prev_month">Previous Month</option>
+        <option value="not_seen_within_days">Not Seen Within Days</option>
       </select>
-      {f.operator === 'between' ? (
+      {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
+        <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
+          Auto-detects from data
+        </div>
+      ) : f.operator === 'not_seen_within_days' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <input type="number" min="1" placeholder="Days (e.g. 3)" value={(f.conditionVals || [])[0] || ''} onChange={e => onChange('conditionVals', [e.target.value])} style={{ padding: '8px', fontSize: '12px' }} />
+          <SearchableDropdown options={masterHeaders} value={f.groupByCol || ''} onChange={v => onChange('groupByCol', v)} placeholder="Patient / Group By Column..." />
+        </div>
+      ) : f.operator === 'between' ? (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
           <input value={(f.conditionVals || [])[0] || ''} onChange={e => { const v = [...(f.conditionVals || [])]; v[0] = e.target.value; onChange('conditionVals', v); }} placeholder="Min" style={{ padding: '8px', fontSize: '12px' }} />
           <input value={(f.conditionVals || [])[1] || ''} onChange={e => { const v = [...(f.conditionVals || [])]; v[1] = e.target.value; onChange('conditionVals', v); }} placeholder="Max" style={{ padding: '8px', fontSize: '12px' }} />
