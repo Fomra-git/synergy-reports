@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase/config';
-import { collection, query, getDocs, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, getDocs, addDoc, updateDoc, doc, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { 
   FileSpreadsheet, 
   Search, 
@@ -47,6 +47,8 @@ export default function PivotTemplateManager() {
   const [masterHeaders, setMasterHeaders] = useState([]);
   const [masterUniqueValues, setMasterUniqueValues] = useState({});
   const [activeTab, setActiveTab] = useState('settings'); // 'settings' | 'filters'
+  const [categories, setCategories] = useState([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
@@ -89,7 +91,15 @@ export default function PivotTemplateManager() {
 
   useEffect(() => {
     fetchTemplates();
+    fetchCategories();
   }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'reportCategories'));
+      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) { console.error('Error fetching categories:', err); }
+  };
 
   // Handle deep-linking / direct template load
   useEffect(() => {
@@ -133,6 +143,7 @@ export default function PivotTemplateManager() {
         rowFieldTransforms: { findText: '', replaceWith: '', simplifyDate: false, simplifyTime: false, normalizeMonth: false, normalizeWeek: false },
         colFieldTransforms: { findText: '', replaceWith: '', simplifyDate: false, simplifyTime: false, normalizeMonth: false, normalizeWeek: false },
       });
+      setSelectedCategoryId('');
       return;
     }
     const t = templates.find(temp => temp.id === id);
@@ -180,7 +191,15 @@ export default function PivotTemplateManager() {
           rowFilters: (c.rowFilters || []).map(f => ({ ...f, isManual: f.isManual || false }))
         }))
       });
+      setSelectedCategoryId(categories.find(c => (c.templateIds || []).includes(id))?.id || '');
     }
+  };
+
+  const updateCategoryAssignment = async (templateId) => {
+    const oldCat = categories.find(c => (c.templateIds || []).includes(templateId));
+    if (oldCat?.id === selectedCategoryId) return;
+    if (oldCat) await updateDoc(doc(db, 'reportCategories', oldCat.id), { templateIds: arrayRemove(templateId) });
+    if (selectedCategoryId) await updateDoc(doc(db, 'reportCategories', selectedCategoryId), { templateIds: arrayUnion(templateId) });
   };
 
   const handleFileUpload = async (e) => {
@@ -254,12 +273,14 @@ export default function PivotTemplateManager() {
           ...formData,
           updatedAt: new Date().toISOString()
         });
+        await updateCategoryAssignment(selectedTemplateId);
       } else {
         const docRef = await addDoc(collection(db, 'templates'), {
           ...formData,
           createdAt: new Date().toISOString()
         });
         setSelectedTemplateId(docRef.id);
+        await updateCategoryAssignment(docRef.id);
       }
       setSaveStatus('Success!');
       fetchTemplates();
@@ -512,12 +533,20 @@ export default function PivotTemplateManager() {
 
                 <div className="form-group">
                   <label>Description (Optional)</label>
-                  <textarea 
-                    value={formData.description} 
+                  <textarea
+                    value={formData.description}
                     onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
                     placeholder="What does this report show?"
                     style={{ minHeight: '80px', padding: '12px' }}
                   />
+                </div>
+
+                <div className="form-group">
+                  <label>Report Category</label>
+                  <select value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)}>
+                    <option value="">— No Category —</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
 
                 {/* FILENAME FORMAT */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase/config';
-import { collection, query, getDocs, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, getDocs, addDoc, updateDoc, doc, deleteDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import {
   Plus, Trash2, Save, ArrowLeft, CheckCircle2, Loader2, Upload,
   Layers, Filter, Settings2, Database, Calculator, BarChart4,
@@ -75,6 +75,8 @@ export default function MultiTableDesigner() {
   const [masterUniqueValues, setMasterUniqueValues] = useState({});
   const [activeSectionIdx, setActiveSectionIdx] = useState(0);
   const [activeTab, setActiveTab] = useState('setup');
+  const [categories, setCategories] = useState([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
@@ -83,7 +85,14 @@ export default function MultiTableDesigner() {
 
   const fileInputRef = useRef(null);
 
-  useEffect(() => { fetchTemplates(); }, []);
+  useEffect(() => { fetchTemplates(); fetchCategories(); }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'reportCategories'));
+      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) { console.error('Error fetching categories:', err); }
+  };
 
   useEffect(() => {
     if (templates.length > 0 && templateIdFromUrl) {
@@ -101,11 +110,19 @@ export default function MultiTableDesigner() {
   };
 
   const loadTemplate = (id) => {
-    if (!id) { setFormData(emptyForm()); setActiveSectionIdx(0); return; }
+    if (!id) { setFormData(emptyForm()); setActiveSectionIdx(0); setSelectedCategoryId(''); return; }
     const t = templates.find(t => t.id === id);
     if (!t) return;
     setFormData({ ...emptyForm(), ...t, sections: (t.sections?.length ? t.sections : [emptySection()]).map(normaliseSection) });
     setActiveSectionIdx(0);
+    setSelectedCategoryId(categories.find(c => (c.templateIds || []).includes(id))?.id || '');
+  };
+
+  const updateCategoryAssignment = async (templateId) => {
+    const oldCat = categories.find(c => (c.templateIds || []).includes(templateId));
+    if (oldCat?.id === selectedCategoryId) return;
+    if (oldCat) await updateDoc(doc(db, 'reportCategories', oldCat.id), { templateIds: arrayRemove(templateId) });
+    if (selectedCategoryId) await updateDoc(doc(db, 'reportCategories', selectedCategoryId), { templateIds: arrayUnion(templateId) });
   };
 
   const handleSave = async () => {
@@ -118,9 +135,11 @@ export default function MultiTableDesigner() {
       const payload = { ...formData, updatedAt: new Date().toISOString() };
       if (selectedTemplateId) {
         await updateDoc(doc(db, 'templates', selectedTemplateId), payload);
+        await updateCategoryAssignment(selectedTemplateId);
       } else {
         const ref = await addDoc(collection(db, 'templates'), { ...payload, createdAt: new Date().toISOString() });
         setSelectedTemplateId(ref.id);
+        await updateCategoryAssignment(ref.id);
       }
       setSaveStatus('Saved!'); fetchTemplates(); setTimeout(() => setSaveStatus(''), 3000);
     } catch (e) { console.error(e); setSaveStatus('Error'); } finally { setIsSaving(false); }
@@ -285,6 +304,14 @@ export default function MultiTableDesigner() {
               <label style={labelSty}>Description (Optional)</label>
               <textarea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} placeholder="What does this report show?" rows={2}
                 style={{ padding: '10px', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: '10px', color: 'var(--input-text)', fontFamily: 'inherit', fontSize: '14px', width: '100%', resize: 'vertical' }} />
+            </div>
+
+            <div className="form-group">
+              <label style={labelSty}>Report Category</label>
+              <select value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)}>
+                <option value="">— No Category —</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
 
             {/* Layout */}

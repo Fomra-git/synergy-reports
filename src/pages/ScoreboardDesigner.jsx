@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase/config';
-import { collection, query, getDocs, addDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, getDocs, addDoc, doc, setDoc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import XLSX from 'xlsx-js-style';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -49,6 +49,8 @@ export default function ScoreboardDesigner() {
   const [formData, setFormData] = useState(DEFAULT_FORM);
   const [masterHeaders, setMasterHeaders] = useState([]);
   const [masterColumnValues, setMasterColumnValues] = useState({});
+  const [categories, setCategories] = useState([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
@@ -61,7 +63,14 @@ export default function ScoreboardDesigner() {
     mode: 'alert', confirmText: 'Confirm', onConfirm: null
   });
 
-  useEffect(() => { fetchTemplates(); }, []);
+  useEffect(() => { fetchTemplates(); fetchCategories(); }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'reportCategories'));
+      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) { console.error('Error fetching categories:', err); }
+  };
 
   useEffect(() => {
     if (templates.length > 0 && templateIdFromUrl) {
@@ -88,6 +97,14 @@ export default function ScoreboardDesigner() {
     setFormData({ ...DEFAULT_FORM, ...t });
     if (t.masterHeaders) setMasterHeaders(t.masterHeaders);
     if (t.masterColumnValues) setMasterColumnValues(t.masterColumnValues);
+    setSelectedCategoryId(categories.find(c => (c.templateIds || []).includes(id))?.id || '');
+  };
+
+  const updateCategoryAssignment = async (templateId) => {
+    const oldCat = categories.find(c => (c.templateIds || []).includes(templateId));
+    if (oldCat?.id === selectedCategoryId) return;
+    if (oldCat) await updateDoc(doc(db, 'reportCategories', oldCat.id), { templateIds: arrayRemove(templateId) });
+    if (selectedCategoryId) await updateDoc(doc(db, 'reportCategories', selectedCategoryId), { templateIds: arrayUnion(templateId) });
   };
 
   const handleSave = async () => {
@@ -100,9 +117,11 @@ export default function ScoreboardDesigner() {
       const payload = { ...formData, type: 'scoreboard', masterHeaders, masterColumnValues, updatedAt: new Date().toISOString() };
       if (selectedTemplateId) {
         await setDoc(doc(db, 'templates', selectedTemplateId), payload);
+        await updateCategoryAssignment(selectedTemplateId);
       } else {
         const ref = await addDoc(collection(db, 'templates'), payload);
         setSelectedTemplateId(ref.id);
+        await updateCategoryAssignment(ref.id);
       }
       setSaveStatus('Saved!');
       await fetchTemplates();
@@ -302,7 +321,7 @@ export default function ScoreboardDesigner() {
             {/* Load Template */}
             <div className="form-group">
               <label>Load Existing Template</label>
-              <select value={selectedTemplateId} onChange={e => { setSelectedTemplateId(e.target.value); if (e.target.value) loadTemplate(e.target.value); else { setFormData(DEFAULT_FORM); setMasterHeaders([]); } }}>
+              <select value={selectedTemplateId} onChange={e => { setSelectedTemplateId(e.target.value); if (e.target.value) loadTemplate(e.target.value); else { setFormData(DEFAULT_FORM); setMasterHeaders([]); setSelectedCategoryId(''); } }}>
                 <option value="">+ Create New Score Board</option>
                 {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
@@ -311,6 +330,14 @@ export default function ScoreboardDesigner() {
             <div className="form-group">
               <label>Template Name *</label>
               <input value={formData.name} onChange={e => setFormData(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Daily Score Board" />
+            </div>
+
+            <div className="form-group">
+              <label>Report Category</label>
+              <select value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)}>
+                <option value="">— No Category —</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
             </div>
 
             {/* Report Header */}

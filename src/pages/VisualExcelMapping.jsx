@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase/config';
-import { collection, query, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, getDocs, addDoc, updateDoc, doc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { 
   FileSpreadsheet, 
   Search, 
@@ -46,6 +46,9 @@ export default function VisualExcelMapping() {
   const [activeSidebarTab, setActiveSidebarTab] = useState('columns'); // columns, general, filters, report
 
   // Modal State
+  const [categories, setCategories] = useState([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+
   const [modal, setModal] = useState({
     isOpen: false,
     title: '',
@@ -93,7 +96,15 @@ export default function VisualExcelMapping() {
 
   useEffect(() => {
     fetchTemplates();
+    fetchCategories();
   }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'reportCategories'));
+      setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) { console.error('Error fetching categories:', err); }
+  };
 
   // Handle deep-linking / direct template load when templates are ready
   useEffect(() => {
@@ -137,6 +148,7 @@ export default function VisualExcelMapping() {
          isHighlightEmptyEnabled: false,
          mappings: []
        });
+       setSelectedCategoryId('');
        return;
     }
     const t = templatesSource.find(temp => temp.id === id);
@@ -160,7 +172,15 @@ export default function VisualExcelMapping() {
         headerConfig: t.headerConfig || { type: 'custom', text: '', sourceCol: '' },
         sortConfig: t.sortConfig || { enabled: false, column: '', direction: 'asc', type: 'auto' }
       });
+      setSelectedCategoryId(categories.find(c => (c.templateIds || []).includes(id))?.id || '');
     }
+  };
+
+  const updateCategoryAssignment = async (templateId) => {
+    const oldCat = categories.find(c => (c.templateIds || []).includes(templateId));
+    if (oldCat?.id === selectedCategoryId) return;
+    if (oldCat) await updateDoc(doc(db, 'reportCategories', oldCat.id), { templateIds: arrayRemove(templateId) });
+    if (selectedCategoryId) await updateDoc(doc(db, 'reportCategories', selectedCategoryId), { templateIds: arrayUnion(templateId) });
   };
 
   const handleAddOutputFilter = () => {
@@ -231,12 +251,14 @@ export default function VisualExcelMapping() {
     try {
       if (selectedTemplateId) {
         await updateDoc(doc(db, 'templates', selectedTemplateId), formData);
+        await updateCategoryAssignment(selectedTemplateId);
       } else {
         const docRef = await addDoc(collection(db, 'templates'), {
           ...formData,
           createdAt: new Date().toISOString()
         });
         setSelectedTemplateId(docRef.id);
+        await updateCategoryAssignment(docRef.id);
         fetchTemplates();
       }
       setSaveStatus('Success!');
@@ -551,9 +573,16 @@ export default function VisualExcelMapping() {
                     />
                   </div>
                   <div className="form-group">
+                    <label>Report Category</label>
+                    <select value={selectedCategoryId} onChange={e => setSelectedCategoryId(e.target.value)}>
+                      <option value="">— No Category —</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group">
                     <label>Filename Format</label>
-                    <input 
-                      value={formData.fileNameFormat || ''} 
+                    <input
+                      value={formData.fileNameFormat || ''}
                       onChange={e => setFormData(prev => ({ ...prev, fileNameFormat: e.target.value }))}
                       placeholder="Report_{date}.xlsx"
                     />
