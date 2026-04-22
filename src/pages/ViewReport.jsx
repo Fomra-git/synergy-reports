@@ -671,7 +671,11 @@ async function processTemplateForView(template, masterFile) {
       return { title: section.title || '', aoa: buildSectionAOA(section, sectionData) };
     });
 
-    const topHeader = template.isHeaderEnabled && template.headerConfig?.text ? template.headerConfig.text : null;
+    const topHeader = template.isHeaderEnabled && template.headerConfig
+      ? (template.headerConfig.type === 'column'
+          ? (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '') || null
+          : template.headerConfig.text || null)
+      : null;
     return { aoa: null, sections, topHeader };
   }
 

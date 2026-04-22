@@ -37,7 +37,7 @@ const emptyForm = () => ({
   layout: 'vertical',
   fileNameFormat: 'Multi_Report_{date}',
   isHeaderEnabled: false,
-  headerConfig: { type: 'custom', text: '' },
+  headerConfig: { type: 'custom', text: '', sourceCol: '' },
   sections: [emptySection()],
 });
 
@@ -348,7 +348,46 @@ export default function MultiTableDesigner() {
                 </div>
               </div>
               {formData.isHeaderEnabled && (
-                <input value={formData.headerConfig?.text || ''} onChange={e => setFormData(p => ({ ...p, headerConfig: { ...p.headerConfig, text: e.target.value } }))} placeholder="e.g., Synergy Healthcare & Wellness" style={{ marginTop: '10px', width: '100%' }} />
+                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {['custom', 'column'].map(mode => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setFormData(p => ({ ...p, headerConfig: { ...p.headerConfig, type: mode } }))}
+                        style={{
+                          flex: 1, padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '700',
+                          border: '1px solid var(--border)', cursor: 'pointer',
+                          background: (formData.headerConfig?.type || 'custom') === mode ? 'var(--primary)' : 'var(--glass-bg)',
+                          color: (formData.headerConfig?.type || 'custom') === mode ? 'white' : 'var(--text-main)',
+                          textTransform: 'uppercase'
+                        }}
+                      >
+                        {mode === 'custom' ? 'Custom Text' : 'From Master Column'}
+                      </button>
+                    ))}
+                  </div>
+                  {(formData.headerConfig?.type || 'custom') === 'custom' ? (
+                    <input
+                      value={formData.headerConfig?.text || ''}
+                      onChange={e => setFormData(p => ({ ...p, headerConfig: { ...p.headerConfig, text: e.target.value } }))}
+                      placeholder="e.g., Synergy Healthcare & Wellness"
+                      style={{ width: '100%' }}
+                    />
+                  ) : (
+                    <div>
+                      <SearchableDropdown
+                        options={masterHeaders}
+                        value={formData.headerConfig?.sourceCol || ''}
+                        onChange={val => setFormData(p => ({ ...p, headerConfig: { ...p.headerConfig, sourceCol: val } }))}
+                        placeholder="Select master column..."
+                      />
+                      <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        Uses the first value found in this column as the report header.
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 

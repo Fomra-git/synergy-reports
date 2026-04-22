@@ -1319,7 +1319,11 @@ export default function GenerateReport() {
               }
               sectionInfos.push({ title: section.title || '', aoa: generatePivotSectionAOA(section, sectionData) });
             }
-            const topHdr = template.isHeaderEnabled && template.headerConfig?.text ? template.headerConfig.text : null;
+            const topHdr = template.isHeaderEnabled && template.headerConfig
+              ? (template.headerConfig.type === 'column'
+                  ? (masterData.length > 0 ? getMasterValue(masterData[0], template.headerConfig.sourceCol) : '') || null
+                  : template.headerConfig.text || null)
+              : null;
             const mtBuffer = await exportMultiSectionExcel(sectionInfos, topHdr, template.layout || 'vertical');
             let mtFileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
             if (!mtFileName.toLowerCase().endsWith('.xlsx')) mtFileName += '.xlsx';
