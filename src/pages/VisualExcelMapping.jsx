@@ -1182,28 +1182,64 @@ export default function VisualExcelMapping() {
                              <p style={{ fontSize: '14px', fontWeight: '600' }}>Merge Identical Vertical Cells</p>
                              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Groups repeating values (e.g. Doctor names) into a single centered block.</p>
                           </div>
-                          <div 
+                          <div
                              onClick={() => setModalData(prev => ({ ...prev, enableMerging: !prev.enableMerging }))}
-                             style={{ 
-                               width: '44px', 
-                               height: '24px', 
-                               borderRadius: '12px', 
+                             style={{
+                               width: '44px',
+                               height: '24px',
+                               borderRadius: '12px',
                                background: modalData.enableMerging ? 'var(--primary)' : 'var(--glass-border)',
                                position: 'relative',
                                cursor: 'pointer',
                                transition: '0.3s'
                              }}
                           >
-                             <div style={{ 
-                               width: '18px', 
-                               height: '18px', 
-                               borderRadius: '50%', 
-                               background: 'white', 
-                               position: 'absolute', 
-                               top: '3px', 
+                             <div style={{
+                               width: '18px',
+                               height: '18px',
+                               borderRadius: '50%',
+                               background: 'white',
+                               position: 'absolute',
+                               top: '3px',
                                left: modalData.enableMerging ? '23px' : '3px',
                                transition: '0.3s',
                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                             }} />
+                          </div>
+                       </div>
+
+                       <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                          <div style={{ flex: 1 }}>
+                             <p style={{ fontSize: '14px', fontWeight: '600' }}>Round Numeric Values</p>
+                             <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Rounds the column value to the nearest number (e.g. 4.5 → 5, 4.4 → 4).</p>
+                             {modalData.roundOff && (
+                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+                                 <label style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Decimal Places</label>
+                                 <input
+                                   type="number"
+                                   min="0"
+                                   max="10"
+                                   value={modalData.roundDecimals ?? 0}
+                                   onChange={e => setModalData(prev => ({ ...prev, roundDecimals: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                   style={{ width: '64px', padding: '6px 8px', fontSize: '12px', borderRadius: '8px' }}
+                                 />
+                                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>(0 = whole number)</span>
+                               </div>
+                             )}
+                          </div>
+                          <div
+                             onClick={() => setModalData(prev => ({ ...prev, roundOff: !prev.roundOff }))}
+                             style={{
+                               width: '44px', height: '24px', borderRadius: '12px',
+                               background: modalData.roundOff ? 'var(--primary)' : 'var(--glass-border)',
+                               position: 'relative', cursor: 'pointer', transition: '0.3s', flexShrink: 0
+                             }}
+                          >
+                             <div style={{
+                               width: '18px', height: '18px', borderRadius: '50%',
+                               background: 'white', position: 'absolute', top: '3px',
+                               left: modalData.roundOff ? '23px' : '3px',
+                               transition: '0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                              }} />
                           </div>
                        </div>

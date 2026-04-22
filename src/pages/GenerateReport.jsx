@@ -478,6 +478,14 @@ export default function GenerateReport() {
         return cleaned.trim();
       };
 
+      const applyRound = (v, config) => {
+        if (!config || !config.roundOff) return v;
+        const n = parseFloat(String(v));
+        if (isNaN(n)) return v;
+        const dec = Math.max(0, parseInt(config.roundDecimals) || 0);
+        return Math.round(n * Math.pow(10, dec)) / Math.pow(10, dec);
+      };
+
       const parseTimeValue = (val) => {
         if (val === undefined || val === null || val === '') return null;
         // Excel stores time-only as a fractional day in [0, 1)
@@ -561,7 +569,7 @@ export default function GenerateReport() {
         }
         if (type === 'math') {
           const value = evaluateReportFormula(mapping.formula, row, rowContext);
-          return cleanValue(value, mapping, sourceField);
+          return applyRound(cleanValue(value, mapping, sourceField), mapping);
         }
         if (type === 'time_diff') {
           const start = parseTimeValue(getMasterValue(row, mapping.colB || mapping.colA || sourceField));
@@ -589,9 +597,9 @@ export default function GenerateReport() {
           const ls = gv ? ctx.lastSeen[gv] : null;
           return ls ? fmtLastVisit(ls) : '';
         }
-        return cleanValue(getMasterValue(row, sourceField), mapping, sourceField);
+        return applyRound(cleanValue(getMasterValue(row, sourceField), mapping, sourceField), mapping);
       };
-      
+
       const excelJSExport = async (fAOA, colHdrs, tHdr, layouts = [], highlightEmpty = true, mergeColIndices = []) => {
         const workbook = new ExcelJS.Workbook(); const worksheet = workbook.addWorksheet('Report');
         let currR = 1;
@@ -951,6 +959,7 @@ export default function GenerateReport() {
             fr.forEach(r => { const d = parseReportDate(getMasterValue(r, p.source)); if (d && !isNaN(d.getTime()) && (!maxD || d > maxD)) maxD = d; });
             v = maxD ? fmtLastVisit(maxD) : '';
           } else { v = (!isTotal && fr.length > 0) ? getMasterValue(fr[0], p.source) : ''; }
+          v = applyRound(v, p);
           const key = p.displayName || p.source || ''; if (key) ctx[key] = v; return v;
         };
         Object.entries(rowsByGroup).forEach(([gk, rg]) => {
@@ -1204,6 +1213,7 @@ export default function GenerateReport() {
                 // property / grouping — never show a data value in total rows
                 v = (!isTotal && fr.length > 0) ? getMasterValue(fr[0], p.source) : '';
               }
+              v = applyRound(v, p);
               const key = p.displayName || p.source || '';
               if (key) rowContext[key] = v;
               return v;

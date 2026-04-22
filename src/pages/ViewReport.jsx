@@ -259,6 +259,14 @@ async function processTemplateForView(template, masterFile) {
     return cleaned.trim();
   }
 
+  function applyRound(v, config) {
+    if (!config || !config.roundOff) return v;
+    const n = parseFloat(String(v));
+    if (isNaN(n)) return v;
+    const dec = Math.max(0, parseInt(config.roundDecimals) || 0);
+    return Math.round(n * Math.pow(10, dec)) / Math.pow(10, dec);
+  }
+
   function evalCond(row, mapping) {
     if (!mapping) return true;
     const toNum = s => parseFloat(String(s || '').replace(/,/g, '').trim());
@@ -350,7 +358,7 @@ async function processTemplateForView(template, masterFile) {
     if (type === 'serial') return index + 1;
     if (type === 'count') return String(getMV(row, src)).trim() ? 1 : 0;
     if (type === 'condition_count') return evalCond(row, mapping) ? 1 : 0;
-    if (type === 'math') return cleanVal(evalFormula(mapping.formula, row, rowContext), mapping, src);
+    if (type === 'math') return applyRound(cleanVal(evalFormula(mapping.formula, row, rowContext), mapping, src), mapping);
     if (type === 'time_diff') {
       const start = parseTimeValue(getMV(row, mapping.colB || mapping.colA || src));
       const end = parseTimeValue(getMV(row, mapping.colA || mapping.colB || src));
@@ -376,7 +384,7 @@ async function processTemplateForView(template, masterFile) {
       const ls = gv ? ctx.lastSeen[gv] : null;
       return ls ? fmtLastVisit(ls) : '';
     }
-    return cleanVal(getMV(row, src), mapping, src);
+    return applyRound(cleanVal(getMV(row, src), mapping, src), mapping);
   }
 
   function applyColRowFilters(rows, col) {
@@ -477,6 +485,7 @@ async function processTemplateForView(template, masterFile) {
           else { const vs = fr.map(r => parseSafeNum(getMV(r, p.source))); if (op === 'sum') v = vs.reduce((a, b) => a+b, 0); else if (op === 'avg') v = vs.reduce((a,b)=>a+b,0)/vs.length; else if (op === 'min') v = Math.min(...vs); else if (op === 'max') v = Math.max(...vs); }
         }
       } else { v = (!isTotal && fr.length > 0) ? getMV(fr[0], p.source) : ''; }
+      v = applyRound(v, p);
       const key = p.displayName || p.source || ''; if (key) rowContext[key] = v;
       return v;
     }
@@ -584,6 +593,7 @@ async function processTemplateForView(template, masterFile) {
           fr.forEach(r => { const d = parseReportDatePure(getMV(r, p.source)); if (d && !isNaN(d.getTime()) && (!maxD || d > maxD)) maxD = d; });
           v = maxD ? fmtLastVisit(maxD) : '';
         } else { v = (!isTotal && fr.length > 0) ? getMV(fr[0], p.source) : ''; }
+        v = applyRound(v, p);
         const key = p.displayName || p.source || ''; if (key) ctx[key] = v;
         return v;
       }

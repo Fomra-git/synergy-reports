@@ -1215,8 +1215,8 @@ export default function PivotTemplateManager() {
 
                         <div className="form-group">
                            <label style={{ fontSize: '11px' }}>Display Header Name</label>
-                           <input 
-                              value={col.displayName} 
+                           <input
+                              value={col.displayName}
                               onChange={e => updatePivotColumn(col.id, 'displayName', e.target.value)}
                               placeholder={
                                 col.type === 'aggregation' ? (col.source ? `${col.operation.toUpperCase()} of ${col.source}` : "Header Name") :
@@ -1224,6 +1224,43 @@ export default function PivotTemplateManager() {
                               }
                            />
                         </div>
+
+                        {(col.type === 'aggregation' || col.type === 'formula') && (
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', padding: '12px', background: 'rgba(99,102,241,0.04)', borderRadius: '10px', border: '1px solid rgba(99,102,241,0.12)' }}>
+                            <div style={{ flex: 1 }}>
+                              <p style={{ fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>Round Numeric Values</p>
+                              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 0 }}>Round to nearest number (4.5 → 5, 4.4 → 4).</p>
+                              {col.roundOff && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Decimal places</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="10"
+                                    value={col.roundDecimals ?? 0}
+                                    onChange={e => updatePivotColumn(col.id, 'roundDecimals', Math.max(0, parseInt(e.target.value) || 0))}
+                                    style={{ width: '56px', padding: '4px 6px', fontSize: '11px', borderRadius: '6px' }}
+                                  />
+                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>(0 = integer)</span>
+                                </div>
+                              )}
+                            </div>
+                            <div
+                              onClick={() => updatePivotColumn(col.id, 'roundOff', !col.roundOff)}
+                              style={{
+                                width: '40px', height: '22px', borderRadius: '11px', flexShrink: 0,
+                                background: col.roundOff ? 'var(--primary)' : 'var(--glass-border)',
+                                position: 'relative', cursor: 'pointer', transition: '0.3s', marginTop: '2px'
+                              }}
+                            >
+                              <div style={{
+                                width: '16px', height: '16px', borderRadius: '50%', background: 'white',
+                                position: 'absolute', top: '3px', left: col.roundOff ? '21px' : '3px',
+                                transition: '0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                              }} />
+                            </div>
+                          </div>
+                        )}
 
                         {col.type !== 'formula' && (
                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '4px' }}>
