@@ -423,6 +423,16 @@ async function processTemplateForView(template, masterFile) {
       if (gf.operator === 'unique') {
         const seen = new Set();
         filteredMD = filteredMD.filter(r => { const k = String(getMV(r, gf.conditionCol) ?? '').trim(); if (seen.has(k)) return false; seen.add(k); return true; });
+      } else if (gf.operator === 'not_seen_within_days' && gf.groupByCol) {
+        filteredMD = filteredMD.filter(r => evalCond(r, gf));
+        const bestRows = {};
+        filteredMD.forEach(r => {
+          const gv = String(getMV(r, gf.groupByCol) || '').trim();
+          if (!gv) return;
+          const d = parseReportDatePure(getMV(r, gf.conditionCol));
+          if (!bestRows[gv] || (d && (!bestRows[gv].d || d > bestRows[gv].d))) bestRows[gv] = { row: r, d };
+        });
+        filteredMD = Object.values(bestRows).map(x => x.row);
       } else {
         filteredMD = filteredMD.filter(r => evalCond(r, gf));
       }
@@ -633,6 +643,16 @@ async function processTemplateForView(template, masterFile) {
           if (gf.operator === 'unique') {
             const seen = new Set();
             sectionData = sectionData.filter(r => { const k = String(getMV(r, gf.conditionCol) ?? '').trim(); if (seen.has(k)) return false; seen.add(k); return true; });
+          } else if (gf.operator === 'not_seen_within_days' && gf.groupByCol) {
+            sectionData = sectionData.filter(r => evalCond(r, gf));
+            const bestRows = {};
+            sectionData.forEach(r => {
+              const gv = String(getMV(r, gf.groupByCol) || '').trim();
+              if (!gv) return;
+              const d = parseReportDatePure(getMV(r, gf.conditionCol));
+              if (!bestRows[gv] || (d && (!bestRows[gv].d || d > bestRows[gv].d))) bestRows[gv] = { row: r, d };
+            });
+            sectionData = Object.values(bestRows).map(x => x.row);
           } else {
             sectionData = sectionData.filter(r => evalCond(r, gf));
           }
