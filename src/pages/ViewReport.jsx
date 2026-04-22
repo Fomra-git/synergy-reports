@@ -178,6 +178,7 @@ async function processTemplateForView(template, masterFile) {
   }
 
   // ── Not-seen context for not_seen_within_days operator ───────────────────────
+  const fmtLastVisit = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const notSeenContext = {};
   {
     const nsPairs = [];
@@ -185,7 +186,6 @@ async function processTemplateForView(template, masterFile) {
       if (f.operator === 'not_seen_within_days' && f.conditionCol && f.groupByCol)
         nsPairs.push({ dateCol: cleanFieldName(f.conditionCol), groupByCol: cleanFieldName(f.groupByCol) });
     });
-    const fmtLastVisit = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     collectNS(template.globalFilters);
     (template.mappings || []).forEach(m => {
       collectNS(m.columnFilters); collectNS(m.rules);

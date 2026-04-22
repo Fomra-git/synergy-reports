@@ -305,6 +305,7 @@ export default function GenerateReport() {
       }
 
       // ── Not-seen context for not_seen_within_days operator ───────────────────
+      const fmtLastVisit = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       const notSeenContext = {};
       {
         const nsPairs = [];
@@ -312,7 +313,6 @@ export default function GenerateReport() {
           if (f.operator === 'not_seen_within_days' && f.conditionCol && f.groupByCol)
             nsPairs.push({ dateCol: cleanFieldName(f.conditionCol), groupByCol: cleanFieldName(f.groupByCol) });
         });
-        const fmtLastVisit = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         targetTemplates.forEach(t => {
           collectNS(t.globalFilters);
           (t.mappings || []).forEach(m => {
