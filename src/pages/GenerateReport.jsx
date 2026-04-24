@@ -348,6 +348,23 @@ export default function GenerateReport() {
 
       const evaluateCondition = (row, mapping) => {
         if (!mapping) return true;
+        if (mapping.type === 'expr_compare') {
+          const toE = s => { const n = parseFloat(String(s || '').replace(/,/g, '').trim()); return isNaN(n) ? 0 : n; };
+          const v1 = toE(getMasterValue(row, mapping.col1));
+          const v2 = mapping.col2Type === 'literal' ? toE(mapping.col2Literal) : toE(getMasterValue(row, mapping.col2));
+          let lhs = v1;
+          if (mapping.mathOp === '+') lhs = v1 + v2;
+          else if (mapping.mathOp === '-') lhs = v1 - v2;
+          else if (mapping.mathOp === '*') lhs = v1 * v2;
+          else if (mapping.mathOp === '/') lhs = v2 !== 0 ? v1 / v2 : 0;
+          const rhs = toE(mapping.conditionVals?.[0]);
+          if (mapping.operator === '>=') return lhs >= rhs;
+          if (mapping.operator === '>') return lhs > rhs;
+          if (mapping.operator === '<=') return lhs <= rhs;
+          if (mapping.operator === '<') return lhs < rhs;
+          if (mapping.operator === '!=') return lhs !== rhs;
+          return lhs === rhs;
+        }
         const toNum = (s) => parseFloat(String(s || '').replace(/,/g, '').trim());
         const evalRule = (targetVal, operator, conditionVals = [], conditionCol = '', row = null, groupByCol = '') => {
           if (operator === 'not_seen_within_days') {
@@ -409,8 +426,8 @@ export default function GenerateReport() {
         let result = rows;
         if (col.rowFilters && col.rowFilters.length > 0) {
           result = result.filter(r => col.rowFilters.every(f => {
-            if (!f.conditionCol) return true;
-            if (f.operator === 'unique') return true; // unique handled at global level
+            if (f.type !== 'expr_compare' && !f.conditionCol) return true;
+            if (f.operator === 'unique') return true;
             return evaluateCondition(r, f);
           }));
         }
@@ -555,7 +572,7 @@ export default function GenerateReport() {
         if (!mapping) return '';
         // Column-level conditions: blank this cell if the row fails any condition
         if (mapping.columnFilters && mapping.columnFilters.length > 0) {
-          const passes = mapping.columnFilters.every(f => !f.conditionCol || evaluateCondition(row, f));
+          const passes = mapping.columnFilters.every(f => (f.type !== 'expr_compare' && !f.conditionCol) || evaluateCondition(row, f));
           if (!passes) return '';
         }
         const type = mapping.type || 'direct';

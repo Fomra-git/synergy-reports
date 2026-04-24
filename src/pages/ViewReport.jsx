@@ -269,6 +269,23 @@ async function processTemplateForView(template, masterFile) {
 
   function evalCond(row, mapping) {
     if (!mapping) return true;
+    if (mapping.type === 'expr_compare') {
+      const toE = s => { const n = parseFloat(String(s || '').replace(/,/g, '').trim()); return isNaN(n) ? 0 : n; };
+      const v1 = toE(getMV(row, mapping.col1));
+      const v2 = mapping.col2Type === 'literal' ? toE(mapping.col2Literal) : toE(getMV(row, mapping.col2));
+      let lhs = v1;
+      if (mapping.mathOp === '+') lhs = v1 + v2;
+      else if (mapping.mathOp === '-') lhs = v1 - v2;
+      else if (mapping.mathOp === '*') lhs = v1 * v2;
+      else if (mapping.mathOp === '/') lhs = v2 !== 0 ? v1 / v2 : 0;
+      const rhs = toE(mapping.conditionVals?.[0]);
+      if (mapping.operator === '>=') return lhs >= rhs;
+      if (mapping.operator === '>') return lhs > rhs;
+      if (mapping.operator === '<=') return lhs <= rhs;
+      if (mapping.operator === '<') return lhs < rhs;
+      if (mapping.operator === '!=') return lhs !== rhs;
+      return lhs === rhs;
+    }
     const toNum = s => parseFloat(String(s || '').replace(/,/g, '').trim());
     const evalRule = (targetVal, operator, conditionVals = [], conditionCol = '', row = null, groupByCol = '') => {
       if (operator === 'not_seen_within_days') {
@@ -352,7 +369,7 @@ async function processTemplateForView(template, masterFile) {
 
   function resolveMappingValue(row, index, mapping, rowContext = {}) {
     if (!mapping) return '';
-    if (mapping.columnFilters?.length > 0) { if (!mapping.columnFilters.every(f => !f.conditionCol || evalCond(row, f))) return ''; }
+    if (mapping.columnFilters?.length > 0) { if (!mapping.columnFilters.every(f => (f.type !== 'expr_compare' && !f.conditionCol) || evalCond(row, f))) return ''; }
     const type = mapping.type || 'direct';
     const src = mapping.source || mapping.sourceCol || mapping.target || '';
     if (type === 'serial') return index + 1;
@@ -390,7 +407,7 @@ async function processTemplateForView(template, masterFile) {
   function applyColRowFilters(rows, col) {
     if (!col || !rows) return rows || [];
     if (!col.rowFilters?.length) return rows;
-    return rows.filter(r => col.rowFilters.every(f => !f.conditionCol || f.operator === 'unique' || evalCond(r, f)));
+    return rows.filter(r => col.rowFilters.every(f => (f.type !== 'expr_compare' && !f.conditionCol) || f.operator === 'unique' || evalCond(r, f)));
   }
 
   function applyColValueFilters(rows, col) {

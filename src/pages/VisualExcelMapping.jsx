@@ -1699,126 +1699,108 @@ export default function VisualExcelMapping() {
                  )}
 
                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                   {(modalData.columnFilters || []).map((f, fi) => (
+                   {(modalData.columnFilters || []).map((f, fi) => {
+                     const updCF = (key, val) => { const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], [key]: val }; setModalData(prev => ({ ...prev, columnFilters: upd })); };
+                     return (
                      <div key={fi} style={{ padding: '12px', background: 'var(--glass-bg)', borderRadius: '10px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                         <button
-                           type="button"
-                           onClick={() => setModalData(prev => ({ ...prev, columnFilters: (prev.columnFilters || []).filter((_, i) => i !== fi) }))}
-                           style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}
-                         ><X size={14} /></button>
-                       </div>
-                       <SearchableDropdown
-                         options={masterHeaders}
-                         value={f.conditionCol}
-                         onChange={val => {
-                           const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], conditionCol: val };
-                           setModalData(prev => ({ ...prev, columnFilters: upd }));
-                         }}
-                         placeholder="Condition column..."
-                         zIndex={1200}
-                       />
-                       <select
-                         value={f.operator || '=='}
-                         onChange={e => {
-                           const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], operator: e.target.value };
-                           setModalData(prev => ({ ...prev, columnFilters: upd }));
-                         }}
-                         style={{ padding: '6px', fontSize: '12px' }}
-                       >
-                         <option value="==">Equals (In)</option>
-                         <option value="!=">Not Equals</option>
-                         <option value=">">Greater Than</option>
-                         <option value="<">Less Than</option>
-                         <option value=">=">Greater or Equal</option>
-                         <option value="<=">Less or Equal</option>
-                         <option value="contains">Contains</option>
-                         <option value="between">Between</option>
-                         <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
-                         <option value="this_month">This Month</option>
-                         <option value="prev_month">Previous Month</option>
-                         <option value="not_seen_within_days">Not Seen Within Days</option>
-                       </select>
-                       {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
-                         <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
-                           Auto-detects from data
+                       {/* Header: type toggle + remove */}
+                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                         <div style={{ display: 'flex', gap: '4px' }}>
+                           {[['simple', 'Simple'], ['expr_compare', 'Expression']].map(([t, lbl]) => {
+                             const active = t === 'expr_compare' ? f.type === 'expr_compare' : (!f.type || f.type === 'simple');
+                             return <button key={t} type="button" onClick={() => updCF('type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? 'var(--primary)' : 'var(--border)'}`, background: active ? 'rgba(99,102,241,0.12)' : 'transparent', color: active ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
+                           })}
                          </div>
-                       ) : f.operator === 'not_seen_within_days' ? (
-                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                           <input type="number" min="1" placeholder="Days (e.g. 3)" value={(f.conditionVals || [])[0] || ''}
-                             onChange={e => { const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], conditionVals: [e.target.value] }; setModalData(prev => ({ ...prev, columnFilters: upd })); }}
-                             style={{ padding: '6px 8px', fontSize: '12px' }} />
-                           <SearchableDropdown options={masterHeaders} value={f.groupByCol || ''}
-                             onChange={v => { const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], groupByCol: v }; setModalData(prev => ({ ...prev, columnFilters: upd })); }}
-                             placeholder="Patient / Group By Column..." />
+                         <button type="button" onClick={() => setModalData(prev => ({ ...prev, columnFilters: (prev.columnFilters || []).filter((_, i) => i !== fi) }))} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}><X size={14} /></button>
+                       </div>
+
+                       {f.type === 'expr_compare' ? (
+                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 54px 1fr', gap: '6px' }}>
+                             <div>
+                               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Column 1</label>
+                               <SearchableDropdown options={masterHeaders} value={f.col1 || ''} onChange={v => updCF('col1', v)} placeholder="Select column..." zIndex={1200} />
+                             </div>
+                             <div>
+                               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Math</label>
+                               <select value={f.mathOp || '-'} onChange={e => updCF('mathOp', e.target.value)} style={{ width: '100%', padding: '6px 2px', fontSize: '14px', textAlign: 'center' }}>
+                                 <option value="+">+</option>
+                                 <option value="-">−</option>
+                                 <option value="*">×</option>
+                                 <option value="/">/</option>
+                               </select>
+                             </div>
+                             <div>
+                               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Column 2</label>
+                               <SearchableDropdown options={masterHeaders} value={f.col2 || ''} onChange={v => updCF('col2', v)} placeholder="Select column..." zIndex={1200} />
+                             </div>
+                           </div>
+                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                             <div>
+                               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Comparison</label>
+                               <select value={f.operator || '>='} onChange={e => updCF('operator', e.target.value)} style={{ padding: '6px', fontSize: '12px', width: '100%' }}>
+                                 <option value=">=">≥ Greater or Equal</option>
+                                 <option value=">">Greater Than</option>
+                                 <option value="<=">≤ Less or Equal</option>
+                                 <option value="<">Less Than</option>
+                                 <option value="==">= Equals</option>
+                                 <option value="!=">≠ Not Equal</option>
+                               </select>
+                             </div>
+                             <div>
+                               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Value</label>
+                               <input type="number" value={(f.conditionVals || [])[0] || ''} onChange={e => updCF('conditionVals', [e.target.value])} placeholder="e.g. 6" style={{ padding: '6px 8px', fontSize: '12px', width: '100%', boxSizing: 'border-box' }} />
+                             </div>
+                           </div>
                          </div>
                        ) : (
-                       <div style={{ position: 'relative', paddingTop: '20px' }}>
-                         <div style={{ position: 'absolute', top: '2px', right: '0' }}>
-                           <button
-                             type="button"
-                             onClick={() => {
-                               const upd = [...(modalData.columnFilters || [])]; upd[fi] = { ...upd[fi], isManual: !upd[fi].isManual };
-                               setModalData(prev => ({ ...prev, columnFilters: upd }));
-                             }}
-                             style={{ background: 'none', border: 'none', color: f.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
-                           >
-                             {f.isManual ? <List size={10} /> : <Keyboard size={10} />}
-                             {f.isManual ? 'List' : 'Manual'}
-                           </button>
-                         </div>
-                         {f.operator === 'between' ? (
-                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                             <input
-                               placeholder="Min value..."
-                               value={(f.conditionVals || [])[0] || ''}
-                               onChange={e => {
-                                 const upd = [...(modalData.columnFilters || [])];
-                                 const vals = [...(upd[fi].conditionVals || [])]; vals[0] = e.target.value;
-                                 upd[fi] = { ...upd[fi], conditionVals: vals };
-                                 setModalData(prev => ({ ...prev, columnFilters: upd }));
-                               }}
-                               style={{ padding: '6px 8px', fontSize: '12px' }}
-                             />
-                             <input
-                               placeholder="Max value..."
-                               value={(f.conditionVals || [])[1] || ''}
-                               onChange={e => {
-                                 const upd = [...(modalData.columnFilters || [])];
-                                 const vals = [...(upd[fi].conditionVals || [])]; vals[1] = e.target.value;
-                                 upd[fi] = { ...upd[fi], conditionVals: vals };
-                                 setModalData(prev => ({ ...prev, columnFilters: upd }));
-                               }}
-                               style={{ padding: '6px 8px', fontSize: '12px' }}
-                             />
-                           </div>
-                         ) : f.isManual ? (
-                           <input
-                             placeholder="Comma-separated values..."
-                             value={(f.conditionVals || []).join(', ')}
-                             onChange={e => {
-                               const upd = [...(modalData.columnFilters || [])];
-                               upd[fi] = { ...upd[fi], conditionVals: e.target.value.split(',').map(v => v.trim()).filter(Boolean) };
-                               setModalData(prev => ({ ...prev, columnFilters: upd }));
-                             }}
-                             style={{ padding: '6px 8px', fontSize: '12px', width: '100%' }}
-                           />
-                         ) : (
-                           <MultiSelectDropdown
-                             options={f.conditionCol && masterUniqueValues[f.conditionCol] ? masterUniqueValues[f.conditionCol] : []}
-                             selectedValues={f.conditionVals || []}
-                             onChange={vals => {
-                               const upd = [...(modalData.columnFilters || [])];
-                               upd[fi] = { ...upd[fi], conditionVals: vals };
-                               setModalData(prev => ({ ...prev, columnFilters: upd }));
-                             }}
-                             placeholder="Select values..."
-                           />
-                         )}
-                       </div>
+                         <>
+                           <SearchableDropdown options={masterHeaders} value={f.conditionCol} onChange={val => updCF('conditionCol', val)} placeholder="Condition column..." zIndex={1200} />
+                           <select value={f.operator || '=='} onChange={e => updCF('operator', e.target.value)} style={{ padding: '6px', fontSize: '12px' }}>
+                             <option value="==">Equals (In)</option>
+                             <option value="!=">Not Equals</option>
+                             <option value=">">Greater Than</option>
+                             <option value="<">Less Than</option>
+                             <option value=">=">Greater or Equal</option>
+                             <option value="<=">Less or Equal</option>
+                             <option value="contains">Contains</option>
+                             <option value="between">Between</option>
+                             <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
+                             <option value="this_month">This Month</option>
+                             <option value="prev_month">Previous Month</option>
+                             <option value="not_seen_within_days">Not Seen Within Days</option>
+                           </select>
+                           {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
+                             <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>Auto-detects from data</div>
+                           ) : f.operator === 'not_seen_within_days' ? (
+                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                               <input type="number" min="1" placeholder="Days (e.g. 3)" value={(f.conditionVals || [])[0] || ''} onChange={e => updCF('conditionVals', [e.target.value])} style={{ padding: '6px 8px', fontSize: '12px' }} />
+                               <SearchableDropdown options={masterHeaders} value={f.groupByCol || ''} onChange={v => updCF('groupByCol', v)} placeholder="Patient / Group By Column..." />
+                             </div>
+                           ) : (
+                             <div style={{ position: 'relative', paddingTop: '20px' }}>
+                               <div style={{ position: 'absolute', top: '2px', right: '0' }}>
+                                 <button type="button" onClick={() => updCF('isManual', !f.isManual)} style={{ background: 'none', border: 'none', color: f.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                   {f.isManual ? <List size={10} /> : <Keyboard size={10} />}
+                                   {f.isManual ? 'List' : 'Manual'}
+                                 </button>
+                               </div>
+                               {f.operator === 'between' ? (
+                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                   <input placeholder="Min value..." value={(f.conditionVals || [])[0] || ''} onChange={e => { const vals = [...(f.conditionVals || [])]; vals[0] = e.target.value; updCF('conditionVals', vals); }} style={{ padding: '6px 8px', fontSize: '12px' }} />
+                                   <input placeholder="Max value..." value={(f.conditionVals || [])[1] || ''} onChange={e => { const vals = [...(f.conditionVals || [])]; vals[1] = e.target.value; updCF('conditionVals', vals); }} style={{ padding: '6px 8px', fontSize: '12px' }} />
+                                 </div>
+                               ) : f.isManual ? (
+                                 <input placeholder="Comma-separated values..." value={(f.conditionVals || []).join(', ')} onChange={e => updCF('conditionVals', e.target.value.split(',').map(v => v.trim()).filter(Boolean))} style={{ padding: '6px 8px', fontSize: '12px', width: '100%' }} />
+                               ) : (
+                                 <MultiSelectDropdown options={f.conditionCol && masterUniqueValues[f.conditionCol] ? masterUniqueValues[f.conditionCol] : []} selectedValues={f.conditionVals || []} onChange={vals => updCF('conditionVals', vals)} placeholder="Select values..." />
+                               )}
+                             </div>
+                           )}
+                         </>
                        )}
                      </div>
-                   ))}
+                   );})}
                  </div>
                </div>
 
