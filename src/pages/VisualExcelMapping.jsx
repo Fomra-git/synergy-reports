@@ -26,6 +26,7 @@ import * as XLSX from 'xlsx';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import SearchableDropdown from '../components/SearchableDropdown';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
+import ChartConfigPanel from '../components/ChartConfigPanel';
 import FormulaBuilder from '../components/FormulaBuilder';
 import { ArrowLeft } from 'lucide-react';
 import ModernModal from '../components/ModernModal';
@@ -89,7 +90,8 @@ export default function VisualExcelMapping() {
     isSummaryMode: false,
     isHighlightEmptyEnabled: false,
     mappings: [],
-    sortConfig: { enabled: false, column: '', direction: 'asc', type: 'auto' }
+    sortConfig: { enabled: false, column: '', direction: 'asc', type: 'auto' },
+    chartConfigs: [],
   });
 
   const fileInputRef = useRef(null);
@@ -170,7 +172,8 @@ export default function VisualExcelMapping() {
         isOutputFilterEnabled: t.isOutputFilterEnabled !== false,
         pivotConfig: t.pivotConfig || { rowField: '', colField: '', valField: '', aggType: 'count' },
         headerConfig: t.headerConfig || { type: 'custom', text: '', sourceCol: '' },
-        sortConfig: t.sortConfig || { enabled: false, column: '', direction: 'asc', type: 'auto' }
+        sortConfig: t.sortConfig || { enabled: false, column: '', direction: 'asc', type: 'auto' },
+        chartConfigs: t.chartConfigs || [],
       });
       setSelectedCategoryId(categories.find(c => (c.templateIds || []).includes(id))?.id || '');
     }
@@ -470,7 +473,7 @@ export default function VisualExcelMapping() {
             
             {/* TABS HEADER */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--glass-subtle)' }}>
-              {['columns', 'general', 'filters', 'report'].map(tab => (
+              {['columns', 'general', 'filters', 'report', 'charts'].map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveSidebarTab(tab)}
@@ -944,6 +947,17 @@ export default function VisualExcelMapping() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* TAB 5: CHARTS */}
+              {activeSidebarTab === 'charts' && (
+                <div>
+                  <ChartConfigPanel
+                    chartConfigs={formData.chartConfigs || []}
+                    onChange={configs => setFormData(prev => ({ ...prev, chartConfigs: configs }))}
+                    availableHeaders={masterHeaders}
+                  />
                 </div>
               )}
 

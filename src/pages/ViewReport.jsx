@@ -11,6 +11,7 @@ import {
   BarChart4, Eye, Table2, Search, ExternalLink, Filter
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import ReportChart, { buildChartData } from '../components/ReportChart';
 
 // ── Core helpers (mirrored from GenerateReport, self-contained) ───────────────
 
@@ -1627,6 +1628,30 @@ export default function ViewReport() {
           <ReportTable aoa={aoa} />
         </div>
       )}
+
+      {/* ── Charts ── */}
+      {(selectedTemplate?.chartConfigs?.length > 0) && (() => {
+        const configs = selectedTemplate.chartConfigs;
+        return (
+          <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }} />
+              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>Charts</h3>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{configs.length} chart{configs.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: '20px' }}>
+              {configs.map(cfg => {
+                const srcAoa = sections
+                  ? (sections[cfg.sectionIndex ?? 0]?.aoa || sections[0]?.aoa || [])
+                  : (aoa || []);
+                const { data, yKeys } = buildChartData(srcAoa, cfg.xColumn, cfg.yColumns, cfg.maxItems || 50);
+                if (!data.length || !yKeys.length) return null;
+                return <ReportChart key={cfg.id} config={cfg} aoa={srcAoa} />;
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

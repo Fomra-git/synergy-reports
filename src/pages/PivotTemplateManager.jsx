@@ -38,6 +38,7 @@ import SearchableDropdown from '../components/SearchableDropdown';
 import ModernModal from '../components/ModernModal';
 import FormulaBuilder from '../components/FormulaBuilder';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
+import ChartConfigPanel from '../components/ChartConfigPanel';
 
 export default function PivotTemplateManager() {
   const navigate = useNavigate();
@@ -74,6 +75,7 @@ export default function PivotTemplateManager() {
     isRowTotalEnabled: false,
     isFlatList: false,
     sortConfig: { enabled: false, column: '', direction: 'asc', type: 'auto' },
+    chartConfigs: [],
   });
 
   const [modal, setModal] = useState({
@@ -186,6 +188,7 @@ export default function PivotTemplateManager() {
         isRowTotalEnabled: !!t.isRowTotalEnabled,
         isFlatList: !!t.isFlatList,
         sortConfig: t.sortConfig || { enabled: false, column: '', direction: 'asc', type: 'auto' },
+        chartConfigs: t.chartConfigs || [],
         // Initialize isManual for old templates
         globalFilters: (t.globalFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
         outputFilters: (t.outputFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
@@ -1576,6 +1579,13 @@ export default function PivotTemplateManager() {
                   )}
                </div>
            </div>
+
+           {/* CHARTS SECTION */}
+           <ChartConfigPanel
+             chartConfigs={formData.chartConfigs || []}
+             onChange={configs => setFormData(prev => ({ ...prev, chartConfigs: configs }))}
+             availableHeaders={masterHeaders}
+           />
 
           </div>
         </div>

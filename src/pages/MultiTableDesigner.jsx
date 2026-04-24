@@ -11,6 +11,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import SearchableDropdown from '../components/SearchableDropdown';
 import ModernModal from '../components/ModernModal';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
+import ChartConfigPanel from '../components/ChartConfigPanel';
 
 const OPERATORS = ['==', '!=', 'contains', 'not_contains', '>', '<', '>=', '<=', 'between', 'unique'];
 
@@ -40,6 +41,7 @@ const emptyForm = () => ({
   isHeaderEnabled: false,
   headerConfig: { type: 'custom', text: '', sourceCol: '' },
   sections: [emptySection()],
+  chartConfigs: [],
 });
 
 function normaliseSection(s) {
@@ -114,7 +116,7 @@ export default function MultiTableDesigner() {
     if (!id) { setFormData(emptyForm()); setActiveSectionIdx(0); setSelectedCategoryId(''); return; }
     const t = templates.find(t => t.id === id);
     if (!t) return;
-    setFormData({ ...emptyForm(), ...t, sections: (t.sections?.length ? t.sections : [emptySection()]).map(normaliseSection) });
+    setFormData({ ...emptyForm(), ...t, sections: (t.sections?.length ? t.sections : [emptySection()]).map(normaliseSection), chartConfigs: t.chartConfigs || [] });
     setActiveSectionIdx(0);
     setSelectedCategoryId(categories.find(c => (c.templateIds || []).includes(id))?.id || '');
   };
@@ -429,6 +431,15 @@ export default function MultiTableDesigner() {
                 ))}
               </div>
             </div>
+
+            {/* CHARTS */}
+            <ChartConfigPanel
+              chartConfigs={formData.chartConfigs || []}
+              onChange={configs => setFormData(p => ({ ...p, chartConfigs: configs }))}
+              availableHeaders={masterHeaders}
+              sectionNames={formData.sections.map((s, i) => s.title || `Table ${i + 1}`)}
+            />
+
           </div>
         </div>
 
