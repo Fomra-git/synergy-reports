@@ -619,10 +619,15 @@ export default function GenerateReport() {
         return applyRound(cleanValue(getMasterValue(row, sourceField), mapping, sourceField), mapping);
       };
 
-      const excelJSExport = async (fAOA, colHdrs, tHdr, layouts = [], highlightEmpty = true, mergeColIndices = []) => {
+      const excelJSExport = async (fAOA, colHdrs, tHdr, layouts = [], highlightEmpty = true, mergeColIndices = [], reportName = '') => {
         const workbook = new ExcelJS.Workbook(); const worksheet = workbook.addWorksheet('Report');
         let currR = 1;
-        if (tHdr) { const mergeEnd = Math.max(1, colHdrs.length, (fAOA[0] || []).length); worksheet.mergeCells(1, 1, 1, mergeEnd); const c = worksheet.getCell(1, 1); c.value = tHdr; c.font = { bold: true, size: 14 }; c.alignment = { horizontal: 'center' }; currR = 2; }
+        const mergeEnd = Math.max(1, colHdrs.length, (fAOA[0] || []).length);
+        if (reportName) {
+          if (mergeEnd > 1) try { worksheet.mergeCells(currR, 1, currR, mergeEnd); } catch (_) {}
+          const rn = worksheet.getCell(currR, 1); rn.value = reportName; rn.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } }; rn.alignment = { horizontal: 'center', vertical: 'middle' }; rn.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D5F8A' } }; worksheet.getRow(currR).height = 30; currR++;
+        }
+        if (tHdr) { if (mergeEnd > 1) try { worksheet.mergeCells(currR, 1, currR, mergeEnd); } catch (_) {} const c = worksheet.getCell(currR, 1); c.value = tHdr; c.font = { bold: true, size: 12 }; c.alignment = { horizontal: 'center', vertical: 'middle' }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFF' } }; worksheet.getRow(currR).height = 26; currR++; }
         if (layouts.length > 0) { layouts.forEach(layout => { if (layout.width > 1) worksheet.mergeCells(currR, layout.startCol, currR, layout.startCol + layout.width - 1); }); }
         const numCols = (fAOA[0] || []).length;
         fAOA.forEach((row, idx) => {
@@ -1040,7 +1045,7 @@ export default function GenerateReport() {
       };
 
       // ── Multi-table Excel export ──────────────────────────────────────────
-      const exportMultiSectionExcel = async (sectionInfos, topHeader, layout) => {
+      const exportMultiSectionExcel = async (sectionInfos, topHeader, layout, reportName = '') => {
         const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Report');
         const thin = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
         const applyS = (c, opts = {}) => {
@@ -1049,13 +1054,18 @@ export default function GenerateReport() {
           if (opts.fill) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: opts.fill } };
         };
         let currR = 1;
-        if (topHeader) {
-          const totalCols = layout === 'horizontal'
-            ? sectionInfos.reduce((s, si) => s + ((si.aoa[0] || []).length || 1), 0) + Math.max(0, sectionInfos.length - 1)
-            : Math.max(...sectionInfos.map(si => (si.aoa[0] || []).length || 1), 1);
+        const totalCols = layout === 'horizontal'
+          ? sectionInfos.reduce((s, si) => s + ((si.aoa[0] || []).length || 1), 0) + Math.max(0, sectionInfos.length - 1)
+          : Math.max(...sectionInfos.map(si => (si.aoa[0] || []).length || 1), 1);
+        if (reportName) {
           if (totalCols > 1) try { ws.mergeCells(currR, 1, currR, totalCols); } catch (_) {}
-          const c = ws.getCell(currR, 1); c.value = topHeader; applyS(c, { bold: true, size: 14, fill: 'FFF8FAFF' });
-          ws.getRow(currR).height = 28; currR++;
+          const rn = ws.getCell(currR, 1); rn.value = reportName; rn.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } }; rn.alignment = { horizontal: 'center', vertical: 'middle' }; rn.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D5F8A' } };
+          ws.getRow(currR).height = 30; currR++;
+        }
+        if (topHeader) {
+          if (totalCols > 1) try { ws.mergeCells(currR, 1, currR, totalCols); } catch (_) {}
+          const c = ws.getCell(currR, 1); c.value = topHeader; applyS(c, { bold: true, size: 12, fill: 'FFF8FAFF' });
+          ws.getRow(currR).height = 26; currR++;
         }
         const mergeGroupCol = (aoa, firstColExcelR, colOffset = 1) => {
           if (aoa.length < 3) return;
@@ -1219,7 +1229,7 @@ export default function GenerateReport() {
                 return [gk, ...visiblePCols.map(p => applyRound(cleanValue(getMasterValue(r, p.source), p, p.source), p))];
               })];
               columnHeaders = flatHdrs;
-              const excelBuffer = await excelJSExport(flatAOA, columnHeaders, topReportHeader, [], false, [0]);
+              const excelBuffer = await excelJSExport(flatAOA, columnHeaders, topReportHeader, [], false, [0], template.name || '');
               let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
               if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
               const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -1367,7 +1377,7 @@ export default function GenerateReport() {
             }
 
             columnHeaders = headers;
-            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, [], false);
+            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, [], false, [], template.name || '');
             let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
             if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
             const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -1402,7 +1412,7 @@ export default function GenerateReport() {
                   ? (masterData.length > 0 ? getMasterValue(masterData[0], template.headerConfig.sourceCol) : '') || null
                   : template.headerConfig.text || null)
               : null;
-            const mtBuffer = await exportMultiSectionExcel(sectionInfos, topHdr, template.layout || 'vertical');
+            const mtBuffer = await exportMultiSectionExcel(sectionInfos, topHdr, template.layout || 'vertical', template.name || '');
             let mtFileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
             if (!mtFileName.toLowerCase().endsWith('.xlsx')) mtFileName += '.xlsx';
             const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -1580,7 +1590,7 @@ export default function GenerateReport() {
               }
               return acc;
             }, []);
-            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, [], !!template.isHighlightEmptyEnabled, mergeColIndices);
+            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, [], !!template.isHighlightEmptyEnabled, mergeColIndices, template.name || '');
             let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
             if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
             const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';

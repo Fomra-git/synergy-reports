@@ -824,6 +824,20 @@ async function downloadAsExcel(aoa, sections, templateName, topHeader) {
   };
 
   let currR = 1;
+
+  // Report name title row — merged across full table width, always at the very top
+  if (templateName) {
+    const numCols = sections
+      ? Math.max(...sections.map(s => (s.aoa[0] || []).length || 1), 1)
+      : (aoa?.[0] || []).length || 1;
+    if (numCols > 1) try { ws.mergeCells(currR, 1, currR, numCols); } catch (_) {}
+    const c = ws.getCell(currR, 1); c.value = templateName;
+    c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    c.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D5F8A' } };
+    ws.getRow(currR).height = 30; currR++;
+  }
+
   const writeAOA = (dataAOA, tHeader) => {
     const numCols = (dataAOA[0] || []).length;
     if (tHeader) {
