@@ -920,6 +920,23 @@ export default function GenerateReport() {
         }
         const rowTx = section.rowFieldTransforms || {};
         const colTx = section.colFieldTransforms || {};
+
+        // ── Flat list mode: one output row per data row, grouped/sorted by rowField ──
+        if (section.isFlatList && rowField) {
+          const sorted = [...sectionData].sort((a, b) => {
+            const av = String(getMasterValue(a, rowField) || '').trim();
+            const bv = String(getMasterValue(b, rowField) || '').trim();
+            return av.localeCompare(bv, undefined, { sensitivity: 'base' });
+          });
+          const flatHeaders = [section.rowFieldDisplayName || rowField, ...pCols.map(p => p.displayName || p.source || 'Untitled')];
+          const flatAOA = [flatHeaders];
+          sorted.forEach(r => {
+            const gk = cleanValue(getMasterValue(r, rowField), rowTx, rowField) || String(getMasterValue(r, rowField) || '').trim();
+            flatAOA.push([gk, ...pCols.map(p => applyRound(cleanValue(getMasterValue(r, p.source), p, p.source), p))]);
+          });
+          return flatAOA;
+        }
+
         const rowsByGroup = {};
         sectionData.forEach(r => {
           const rawGk = isPG ? String(getMasterValue(r, rowField) || '').trim() : '_default';
@@ -1020,12 +1037,28 @@ export default function GenerateReport() {
           const c = ws.getCell(currR, 1); c.value = topHeader; applyS(c, { bold: true, size: 14, fill: 'FFF8FAFF' });
           ws.getRow(currR).height = 28; currR++;
         }
+        const mergeGroupCol = (aoa, firstColExcelR, colOffset = 1) => {
+          if (aoa.length < 3) return;
+          let runStart = firstColExcelR;
+          let runVal = aoa[1][0];
+          for (let i = 2; i < aoa.length; i++) {
+            const val = aoa[i][0];
+            if (val !== runVal || val === '' || val == null) {
+              if (firstColExcelR + i - 2 > runStart) try { ws.mergeCells(runStart, colOffset, firstColExcelR + i - 2, colOffset); ws.getCell(runStart, colOffset).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; } catch (_) {}
+              runStart = firstColExcelR + i - 1;
+              runVal = val;
+            }
+          }
+          const lastR = firstColExcelR + aoa.length - 2;
+          if (lastR > runStart) try { ws.mergeCells(runStart, colOffset, lastR, colOffset); ws.getCell(runStart, colOffset).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; } catch (_) {}
+        };
+
         if (layout === 'horizontal') {
           const offsets = []; let off = 1;
           sectionInfos.forEach(si => { offsets.push(off); off += ((si.aoa[0] || []).length || 1) + 1; });
           const titleR = currR; const dataStartR = currR + 1;
           sectionInfos.forEach((si, idx) => {
-            const { title, aoa } = si; const numCols = (aoa[0] || []).length || 1; const colStart = offsets[idx];
+            const { title, aoa, flatListMergeFirstCol } = si; const numCols = (aoa[0] || []).length || 1; const colStart = offsets[idx];
             if (title) {
               if (numCols > 1) try { ws.mergeCells(titleR, colStart, titleR, colStart + numCols - 1); } catch (_) {}
               const c = ws.getCell(titleR, colStart); c.value = title; applyS(c, { bold: true, size: 12, fill: 'FFE2E8F0' });
@@ -1037,21 +1070,24 @@ export default function GenerateReport() {
                 applyS(c, ri === 0 ? { bold: true, fill: 'FFF1F5F9' } : {});
               });
             });
+            if (flatListMergeFirstCol) mergeGroupCol(aoa, dataStartR + 1, colStart);
           });
           let c = 1; sectionInfos.forEach(si => { const n = (si.aoa[0] || []).length || 1; for (let i = 0; i < n; i++) ws.getColumn(c + i).width = 25; c += n + 1; });
         } else {
           sectionInfos.forEach((si, idx) => {
-            const { title, aoa } = si; const numCols = (aoa[0] || []).length || 1;
+            const { title, aoa, flatListMergeFirstCol } = si; const numCols = (aoa[0] || []).length || 1;
             if (title) {
               if (numCols > 1) try { ws.mergeCells(currR, 1, currR, numCols); } catch (_) {}
               const c = ws.getCell(currR, 1); c.value = title; applyS(c, { bold: true, size: 12, fill: 'FFE2E8F0' });
               ws.getRow(currR).height = 22; currR++;
             }
+            const sectionHeaderR = currR;
             aoa.forEach((row, ri) => {
               const exRow = ws.getRow(currR); exRow.values = row.map(v => (v && typeof v === 'object' && v.v !== undefined) ? v.v : v);
               for (let col = 1; col <= numCols; col++) applyS(exRow.getCell(col), ri === 0 ? { bold: true, fill: 'FFF1F5F9' } : {});
               currR++;
             });
+            if (flatListMergeFirstCol) mergeGroupCol(aoa, sectionHeaderR + 1);
             if (idx < sectionInfos.length - 1) currR++;
           });
           ws.columns.forEach(c => c.width = 25);
@@ -1150,6 +1186,26 @@ export default function GenerateReport() {
             }
             const rowTx = template.rowFieldTransforms || {};
             const colTx = template.colFieldTransforms || {};
+
+            // ── Flat list mode ──────────────────────────────────────────────────
+            if (template.isFlatList && isPG) {
+              const sorted = [...filteredMD].sort((a, b) =>
+                String(getMasterValue(a, rowField) || '').trim().localeCompare(String(getMasterValue(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
+              );
+              const flatHdrs = [rowField || 'Group', ...pCols.map(p => p.displayName || p.source || 'Untitled')];
+              const flatAOA = [flatHdrs, ...sorted.map(r => {
+                const gk = cleanValue(getMasterValue(r, rowField), rowTx, rowField) || String(getMasterValue(r, rowField) || '').trim();
+                return [gk, ...pCols.map(p => applyRound(cleanValue(getMasterValue(r, p.source), p, p.source), p))];
+              })];
+              columnHeaders = flatHdrs;
+              const excelBuffer = await excelJSExport(flatAOA, columnHeaders, topReportHeader, [], false, [0]);
+              let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
+              if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
+              const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+              if (isSingle) saveAs(new Blob([excelBuffer], { type: excelMimeType }), fileName); else zip.file(fileName, excelBuffer);
+              continue;
+            }
+
             const rowsByGroup = {};
             filteredMD.forEach(r => {
               const rawGk = isPG ? String(getMasterValue(r, rowField) || '').trim() : '_default';
@@ -1317,7 +1373,7 @@ export default function GenerateReport() {
                   } else { sectionData = sectionData.filter(r => evaluateCondition(r, gf)); }
                 });
               }
-              sectionInfos.push({ title: section.title || '', aoa: generatePivotSectionAOA(section, sectionData) });
+              sectionInfos.push({ title: section.title || '', aoa: generatePivotSectionAOA(section, sectionData), flatListMergeFirstCol: !!(section.isFlatList && section.rowField) });
             }
             const topHdr = template.isHeaderEnabled && template.headerConfig
               ? (template.headerConfig.type === 'column'

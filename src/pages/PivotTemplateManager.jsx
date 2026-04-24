@@ -72,6 +72,7 @@ export default function PivotTemplateManager() {
     headerConfig: { type: 'custom', text: '', sourceCol: '' },
     isPivotSummaryEnabled: false,
     isRowTotalEnabled: false,
+    isFlatList: false,
     sortConfig: { enabled: false, column: '', direction: 'asc', type: 'auto' },
   });
 
@@ -183,6 +184,7 @@ export default function PivotTemplateManager() {
         headerConfig: t.headerConfig || { type: 'custom', text: '', sourceCol: '' },
         isPivotSummaryEnabled: !!t.isPivotSummaryEnabled,
         isRowTotalEnabled: !!t.isRowTotalEnabled,
+        isFlatList: !!t.isFlatList,
         sortConfig: t.sortConfig || { enabled: false, column: '', direction: 'asc', type: 'auto' },
         // Initialize isManual for old templates
         globalFilters: (t.globalFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
@@ -852,6 +854,14 @@ export default function PivotTemplateManager() {
                        type="checkbox"
                        checked={formData.isPivotSummaryEnabled}
                        onChange={e => setFormData(prev => ({ ...prev, isPivotSummaryEnabled: e.target.checked }))}
+                     />
+                   </label>
+                   <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--secondary)', fontWeight: '700' }} title="Show every individual record grouped under each row-field value, instead of aggregating into one row per group">
+                     Flat List Mode:
+                     <input
+                       type="checkbox"
+                       checked={!!formData.isFlatList}
+                       onChange={e => setFormData(prev => ({ ...prev, isFlatList: e.target.checked }))}
                      />
                    </label>
                    <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: '700' }}>

@@ -459,6 +459,20 @@ async function processTemplateForView(template, masterFile) {
     if (excludedCols.size) pCols = pCols.filter(p => !excludedCols.has(cleanFieldName(p.source || '')));
     if (rowField) { const rfk = cleanFieldName(rowField).toLowerCase(); pCols = pCols.filter(p => !((p.type === 'property' || p.type === 'grouping') && cleanFieldName(p.source || '').toLowerCase() === rfk)); }
     const rowTx = template.rowFieldTransforms || {}, colTx = template.colFieldTransforms || {};
+
+    // ── Flat list mode ──────────────────────────────────────────────────────────
+    if (template.isFlatList && rowField) {
+      const sorted = [...filteredMD].sort((a, b) =>
+        String(getMV(a, rowField) || '').trim().localeCompare(String(getMV(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
+      );
+      const flatHdrs = [rowField || 'Group', ...pCols.map(p => p.displayName || p.source || 'Untitled')];
+      const flatAOA = [flatHdrs, ...sorted.map(r => {
+        const gk = cleanVal(getMV(r, rowField), rowTx, rowField) || String(getMV(r, rowField) || '').trim();
+        return [gk, ...pCols.map(p => applyRound(cleanVal(getMV(r, p.source), p, p.source), p))];
+      })];
+      return { aoa: flatAOA, sections: null, topHeader: template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null };
+    }
+
     const rowsByGroup = {};
     filteredMD.forEach(r => {
       const rawGk = rowField ? String(getMV(r, rowField) || '').trim() : '_default';
@@ -554,6 +568,21 @@ async function processTemplateForView(template, masterFile) {
       }
       const rowTx = section.rowFieldTransforms || {};
       const colTx = section.colFieldTransforms || {};
+
+      // ── Flat list mode ────────────────────────────────────────────────────────
+      if (section.isFlatList && rowField) {
+        const sorted = [...sectionData].sort((a, b) =>
+          String(getMV(a, rowField) || '').trim().localeCompare(String(getMV(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
+        );
+        const flatHeaders = [section.rowFieldDisplayName || rowField, ...pCols.map(p => p.displayName || p.source || 'Untitled')];
+        const flatAOA = [flatHeaders];
+        sorted.forEach(r => {
+          const gk = cleanVal(getMV(r, rowField), rowTx, rowField) || String(getMV(r, rowField) || '').trim();
+          flatAOA.push([gk, ...pCols.map(p => applyRound(cleanVal(getMV(r, p.source), p, p.source), p))]);
+        });
+        return flatAOA;
+      }
+
       const rowsByGroup = {};
       sectionData.forEach(r => {
         const rawGk = rowField ? String(getMV(r, rowField) || '').trim() : '_default';

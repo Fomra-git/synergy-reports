@@ -28,6 +28,7 @@ const emptySection = () => ({
   isOutputFilterEnabled: true,
   isPivotSummaryEnabled: false,
   isRowTotalEnabled: false,
+  isFlatList: false,
 });
 
 const emptyForm = () => ({
@@ -595,6 +596,7 @@ export default function MultiTableDesigner() {
                       {[
                         { key: 'isPivotSummaryEnabled', label: 'Grand Total Row', desc: 'Sum totals at bottom' },
                         { key: 'isRowTotalEnabled', label: 'Row Totals', desc: 'Cross-tab column sums' },
+                        { key: 'isFlatList', label: 'Flat List Mode', desc: 'One row per record, group column merged' },
                       ].map(opt => (
                         <div key={opt.key} style={cardSty}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
