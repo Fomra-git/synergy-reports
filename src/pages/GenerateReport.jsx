@@ -466,6 +466,8 @@ export default function GenerateReport() {
           }
           return '';
         }
+        // Preserve JS numbers when no text transforms are active (prevents Excel "number stored as text" warnings)
+        if (typeof val === 'number' && !(config && (config.simplifyDate || config.simplifyTime || config.normalizeMonth || config.normalizeWeek || config.findText))) return val;
         if (!config) return String(val).trim();
         let cleaned = String(val).trim();
         let dateObj = (config.normalizeMonth || config.normalizeWeek || config.simplifyDate) ? parseReportDate(val) : null;
@@ -1541,6 +1543,30 @@ export default function GenerateReport() {
                 finalAOA.slice(1).forEach((row, idx) => {
                   serialColIndices.forEach(ci => { row[ci] = idx + 1; });
                 });
+              }
+            }
+
+            // Visual Mapper grand total row — appended when any visible mapping has totalType configured
+            if (!useFallback) {
+              const visAM = activeMappings.filter(m => !m.hideInReport);
+              const hdrsVM = finalAOA[0] || [];
+              const hdrToM = {}; visAM.forEach((m, i) => { const k = cleanFieldName(m.target || m.source || `Column${i + 1}`) || `Column${i + 1}`; if (!hdrToM[k]) hdrToM[k] = m; });
+              if (hdrsVM.some(h => hdrToM[h]?.totalType && hdrToM[h].totalType !== 'none')) {
+                const vmDataRows = finalAOA.slice(1);
+                const firstTotalMVM = hdrsVM.map(h => hdrToM[h]).find(m => m?.totalType && m.totalType !== 'none');
+                const vmTotalRow = hdrsVM.map((h, ci) => {
+                  if (ci === 0) return firstTotalMVM?.totalLabel || 'Total';
+                  const m = hdrToM[h]; if (!m?.totalType || m.totalType === 'none') return '';
+                  const vals = vmDataRows.map(r => { const n = parseFloat(String(r[ci] ?? '').replace(/,/g, '')); return isNaN(n) ? null : n; }).filter(v => v !== null);
+                  if (!vals.length) return '';
+                  if (m.totalType === 'sum') return vals.reduce((a, b) => a + b, 0);
+                  if (m.totalType === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
+                  if (m.totalType === 'count') return vmDataRows.length;
+                  if (m.totalType === 'min') return Math.min(...vals);
+                  if (m.totalType === 'max') return Math.max(...vals);
+                  return '';
+                });
+                finalAOA.push(vmTotalRow);
               }
             }
 

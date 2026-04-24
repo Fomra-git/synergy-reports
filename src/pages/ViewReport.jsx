@@ -237,6 +237,8 @@ async function processTemplateForView(template, masterFile) {
       if (config?.replaceWith !== undefined && config.replaceWith !== null && String(config.replaceWith).trim() !== '') return String(config.replaceWith).trim();
       return '';
     }
+    // Preserve JS numbers when no text transforms are active (prevents Excel "number stored as text" warnings)
+    if (typeof val === 'number' && !(config && (config.simplifyDate || config.simplifyTime || config.normalizeMonth || config.normalizeWeek || config.findText))) return val;
     if (!config) return String(val).trim();
     let cleaned = String(val).trim();
     let dateObj = (config.normalizeMonth || config.normalizeWeek || config.simplifyDate) ? parseReportDatePure(val) : null;
@@ -782,6 +784,26 @@ async function processTemplateForView(template, masterFile) {
   }, []);
   if (serialColIndices.length) {
     finalAOA.slice(1).forEach((row, idx) => { serialColIndices.forEach(ci => { row[ci] = idx + 1; }); });
+  }
+
+  // Visual Mapper grand total row — appended when any visible mapping has totalType configured
+  const visMappings = activeMappings.filter(m => !m.hideInReport && !excludedCols.has(cleanFieldName(m.source || '')));
+  if (visMappings.some(m => m.totalType && m.totalType !== 'none')) {
+    const vmDataRows = finalAOA.slice(1);
+    const firstTotalM = visMappings.find(m => m.totalType && m.totalType !== 'none');
+    const vmTotalRow = visMappings.map((m, ci) => {
+      if (ci === 0) return firstTotalM?.totalLabel || 'Total';
+      if (!m.totalType || m.totalType === 'none') return '';
+      const vals = vmDataRows.map(r => { const n = parseFloat(String(r[ci] ?? '').replace(/,/g, '')); return isNaN(n) ? null : n; }).filter(v => v !== null);
+      if (!vals.length) return '';
+      if (m.totalType === 'sum') return vals.reduce((a, b) => a + b, 0);
+      if (m.totalType === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
+      if (m.totalType === 'count') return vmDataRows.length;
+      if (m.totalType === 'min') return Math.min(...vals);
+      if (m.totalType === 'max') return Math.max(...vals);
+      return '';
+    });
+    finalAOA.push(vmTotalRow);
   }
 
   const topHeader = template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null;
