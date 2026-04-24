@@ -585,6 +585,13 @@ export default function MultiTableDesigner() {
                                   <input value={col.formula} onChange={e => updatePivotCol(col.id, 'formula', e.target.value)} placeholder="e.g. {Sessions} / {Patients} * 100" style={{ padding: '8px', fontSize: '13px', fontFamily: 'monospace' }} />
                                 </div>
                               )}
+
+                              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#ef4444', cursor: 'pointer', fontWeight: '600' }}>
+                                  <input type="checkbox" checked={!!col.hideInReport} onChange={e => updatePivotCol(col.id, 'hideInReport', e.target.checked)} />
+                                  Hide in Report — column is excluded from output but still available to formulas
+                                </label>
+                              </div>
                             </div>
                           ))}
                         </div>

@@ -928,11 +928,12 @@ export default function GenerateReport() {
             const bv = String(getMasterValue(b, rowField) || '').trim();
             return av.localeCompare(bv, undefined, { sensitivity: 'base' });
           });
-          const flatHeaders = [section.rowFieldDisplayName || rowField, ...pCols.map(p => p.displayName || p.source || 'Untitled')];
+          const visPCols = pCols.filter(p => !p.hideInReport);
+          const flatHeaders = [section.rowFieldDisplayName || rowField, ...visPCols.map(p => p.displayName || p.source || 'Untitled')];
           const flatAOA = [flatHeaders];
           sorted.forEach(r => {
             const gk = cleanValue(getMasterValue(r, rowField), rowTx, rowField) || String(getMasterValue(r, rowField) || '').trim();
-            flatAOA.push([gk, ...pCols.map(p => applyRound(cleanValue(getMasterValue(r, p.source), p, p.source), p))]);
+            flatAOA.push([gk, ...visPCols.map(p => applyRound(cleanValue(getMasterValue(r, p.source), p, p.source), p))]);
           });
           return flatAOA;
         }
@@ -950,9 +951,9 @@ export default function GenerateReport() {
         if (colField) allColKs.sort((a, b) => { const dA = parseReportDate(a), dB = parseReportDate(b); return (dA && dB) ? dA.getTime() - dB.getTime() : a.localeCompare(b, undefined, { numeric: true }); });
         const rowLabel = section.rowFieldDisplayName || rowField || 'Group';
         const headers = [rowLabel];
-        if (colField) allColKs.forEach(ck => pCols.forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
-        else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
-        if (section.isRowTotalEnabled && colField) pCols.forEach(p => headers.push(`Row Total - ${p.displayName || p.source}`));
+        if (colField) allColKs.forEach(ck => pCols.forEach(p => { if (!p.hideInReport) headers.push(`${ck} - ${p.displayName || p.source}`); }));
+        else pCols.forEach(p => { if (!p.hideInReport) headers.push(p.displayName || p.source || 'Untitled'); });
+        if (section.isRowTotalEnabled && colField) pCols.forEach(p => { if (!p.hideInReport) headers.push(`Row Total - ${p.displayName || p.source}`); });
         sAOA.push(headers);
         const sApplyDedup = (rows, p) => {
           if (!p.isUniqueCount || !p.dedupColumn) return rows;
@@ -983,11 +984,11 @@ export default function GenerateReport() {
           const rr = [gk === '_default' ? '' : gk];
           allColKs.forEach(ck => {
             const cg = rg.colGroups[ck] || { rows: [] }; const ctx = {};
-            pCols.forEach(p => { const fr = sApplyDedup(applyColValueFilters(applyColRowFilters(cg.rows, p), p), p); rr.push(sComputeAgg(fr, p, ctx)); });
+            pCols.forEach(p => { const fr = sApplyDedup(applyColValueFilters(applyColRowFilters(cg.rows, p), p), p); const v = sComputeAgg(fr, p, ctx); if (!p.hideInReport) rr.push(v); });
           });
           if (section.isRowTotalEnabled && colField) {
             const all = Object.values(rg.colGroups).flatMap(cg => cg.rows); const ctx = {};
-            pCols.forEach(p => { const fr = sApplyDedup(applyColValueFilters(applyColRowFilters(all, p), p), p); const v = sComputeAgg(fr, p, ctx, true); rr.push(p.showTotal === false ? '' : v); });
+            pCols.forEach(p => { const fr = sApplyDedup(applyColValueFilters(applyColRowFilters(all, p), p), p); const v = sComputeAgg(fr, p, ctx, true); if (!p.hideInReport) rr.push(p.showTotal === false ? '' : v); });
           }
           sAOA.push(rr);
         });
@@ -1192,10 +1193,11 @@ export default function GenerateReport() {
               const sorted = [...filteredMD].sort((a, b) =>
                 String(getMasterValue(a, rowField) || '').trim().localeCompare(String(getMasterValue(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
               );
-              const flatHdrs = [rowField || 'Group', ...pCols.map(p => p.displayName || p.source || 'Untitled')];
+              const visiblePCols = pCols.filter(p => !p.hideInReport);
+              const flatHdrs = [rowField || 'Group', ...visiblePCols.map(p => p.displayName || p.source || 'Untitled')];
               const flatAOA = [flatHdrs, ...sorted.map(r => {
                 const gk = cleanValue(getMasterValue(r, rowField), rowTx, rowField) || String(getMasterValue(r, rowField) || '').trim();
-                return [gk, ...pCols.map(p => applyRound(cleanValue(getMasterValue(r, p.source), p, p.source), p))];
+                return [gk, ...visiblePCols.map(p => applyRound(cleanValue(getMasterValue(r, p.source), p, p.source), p))];
               })];
               columnHeaders = flatHdrs;
               const excelBuffer = await excelJSExport(flatAOA, columnHeaders, topReportHeader, [], false, [0]);
@@ -1219,9 +1221,9 @@ export default function GenerateReport() {
             if (colField) allColKs.sort((a,b) => { const dA = parseReportDate(a), dB = parseReportDate(b); return (dA && dB) ? dA.getTime() - dB.getTime() : a.localeCompare(b, undefined, { numeric: true }); });
             
             const headers = [rowField || 'Group'];
-            if (colField) allColKs.forEach(ck => pCols.forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
-            else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
-            if (template.isRowTotalEnabled && colField) pCols.forEach(p => headers.push(`Row Total - ${p.displayName || p.source}`));
+            if (colField) allColKs.forEach(ck => pCols.forEach(p => { if (!p.hideInReport) headers.push(`${ck} - ${p.displayName || p.source}`); }));
+            else pCols.forEach(p => { if (!p.hideInReport) headers.push(p.displayName || p.source || 'Untitled'); });
+            if (template.isRowTotalEnabled && colField) pCols.forEach(p => { if (!p.hideInReport) headers.push(`Row Total - ${p.displayName || p.source}`); });
             finalAOA.push(headers);
 
             const applyDedup = (rows, p) => {
@@ -1282,7 +1284,8 @@ export default function GenerateReport() {
                 const rowContext = {};
                 pCols.forEach(p => {
                   const fr = applyDedup(applyColValueFilters(applyColRowFilters(cg.rows, p), p), p);
-                  rr.push(computePivotAgg(fr, p, rowContext));
+                  const v = computePivotAgg(fr, p, rowContext);
+                  if (!p.hideInReport) rr.push(v);
                 });
               });
               if (template.isRowTotalEnabled && colField) {
@@ -1291,7 +1294,7 @@ export default function GenerateReport() {
                 pCols.forEach(p => {
                   const fr = applyDedup(applyColValueFilters(applyColRowFilters(allRowsForGroup, p), p), p);
                   const v = computePivotAgg(fr, p, rowTotalContext, true);
-                  rr.push(p.showTotal === false ? '' : v);
+                  if (!p.hideInReport) rr.push(p.showTotal === false ? '' : v);
                 });
               }
               finalAOA.push(rr);
@@ -1424,10 +1427,12 @@ export default function GenerateReport() {
                 });
                 return { data: nr };
               });
-              columnHeaders = activeMappings.map((m, mappingIndex) => {
-                const rawTarget = m.target || m.source || `Column${mappingIndex + 1}`;
-                return cleanFieldName(rawTarget) || `Column${mappingIndex + 1}`;
-              });
+              columnHeaders = activeMappings
+                .filter(m => !m.hideInReport)
+                .map((m, mappingIndex) => {
+                  const rawTarget = m.target || m.source || `Column${mappingIndex + 1}`;
+                  return cleanFieldName(rawTarget) || `Column${mappingIndex + 1}`;
+                });
             }
 
             // Strip any empty-string headers that slipped through

@@ -465,10 +465,11 @@ async function processTemplateForView(template, masterFile) {
       const sorted = [...filteredMD].sort((a, b) =>
         String(getMV(a, rowField) || '').trim().localeCompare(String(getMV(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
       );
-      const flatHdrs = [rowField || 'Group', ...pCols.map(p => p.displayName || p.source || 'Untitled')];
+      const visPCols = pCols.filter(p => !p.hideInReport);
+      const flatHdrs = [rowField || 'Group', ...visPCols.map(p => p.displayName || p.source || 'Untitled')];
       const flatAOA = [flatHdrs, ...sorted.map(r => {
         const gk = cleanVal(getMV(r, rowField), rowTx, rowField) || String(getMV(r, rowField) || '').trim();
-        return [gk, ...pCols.map(p => applyRound(cleanVal(getMV(r, p.source), p, p.source), p))];
+        return [gk, ...visPCols.map(p => applyRound(cleanVal(getMV(r, p.source), p, p.source), p))];
       })];
       return { aoa: flatAOA, sections: null, topHeader: template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null };
     }
@@ -505,20 +506,20 @@ async function processTemplateForView(template, masterFile) {
     }
 
     const headers = [rowField || 'Group'];
-    if (colField) allColKs.forEach(ck => pCols.forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
-    else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
-    if (template.isRowTotalEnabled && colField) pCols.forEach(p => headers.push(`Row Total - ${p.displayName || p.source}`));
+    if (colField) allColKs.forEach(ck => pCols.forEach(p => { if (!p.hideInReport) headers.push(`${ck} - ${p.displayName || p.source}`); }));
+    else pCols.forEach(p => { if (!p.hideInReport) headers.push(p.displayName || p.source || 'Untitled'); });
+    if (template.isRowTotalEnabled && colField) pCols.forEach(p => { if (!p.hideInReport) headers.push(`Row Total - ${p.displayName || p.source}`); });
     let finalAOA = [headers];
 
     Object.entries(rowsByGroup).forEach(([gk, rg]) => {
       const rr = [gk === '_default' ? '' : gk];
       allColKs.forEach(ck => {
         const cg = rg.colGroups[ck] || { rows: [] }; const ctx = {};
-        pCols.forEach(p => { const fr = applyDedup(applyColValueFilters(applyColRowFilters(cg.rows, p), p), p); rr.push(computeAgg(fr, p, ctx)); });
+        pCols.forEach(p => { const fr = applyDedup(applyColValueFilters(applyColRowFilters(cg.rows, p), p), p); const v = computeAgg(fr, p, ctx); if (!p.hideInReport) rr.push(v); });
       });
       if (template.isRowTotalEnabled && colField) {
         const all = Object.values(rg.colGroups).flatMap(cg => cg.rows); const ctx = {};
-        pCols.forEach(p => { const fr = applyDedup(applyColValueFilters(applyColRowFilters(all, p), p), p); const v = computeAgg(fr, p, ctx, true); rr.push(p.showTotal === false ? '' : v); });
+        pCols.forEach(p => { const fr = applyDedup(applyColValueFilters(applyColRowFilters(all, p), p), p); const v = computeAgg(fr, p, ctx, true); if (!p.hideInReport) rr.push(p.showTotal === false ? '' : v); });
       }
       finalAOA.push(rr);
     });
@@ -574,11 +575,12 @@ async function processTemplateForView(template, masterFile) {
         const sorted = [...sectionData].sort((a, b) =>
           String(getMV(a, rowField) || '').trim().localeCompare(String(getMV(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
         );
-        const flatHeaders = [section.rowFieldDisplayName || rowField, ...pCols.map(p => p.displayName || p.source || 'Untitled')];
+        const visPCols = pCols.filter(p => !p.hideInReport);
+        const flatHeaders = [section.rowFieldDisplayName || rowField, ...visPCols.map(p => p.displayName || p.source || 'Untitled')];
         const flatAOA = [flatHeaders];
         sorted.forEach(r => {
           const gk = cleanVal(getMV(r, rowField), rowTx, rowField) || String(getMV(r, rowField) || '').trim();
-          flatAOA.push([gk, ...pCols.map(p => applyRound(cleanVal(getMV(r, p.source), p, p.source), p))]);
+          flatAOA.push([gk, ...visPCols.map(p => applyRound(cleanVal(getMV(r, p.source), p, p.source), p))]);
         });
         return flatAOA;
       }
@@ -599,9 +601,9 @@ async function processTemplateForView(template, masterFile) {
 
       const rowLabel = section.rowFieldDisplayName || rowField || 'Group';
       const headers = [rowLabel];
-      if (colField) allColKs.forEach(ck => pCols.forEach(p => headers.push(`${ck} - ${p.displayName || p.source}`)));
-      else pCols.forEach(p => headers.push(p.displayName || p.source || 'Untitled'));
-      if (section.isRowTotalEnabled && colField) pCols.forEach(p => headers.push(`Row Total - ${p.displayName || p.source}`));
+      if (colField) allColKs.forEach(ck => pCols.forEach(p => { if (!p.hideInReport) headers.push(`${ck} - ${p.displayName || p.source}`); }));
+      else pCols.forEach(p => { if (!p.hideInReport) headers.push(p.displayName || p.source || 'Untitled'); });
+      if (section.isRowTotalEnabled && colField) pCols.forEach(p => { if (!p.hideInReport) headers.push(`Row Total - ${p.displayName || p.source}`); });
 
       const sAOA = [headers];
 
@@ -631,11 +633,11 @@ async function processTemplateForView(template, masterFile) {
         const rr = [gk === '_default' ? '' : gk];
         allColKs.forEach(ck => {
           const cg = rg.colGroups[ck] || { rows: [] }; const ctx = {};
-          pCols.forEach(p => { const fr = applyDedup(applyColValueFilters(applyColRowFilters(cg.rows, p), p), p); rr.push(sComputeAgg(fr, p, ctx)); });
+          pCols.forEach(p => { const fr = applyDedup(applyColValueFilters(applyColRowFilters(cg.rows, p), p), p); const v = sComputeAgg(fr, p, ctx); if (!p.hideInReport) rr.push(v); });
         });
         if (section.isRowTotalEnabled && colField) {
           const all = Object.values(rg.colGroups).flatMap(cg => cg.rows); const ctx = {};
-          pCols.forEach(p => { const fr = applyDedup(applyColValueFilters(applyColRowFilters(all, p), p), p); const v = sComputeAgg(fr, p, ctx, true); rr.push(p.showTotal === false ? '' : v); });
+          pCols.forEach(p => { const fr = applyDedup(applyColValueFilters(applyColRowFilters(all, p), p), p); const v = sComputeAgg(fr, p, ctx, true); if (!p.hideInReport) rr.push(p.showTotal === false ? '' : v); });
         }
         sAOA.push(rr);
       });
@@ -711,6 +713,7 @@ async function processTemplateForView(template, masterFile) {
   // ── VISUAL MAPPER (direct / default) ────────────────────────────────────────
   const activeMappings = (template.mappings || []).filter(m => m.type !== 'condition');
   const validHeaders = activeMappings.map((m, i) => {
+    if (m.hideInReport) return null;
     const h = cleanFieldName(m.target || m.source || `Column${i+1}`) || `Column${i+1}`;
     return excludedCols.has(cleanFieldName(m.source || '')) ? null : h;
   }).filter(Boolean);
@@ -723,8 +726,9 @@ async function processTemplateForView(template, masterFile) {
       const v = resolveMappingValue(row, index, mapping, rowContext);
       const key = mapping.target || mapping.source || '';
       if (key) rowContext[key] = v;
+      if (mapping.hideInReport) return null;
       return v;
-    }).filter((_, i) => !excludedCols.has(cleanFieldName(activeMappings[i]?.source || '')));
+    }).filter((_, i) => !excludedCols.has(cleanFieldName(activeMappings[i]?.source || '')) && !activeMappings[i]?.hideInReport);
   });
 
   let finalAOA = [validHeaders, ...reportData];

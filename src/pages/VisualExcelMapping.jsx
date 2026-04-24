@@ -1243,6 +1243,19 @@ export default function VisualExcelMapping() {
                              }} />
                           </div>
                        </div>
+
+                       <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                          <div style={{ flex: 1 }}>
+                             <p style={{ fontSize: '14px', fontWeight: '600' }}>Hide in Report</p>
+                             <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Column is excluded from output but still used by formulas and conditions.</p>
+                          </div>
+                          <div
+                             onClick={() => setModalData(prev => ({ ...prev, hideInReport: !prev.hideInReport }))}
+                             style={{ width: '44px', height: '24px', borderRadius: '12px', background: modalData.hideInReport ? '#ef4444' : 'var(--glass-border)', position: 'relative', cursor: 'pointer', transition: '0.3s', flexShrink: 0 }}
+                          >
+                             <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: modalData.hideInReport ? '23px' : '3px', transition: '0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />
+                          </div>
+                       </div>
                     </div>
 
                     <div style={{ background: 'var(--glass-subtle)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border)', marginBottom: '8px' }}>

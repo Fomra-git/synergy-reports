@@ -1199,13 +1199,31 @@ export default function PivotTemplateManager() {
                            )}
 
                            {(col.type === 'aggregation' || col.type === 'formula') && (
-                             <div className="form-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingTop: '20px' }}>
+                             <div className="form-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingTop: '20px', gap: '16px' }}>
                                 <label className="switch-label" style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={col.showTotal !== false} 
-                                    onChange={e => updatePivotColumn(col.id, 'showTotal', e.target.checked)} 
+                                  <input
+                                    type="checkbox"
+                                    checked={col.showTotal !== false}
+                                    onChange={e => updatePivotColumn(col.id, 'showTotal', e.target.checked)}
                                   /> Show Total
+                                </label>
+                                <label className="switch-label" style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#ef4444' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!col.hideInReport}
+                                    onChange={e => updatePivotColumn(col.id, 'hideInReport', e.target.checked)}
+                                  /> Hide in Report
+                                </label>
+                             </div>
+                           )}
+                           {(col.type === 'property' || col.type === 'grouping' || col.type === 'last_visit_date') && (
+                             <div className="form-group" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingTop: '20px' }}>
+                                <label className="switch-label" style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#ef4444' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!col.hideInReport}
+                                    onChange={e => updatePivotColumn(col.id, 'hideInReport', e.target.checked)}
+                                  /> Hide in Report
                                 </label>
                              </div>
                            )}
