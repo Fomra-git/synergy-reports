@@ -1050,7 +1050,7 @@ export default function PivotTemplateManager() {
             
             {/* INTEGRATED COLUMNS SECTION */}
             <div>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border)', position: 'sticky', top: '-24px', zIndex: 10, background: 'var(--glass-bg)', backdropFilter: 'blur(10px)', marginLeft: '-32px', marginRight: '-32px', paddingLeft: '32px', paddingRight: '32px', paddingTop: '24px', marginTop: '-24px' }}>
                   <h4 style={{ fontSize: '14px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary)' }}></div>
                     Pivot Output Columns
