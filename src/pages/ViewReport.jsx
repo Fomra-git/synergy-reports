@@ -288,6 +288,13 @@ async function processTemplateForView(template, masterFile) {
       if (mapping.operator === '!=') return lhs !== rhs;
       return lhs === rhs;
     }
+    if (mapping.type === 'time_range') {
+      const tv = parseTimeValue(getMV(row, mapping.conditionCol));
+      const from = parseTimeValue(mapping.conditionVals?.[0]);
+      const to = parseTimeValue(mapping.conditionVals?.[1]);
+      if (tv === null || from === null || to === null) return false;
+      return tv >= from && tv <= to;
+    }
     const toNum = s => parseFloat(String(s || '').replace(/,/g, '').trim());
     const evalRule = (targetVal, operator, conditionVals = [], conditionCol = '', row = null, groupByCol = '') => {
       if (operator === 'not_seen_within_days') {

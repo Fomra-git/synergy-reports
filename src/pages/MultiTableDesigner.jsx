@@ -674,40 +674,66 @@ function FilterBlock({ label, desc, enabledKey, listKey, activeSection, updateSe
 
 function FilterRow({ f, masterHeaders, masterUniqueValues, onChange, onRemove }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 1fr auto', gap: '8px', alignItems: 'start', background: 'var(--glass-subtle)', padding: '10px', borderRadius: '10px', border: '1px solid var(--border)' }}>
-      <SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => onChange('conditionCol', v)} placeholder="Field..." />
-      <select value={f.operator || '=='} onChange={e => onChange('operator', e.target.value)} style={{ padding: '8px', fontSize: '12px' }}>
-        {['==', '!=', 'contains', 'not_contains', '>', '<', '>=', '<=', 'between', 'unique'].map(op => <option key={op} value={op}>{op}</option>)}
-        <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
-        <option value="this_month">This Month</option>
-        <option value="prev_month">Previous Month</option>
-        <option value="not_seen_within_days">Not Seen Within Days</option>
-      </select>
-      {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
-        <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
-          Auto-detects from data
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--glass-subtle)', padding: '10px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          {[['simple', 'Simple'], ['time_range', 'Time Range']].map(([t, lbl]) => {
+            const active = t === 'time_range' ? f.type === 'time_range' : (!f.type || f.type === 'simple');
+            return <button key={t} type="button" onClick={() => onChange('type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? 'var(--primary)' : 'var(--border)'}`, background: active ? 'rgba(99,102,241,0.12)' : 'transparent', color: active ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
+          })}
         </div>
-      ) : f.operator === 'not_seen_within_days' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <input type="number" min="1" placeholder="Days (e.g. 3)" value={(f.conditionVals || [])[0] || ''} onChange={e => onChange('conditionVals', [e.target.value])} style={{ padding: '8px', fontSize: '12px' }} />
-          <SearchableDropdown options={masterHeaders} value={f.groupByCol || ''} onChange={v => onChange('groupByCol', v)} placeholder="Patient / Group By Column..." />
+        <button onClick={onRemove} style={{ padding: '4px', background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}><Trash2 size={14} /></button>
+      </div>
+      {f.type === 'time_range' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => onChange('conditionCol', v)} placeholder="Select time column..." />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <div>
+              <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>From</label>
+              <input type="time" value={f.conditionVals?.[0] || ''} onChange={e => onChange('conditionVals', [e.target.value, f.conditionVals?.[1] || ''])} style={{ padding: '7px 8px', fontSize: '12px', width: '100%', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To</label>
+              <input type="time" value={f.conditionVals?.[1] || ''} onChange={e => onChange('conditionVals', [f.conditionVals?.[0] || '', e.target.value])} style={{ padding: '7px 8px', fontSize: '12px', width: '100%', boxSizing: 'border-box' }} />
+            </div>
+          </div>
         </div>
-      ) : f.operator === 'between' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-          <input value={(f.conditionVals || [])[0] || ''} onChange={e => { const v = [...(f.conditionVals || [])]; v[0] = e.target.value; onChange('conditionVals', v); }} placeholder="Min" style={{ padding: '8px', fontSize: '12px' }} />
-          <input value={(f.conditionVals || [])[1] || ''} onChange={e => { const v = [...(f.conditionVals || [])]; v[1] = e.target.value; onChange('conditionVals', v); }} placeholder="Max" style={{ padding: '8px', fontSize: '12px' }} />
-        </div>
-      ) : f.operator === 'unique' ? (
-        <span style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '8px' }}>Deduplicate by this field</span>
-      ) : f.isManual ? (
-        <input value={(f.conditionVals || []).join(', ')} onChange={e => onChange('conditionVals', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-          placeholder="Enter values, comma-separated" style={{ padding: '8px', fontSize: '12px' }}
-          onBlur={() => onChange('isManual', false)} />
       ) : (
-        <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.conditionVals || []}
-          onChange={vals => onChange('conditionVals', vals)} placeholder="Select values..." />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 1fr', gap: '8px', alignItems: 'start' }}>
+          <SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => onChange('conditionCol', v)} placeholder="Field..." />
+          <select value={f.operator || '=='} onChange={e => onChange('operator', e.target.value)} style={{ padding: '8px', fontSize: '12px' }}>
+            {['==', '!=', 'contains', 'not_contains', '>', '<', '>=', '<=', 'between', 'unique'].map(op => <option key={op} value={op}>{op}</option>)}
+            <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Date ──</option>
+            <option value="this_month">This Month</option>
+            <option value="prev_month">Previous Month</option>
+            <option value="not_seen_within_days">Not Seen Within Days</option>
+          </select>
+          {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
+            <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
+              Auto-detects from data
+            </div>
+          ) : f.operator === 'not_seen_within_days' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <input type="number" min="1" placeholder="Days (e.g. 3)" value={(f.conditionVals || [])[0] || ''} onChange={e => onChange('conditionVals', [e.target.value])} style={{ padding: '8px', fontSize: '12px' }} />
+              <SearchableDropdown options={masterHeaders} value={f.groupByCol || ''} onChange={v => onChange('groupByCol', v)} placeholder="Patient / Group By Column..." />
+            </div>
+          ) : f.operator === 'between' ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+              <input value={(f.conditionVals || [])[0] || ''} onChange={e => { const v = [...(f.conditionVals || [])]; v[0] = e.target.value; onChange('conditionVals', v); }} placeholder="Min" style={{ padding: '8px', fontSize: '12px' }} />
+              <input value={(f.conditionVals || [])[1] || ''} onChange={e => { const v = [...(f.conditionVals || [])]; v[1] = e.target.value; onChange('conditionVals', v); }} placeholder="Max" style={{ padding: '8px', fontSize: '12px' }} />
+            </div>
+          ) : f.operator === 'unique' ? (
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '8px' }}>Deduplicate by this field</span>
+          ) : f.isManual ? (
+            <input value={(f.conditionVals || []).join(', ')} onChange={e => onChange('conditionVals', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+              placeholder="Enter values, comma-separated" style={{ padding: '8px', fontSize: '12px' }}
+              onBlur={() => onChange('isManual', false)} />
+          ) : (
+            <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.conditionVals || []}
+              onChange={vals => onChange('conditionVals', vals)} placeholder="Select values..." />
+          )}
+        </div>
       )}
-      <button onClick={onRemove} style={{ padding: '7px', background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', marginTop: '2px' }}><Trash2 size={14} /></button>
     </div>
   );
 }

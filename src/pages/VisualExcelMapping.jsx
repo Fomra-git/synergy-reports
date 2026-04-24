@@ -1706,8 +1706,8 @@ export default function VisualExcelMapping() {
                        {/* Header: type toggle + remove */}
                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                          <div style={{ display: 'flex', gap: '4px' }}>
-                           {[['simple', 'Simple'], ['expr_compare', 'Expression']].map(([t, lbl]) => {
-                             const active = t === 'expr_compare' ? f.type === 'expr_compare' : (!f.type || f.type === 'simple');
+                           {[['simple', 'Simple'], ['expr_compare', 'Expression'], ['time_range', 'Time Range']].map(([t, lbl]) => {
+                             const active = t === 'expr_compare' ? f.type === 'expr_compare' : t === 'time_range' ? f.type === 'time_range' : (!f.type || f.type === 'simple');
                              return <button key={t} type="button" onClick={() => updCF('type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? 'var(--primary)' : 'var(--border)'}`, background: active ? 'rgba(99,102,241,0.12)' : 'transparent', color: active ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
                            })}
                          </div>
@@ -1750,6 +1750,20 @@ export default function VisualExcelMapping() {
                              <div>
                                <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Value</label>
                                <input type="number" value={(f.conditionVals || [])[0] || ''} onChange={e => updCF('conditionVals', [e.target.value])} placeholder="e.g. 6" style={{ padding: '6px 8px', fontSize: '12px', width: '100%', boxSizing: 'border-box' }} />
+                             </div>
+                           </div>
+                         </div>
+                       ) : f.type === 'time_range' ? (
+                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                           <SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => updCF('conditionCol', v)} placeholder="Select time column..." zIndex={1200} />
+                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                             <div>
+                               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>From</label>
+                               <input type="time" value={f.conditionVals?.[0] || ''} onChange={e => updCF('conditionVals', [e.target.value, f.conditionVals?.[1] || ''])} style={{ padding: '6px 8px', fontSize: '12px', width: '100%', boxSizing: 'border-box' }} />
+                             </div>
+                             <div>
+                               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To</label>
+                               <input type="time" value={f.conditionVals?.[1] || ''} onChange={e => updCF('conditionVals', [f.conditionVals?.[0] || '', e.target.value])} style={{ padding: '6px 8px', fontSize: '12px', width: '100%', boxSizing: 'border-box' }} />
                              </div>
                            </div>
                          </div>
