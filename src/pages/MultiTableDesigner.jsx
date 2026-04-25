@@ -4,7 +4,8 @@ import { collection, query, getDocs, addDoc, updateDoc, doc, deleteDoc, arrayUni
 import {
   Plus, Trash2, Save, ArrowLeft, CheckCircle2, Loader2, Upload,
   Layers, Filter, Settings2, Database, Calculator, BarChart4,
-  ArrowUp, ArrowDown, AlignJustify, Columns, Table as TableIcon, Calendar
+  ArrowUp, ArrowDown, AlignJustify, Columns, Table as TableIcon, Calendar,
+  X, Sparkles, List, Keyboard
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -12,6 +13,7 @@ import SearchableDropdown from '../components/SearchableDropdown';
 import ModernModal from '../components/ModernModal';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import ChartConfigPanel from '../components/ChartConfigPanel';
+import ConstantCheckPanel from '../components/ConstantCheckPanel';
 
 const OPERATORS = ['==', '!=', 'contains', 'not_contains', '>', '<', '>=', '<=', 'between', 'unique'];
 
@@ -57,10 +59,20 @@ function normaliseSection(s) {
       operation: c.operation || 'count',
       formula: c.formula || '',
       showTotal: c.showTotal !== false,
+      hideInReport: !!c.hideInReport,
       rowFilters: c.rowFilters || [],
       valueFilters: c.valueFilters || [],
       isUniqueCount: !!c.isUniqueCount,
       dedupColumn: c.dedupColumn || '',
+      roundOff: !!c.roundOff,
+      roundDecimals: c.roundDecimals ?? 0,
+      findText: c.findText || '',
+      replaceWith: c.replaceWith || '',
+      simplifyDate: !!c.simplifyDate,
+      simplifyTime: !!c.simplifyTime,
+      normalizeMonth: !!c.normalizeMonth,
+      normalizeWeek: !!c.normalizeWeek,
+      groupByCol: c.groupByCol || '',
     })),
     globalFilters: (s.globalFilters || []).map(f => ({ conditionCol: '', operator: '==', conditionVals: [], isManual: false, ...f })),
     outputFilters: (s.outputFilters || []).map(f => ({ conditionCol: '', operator: '==', conditionVals: [], isManual: false, ...f })),
@@ -88,7 +100,21 @@ export default function MultiTableDesigner() {
 
   const fileInputRef = useRef(null);
 
-  useEffect(() => { fetchTemplates(); fetchCategories(); }, []);
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+      try {
+        const [tplSnap, catSnap] = await Promise.all([
+          getDocs(query(collection(db, 'templates'))),
+          getDocs(collection(db, 'reportCategories')),
+        ]);
+        setTemplates(tplSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.type === 'multi_table'));
+        setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) { console.error('Error loading data:', err); }
+      finally { setLoading(false); }
+    };
+    init();
+  }, []);
 
   const fetchCategories = async () => {
     try {
@@ -211,9 +237,17 @@ export default function MultiTableDesigner() {
 
   // ── Pivot column helpers ─────────────────────────────────────
   const addPivotCol = (type) => {
-    const nc = { id: Date.now().toString(), type, displayName: '', source: '', operation: 'count', formula: '', showTotal: true, rowFilters: [], valueFilters: [], dedupColumn: '' };
+    const nc = { id: Date.now().toString(), type, displayName: '', source: '', operation: 'count', formula: '', showTotal: true, hideInReport: false, rowFilters: [], valueFilters: [], isUniqueCount: false, dedupColumn: '', roundOff: false, roundDecimals: 0, findText: '', replaceWith: '', simplifyDate: false, simplifyTime: false, normalizeMonth: false, normalizeWeek: false, groupByCol: '' };
     updateSection('pivotColumns', [...(activeSection?.pivotColumns || []), nc]);
   };
+
+  const addColRowFilter = (colId) => updateSection('pivotColumns', activeSection.pivotColumns.map(c => c.id === colId ? { ...c, rowFilters: [...(c.rowFilters || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false, type: 'simple' }] } : c));
+  const removeColRowFilter = (colId, fi) => updateSection('pivotColumns', activeSection.pivotColumns.map(c => c.id === colId ? { ...c, rowFilters: c.rowFilters.filter((_, i) => i !== fi) } : c));
+  const updateColRowFilter = (colId, fi, field, value) => updateSection('pivotColumns', activeSection.pivotColumns.map(c => { if (c.id !== colId) return c; const rf = [...(c.rowFilters || [])]; rf[fi] = { ...rf[fi], [field]: value }; return { ...c, rowFilters: rf }; }));
+
+  const addColValueFilter = (colId) => updateSection('pivotColumns', activeSection.pivotColumns.map(c => c.id === colId ? { ...c, valueFilters: [...(c.valueFilters || []), { operator: '==', value: '', valueTo: '' }] } : c));
+  const removeColValueFilter = (colId, vfi) => updateSection('pivotColumns', activeSection.pivotColumns.map(c => c.id === colId ? { ...c, valueFilters: c.valueFilters.filter((_, i) => i !== vfi) } : c));
+  const updateColValueFilter = (colId, vfi, field, value) => updateSection('pivotColumns', activeSection.pivotColumns.map(c => { if (c.id !== colId) return c; const vf = [...(c.valueFilters || [])]; vf[vfi] = { ...vf[vfi], [field]: value }; return { ...c, valueFilters: vf }; }));
 
   const removePivotCol = (colId) => updateSection('pivotColumns', activeSection.pivotColumns.filter(c => c.id !== colId));
 
@@ -438,6 +472,24 @@ export default function MultiTableDesigner() {
               onChange={configs => setFormData(p => ({ ...p, chartConfigs: configs }))}
               availableHeaders={masterHeaders}
               sectionNames={formData.sections.map((s, i) => s.title || `Table ${i + 1}`)}
+              sectionHeaders={formData.sections.reduce((acc, sec, i) => {
+                const rowLabel = sec.rowFieldDisplayName || sec.rowField || 'Group';
+                const visCols = (sec.pivotColumns || []).filter(c =>
+                  !c.hideInReport && c.type !== 'grouping' &&
+                  !(sec.rowField && (c.type === 'property') && c.source === sec.rowField)
+                );
+                acc[i] = [rowLabel, ...visCols.map(p => p.displayName || p.source || 'Untitled')].filter(Boolean);
+                return acc;
+              }, {})}
+            />
+
+            {/* CONSTANT CHECKS */}
+            <ConstantCheckPanel
+              constantChecks={formData.constantChecks || []}
+              onChange={checks => setFormData(p => ({ ...p, constantChecks: checks }))}
+              masterHeaders={masterHeaders}
+              showExpected={formData.constantShowExpected || false}
+              onShowExpectedChange={v => setFormData(p => ({ ...p, constantShowExpected: v }))}
             />
 
           </div>
@@ -529,12 +581,14 @@ export default function MultiTableDesigner() {
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           {activeSection.pivotColumns.map((col, ci) => (
-                            <div key={col.id} style={{ background: 'var(--glass-subtle)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                            <div key={col.id} style={{ background: 'var(--glass-subtle)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+                              {/* ── Header row ── */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '700',
-                                  background: col.type === 'grouping' ? 'rgba(16,185,129,0.15)' : col.type === 'formula' ? 'rgba(236,72,153,0.15)' : 'rgba(99,102,241,0.15)',
-                                  color: col.type === 'grouping' ? 'var(--success)' : col.type === 'formula' ? 'var(--secondary)' : 'var(--primary)' }}>
-                                  {col.type.toUpperCase()}
+                                  background: col.type === 'grouping' ? 'rgba(16,185,129,0.15)' : col.type === 'formula' ? 'rgba(236,72,153,0.15)' : col.type === 'last_visit_date' ? 'rgba(245,158,11,0.15)' : 'rgba(99,102,241,0.15)',
+                                  color: col.type === 'grouping' ? 'var(--success)' : col.type === 'formula' ? '#ec4899' : col.type === 'last_visit_date' ? '#f59e0b' : 'var(--primary)' }}>
+                                  {col.type.replace('_', ' ').toUpperCase()}
                                 </span>
                                 <span style={{ flex: 1, fontSize: '13px', fontWeight: '600', color: 'var(--text-muted)' }}>{col.displayName || col.source || 'Untitled'}</span>
                                 <button onClick={() => movePivotCol(ci, 'up')} disabled={ci === 0} style={{ padding: '3px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><ArrowUp size={12} /></button>
@@ -542,6 +596,7 @@ export default function MultiTableDesigner() {
                                 <button onClick={() => removePivotCol(col.id)} style={{ padding: '3px', background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444' }}><Trash2 size={12} /></button>
                               </div>
 
+                              {/* ── Display name + source ── */}
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                                 <div className="form-group">
                                   <label style={labelSty}>Display Name</label>
@@ -549,32 +604,38 @@ export default function MultiTableDesigner() {
                                 </div>
                                 {col.type !== 'formula' && (
                                   <div className="form-group">
-                                    <label style={labelSty}>{col.type === 'last_visit_date' ? 'Date Column (Visit Date)' : 'Source Field'}</label>
+                                    <label style={labelSty}>{col.type === 'last_visit_date' ? 'Date Column' : 'Source Field'}</label>
                                     <SearchableDropdown options={masterHeaders} value={col.source || ''} onChange={v => updatePivotCol(col.id, 'source', v)} placeholder="Select field..." />
                                   </div>
                                 )}
                               </div>
 
+                              {/* ── last_visit_date: group by ── */}
                               {col.type === 'last_visit_date' && (
-                                <div className="form-group" style={{ marginTop: '8px' }}>
+                                <div className="form-group">
                                   <label style={labelSty}>Patient / Group By Column</label>
                                   <SearchableDropdown options={masterHeaders} value={col.groupByCol || ''} onChange={v => updatePivotCol(col.id, 'groupByCol', v)} placeholder="Patient ID column..." />
                                 </div>
                               )}
 
+                              {/* ── Aggregation operation ── */}
                               {col.type === 'aggregation' && (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '8px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                   <div className="form-group">
                                     <label style={labelSty}>Operation</label>
                                     <select value={col.operation} onChange={e => updatePivotCol(col.id, 'operation', e.target.value)} style={{ padding: '8px', fontSize: '13px' }}>
-                                      <option value="count">Count (all rows)</option>
-                                      <option value="count_unique">Count Unique</option>
-                                      <option value="count_single">Count Single</option>
-                                      <option value="count_multi">Count Multi (/)</option>
-                                      <option value="sum">Sum</option>
+                                      <option value="sum">Summation</option>
+                                      <option value="count">Count Rows</option>
                                       <option value="avg">Average</option>
-                                      <option value="min">Min</option>
-                                      <option value="max">Max</option>
+                                      <option value="min">Minimum</option>
+                                      <option value="max">Maximum</option>
+                                      <optgroup label="── Unique Count ──">
+                                        <option value="count_unique">Count Unique (by ID column)</option>
+                                      </optgroup>
+                                      <optgroup label="── Treatment Split ──">
+                                        <option value="count_single">Count Single (no /)</option>
+                                        <option value="count_multi">Count Multiple (has /)</option>
+                                      </optgroup>
                                     </select>
                                   </div>
                                   {col.operation === 'count_unique' && (
@@ -583,26 +644,198 @@ export default function MultiTableDesigner() {
                                       <SearchableDropdown options={masterHeaders} value={col.dedupColumn || ''} onChange={v => updatePivotCol(col.id, 'dedupColumn', v)} placeholder="Dedup by..." />
                                     </div>
                                   )}
-                                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)', cursor: 'pointer', gridColumn: col.operation === 'count_unique' ? '1 / -1' : undefined }}>
-                                    <input type="checkbox" checked={col.showTotal !== false} onChange={e => updatePivotCol(col.id, 'showTotal', e.target.checked)} />
-                                    Include in Grand Total
+                                  {/* Unique patient count dedup */}
+                                  <div style={{ padding: '10px 12px', background: 'rgba(99,102,241,0.05)', borderRadius: '10px', border: '1px solid rgba(99,102,241,0.12)' }}>
+                                    <label style={{ fontSize: '11px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'var(--primary)' }}>
+                                      <input type="checkbox" checked={!!col.isUniqueCount} onChange={e => updatePivotCol(col.id, 'isUniqueCount', e.target.checked)} />
+                                      Unique Patient Count (Deduplicate)
+                                    </label>
+                                    {col.isUniqueCount && (
+                                      <div style={{ marginTop: '8px' }}>
+                                        <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Deduplicate By Column (e.g. Patient ID)</label>
+                                        <SearchableDropdown options={masterHeaders} value={col.dedupColumn || ''} onChange={v => updatePivotCol(col.id, 'dedupColumn', v)} placeholder="Select ID column..." />
+                                        <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>✦ Session rows for the same ID will be counted as <strong>1</strong> patient.</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={col.showTotal !== false} onChange={e => updatePivotCol(col.id, 'showTotal', e.target.checked)} /> Include in Grand Total
                                   </label>
                                 </div>
                               )}
 
+                              {/* ── Formula ── */}
                               {col.type === 'formula' && (
-                                <div style={{ marginTop: '8px' }}>
-                                  <label style={labelSty}>Formula — use {'{'+'ColName}'} for pivot cols, [MasterField] for master data</label>
+                                <div className="form-group">
+                                  <label style={labelSty}>Formula — use {'{ColName}'} for cols, [MasterField] for master data</label>
                                   <input value={col.formula} onChange={e => updatePivotCol(col.id, 'formula', e.target.value)} placeholder="e.g. {Sessions} / {Patients} * 100" style={{ padding: '8px', fontSize: '13px', fontFamily: 'monospace' }} />
                                 </div>
                               )}
 
-                              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+                              {/* ── Rounding (aggregation + formula) ── */}
+                              {(col.type === 'aggregation' || col.type === 'formula') && (
+                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', padding: '10px 12px', background: 'rgba(99,102,241,0.04)', borderRadius: '10px', border: '1px solid rgba(99,102,241,0.12)' }}>
+                                  <div style={{ flex: 1 }}>
+                                    <p style={{ fontSize: '12px', fontWeight: '600', marginBottom: '2px' }}>Round Numeric Values</p>
+                                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 0 }}>Round to nearest number (4.5 → 5, 4.4 → 4).</p>
+                                    {col.roundOff && (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                                        <label style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Decimal places</label>
+                                        <input type="number" min="0" max="10" value={col.roundDecimals ?? 0} onChange={e => updatePivotCol(col.id, 'roundDecimals', Math.max(0, parseInt(e.target.value) || 0))} style={{ width: '56px', padding: '4px 6px', fontSize: '11px', borderRadius: '6px' }} />
+                                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>(0 = integer)</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div onClick={() => updatePivotCol(col.id, 'roundOff', !col.roundOff)} style={{ width: '40px', height: '22px', borderRadius: '11px', flexShrink: 0, background: col.roundOff ? 'var(--primary)' : 'var(--glass-border)', position: 'relative', cursor: 'pointer', transition: '0.3s', marginTop: '2px' }}>
+                                    <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: 'white', position: 'absolute', top: '3px', left: col.roundOff ? '21px' : '3px', transition: '0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* ── Data Cleaning & Transforms ── */}
+                              {col.type !== 'formula' && (
+                                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                                  <h5 style={{ fontSize: '10px', color: '#ec4899', fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Sparkles size={10} /> Data Cleaning & Transforms
+                                  </h5>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                                    <div>
+                                      <label style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Find Text</label>
+                                      <input value={col.findText || ''} onChange={e => updatePivotCol(col.id, 'findText', e.target.value)} placeholder="Find..." style={{ padding: '6px', fontSize: '11px', width: '100%', boxSizing: 'border-box' }} />
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Replace With</label>
+                                      <input value={col.replaceWith || ''} onChange={e => updatePivotCol(col.id, 'replaceWith', e.target.value)} placeholder="Replace..." style={{ padding: '6px', fontSize: '11px', width: '100%', boxSizing: 'border-box' }} />
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                    {[['simplifyDate','Simplify Date'],['simplifyTime','Simplify Time']].map(([k,l]) => (
+                                      <label key={k} style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                                        <input type="checkbox" checked={!!col[k]} onChange={e => updatePivotCol(col.id, k, e.target.checked)} /> {l}
+                                      </label>
+                                    ))}
+                                    {[['normalizeMonth','Month'],['normalizeWeek','Week (Rel.)']].map(([k,l]) => (
+                                      <label key={k} style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--primary)', borderLeft: k === 'normalizeMonth' ? '1px solid var(--border)' : undefined, paddingLeft: k === 'normalizeMonth' ? '10px' : undefined }}>
+                                        <input type="checkbox" checked={!!col[k]} onChange={e => updatePivotCol(col.id, k, e.target.checked)} /> {l}
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* ── Per-column Row Conditions ── */}
+                              {(col.type === 'aggregation' || col.type === 'property' || col.type === 'grouping') && (
+                                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <h5 style={{ fontSize: '10px', color: '#f59e0b', fontWeight: '700', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <Filter size={10} /> Row Conditions
+                                      {(col.rowFilters?.length > 0) && <span style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', borderRadius: '8px', padding: '1px 6px', fontSize: '9px', fontWeight: '800' }}>{col.rowFilters.length}</span>}
+                                    </h5>
+                                    <button onClick={() => addColRowFilter(col.id)} style={{ padding: '4px 10px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--glass-bg)', border: '1px dashed var(--border)', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                                      <Plus size={10} /> Add Condition
+                                    </button>
+                                  </div>
+                                  {(!col.rowFilters || col.rowFilters.length === 0) && (
+                                    <p style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '8px', background: 'var(--glass-subtle)', borderRadius: '8px' }}>No conditions — all rows are included. Add conditions to filter which rows contribute.</p>
+                                  )}
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {(col.rowFilters || []).map((f, fi) => (
+                                      <div key={fi} style={{ padding: '10px', background: 'rgba(245,158,11,0.05)', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.2)', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', zIndex: (col.rowFilters?.length || 0) - fi }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <div style={{ display: 'flex', gap: '4px' }}>
+                                            {[['simple','Simple'],['expr_compare','Expression'],['time_range','Time Range']].map(([t, lbl]) => {
+                                              const active = t === 'expr_compare' ? f.type === 'expr_compare' : t === 'time_range' ? f.type === 'time_range' : (!f.type || f.type === 'simple');
+                                              return <button key={t} onClick={() => updateColRowFilter(col.id, fi, 'type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? '#f59e0b' : 'var(--border)'}`, background: active ? 'rgba(245,158,11,0.15)' : 'transparent', color: active ? '#f59e0b' : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
+                                            })}
+                                          </div>
+                                          <button onClick={() => removeColRowFilter(col.id, fi)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}><X size={13} /></button>
+                                        </div>
+                                        {f.type === 'expr_compare' ? (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 48px 1fr', gap: '6px', alignItems: 'end' }}>
+                                              <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Column 1</label><SearchableDropdown options={masterHeaders} value={f.col1 || ''} onChange={v => updateColRowFilter(col.id, fi, 'col1', v)} placeholder="Column..." /></div>
+                                              <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Math</label><select value={f.mathOp || '-'} onChange={e => updateColRowFilter(col.id, fi, 'mathOp', e.target.value)} style={{ width: '100%', padding: '8px 2px', fontSize: '14px', textAlign: 'center' }}><option value="+">+</option><option value="-">−</option><option value="*">×</option><option value="/">/</option></select></div>
+                                              <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Column 2</label><SearchableDropdown options={masterHeaders} value={f.col2 || ''} onChange={v => updateColRowFilter(col.id, fi, 'col2', v)} placeholder="Column..." /></div>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '6px' }}>
+                                              <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Comparison</label><select value={f.operator || '>='} onChange={e => updateColRowFilter(col.id, fi, 'operator', e.target.value)} style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}><option value=">=">≥ Greater or Equal</option><option value=">">{'>'} Greater Than</option><option value="<=">≤ Less or Equal</option><option value="<">{'<'} Less Than</option><option value="==">= Equals</option><option value="!=">≠ Not Equal</option></select></div>
+                                              <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Value</label><input type="number" value={(f.conditionVals || [])[0] || ''} onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', [e.target.value])} placeholder="e.g. 6" style={{ width: '100%', padding: '8px', fontSize: '11px', boxSizing: 'border-box' }} /></div>
+                                            </div>
+                                          </div>
+                                        ) : f.type === 'time_range' ? (
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Column</label><SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'conditionCol', v)} placeholder="Select time column..." /></div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                                              <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>From</label><input type="time" value={f.conditionVals?.[0] || ''} onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', [e.target.value, f.conditionVals?.[1] || ''])} style={{ width: '100%', padding: '7px 6px', fontSize: '12px', boxSizing: 'border-box' }} /></div>
+                                              <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To</label><input type="time" value={f.conditionVals?.[1] || ''} onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', [f.conditionVals?.[0] || '', e.target.value])} style={{ width: '100%', padding: '7px 6px', fontSize: '12px', boxSizing: 'border-box' }} /></div>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 1fr', gap: '6px', alignItems: 'end' }}>
+                                            <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Field</label><SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'conditionCol', v)} placeholder="Select field..." /></div>
+                                            <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Operator</label><select value={f.operator || '=='} onChange={e => updateColRowFilter(col.id, fi, 'operator', e.target.value)} style={{ width: '100%', padding: '8px 4px', fontSize: '11px' }}><option value="==">= Equals</option><option value="!=">≠ Not Equal</option><option value=">">{'>'} Greater</option><option value="<">{'<'} Less</option><option value=">=">≥ ≥ Equal</option><option value="<=">≤ ≤ Equal</option><option value="between">↔ Between</option><option value="contains">⊂ Contains</option></select></div>
+                                            <div>
+                                              <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                                                <span>{f.operator === 'between' ? 'From / To' : 'Value(s)'}</span>
+                                                {f.operator !== 'between' && <button onClick={() => updateColRowFilter(col.id, fi, 'isManual', !f.isManual)} style={{ background: 'none', border: 'none', color: f.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '8px', display: 'flex', alignItems: 'center', gap: '2px' }}>{f.isManual ? <List size={9} /> : <Keyboard size={9} />} {f.isManual ? 'List' : 'Manual'}</button>}
+                                              </label>
+                                              {f.operator === 'between' ? (
+                                                <div style={{ display: 'flex', gap: '4px' }}><input placeholder="From" value={f.conditionVals?.[0] || ''} onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', [e.target.value, f.conditionVals?.[1] || ''])} style={{ padding: '8px', fontSize: '11px', width: '50%' }} /><input placeholder="To" value={f.conditionVals?.[1] || ''} onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', [f.conditionVals?.[0] || '', e.target.value])} style={{ padding: '8px', fontSize: '11px', width: '50%' }} /></div>
+                                              ) : f.isManual ? (
+                                                <input placeholder="Value(s)..." value={Array.isArray(f.conditionVals) ? f.conditionVals.join(', ') : f.conditionVals || ''} onChange={e => updateColRowFilter(col.id, fi, 'conditionVals', e.target.value.split(',').map(s => s.trim()))} style={{ width: '100%', padding: '8px', fontSize: '11px', boxSizing: 'border-box' }} />
+                                              ) : (
+                                                <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.conditionVals || []} onChange={vals => updateColRowFilter(col.id, fi, 'conditionVals', vals)} placeholder={f.conditionCol ? 'Pick values...' : 'Select field...'} />
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* ── Per-column Value Filters ── */}
+                                  {col.source && (
+                                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '10px' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                        <h5 style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: '700', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <Calculator size={10} /> Value Filters (on {col.source})
+                                          {(col.valueFilters?.length > 0) && <span style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--primary)', borderRadius: '8px', padding: '1px 6px', fontSize: '9px', fontWeight: '800' }}>{col.valueFilters.length}</span>}
+                                        </h5>
+                                        <button onClick={() => addColValueFilter(col.id)} style={{ padding: '4px 10px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--glass-bg)', border: '1px dashed var(--border)', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                                          <Plus size={10} /> Add Value Filter
+                                        </button>
+                                      </div>
+                                      {(!col.valueFilters || col.valueFilters.length === 0) && (
+                                        <p style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '8px', background: 'var(--glass-subtle)', borderRadius: '8px' }}>No value filters — all "{col.source}" values are included.</p>
+                                      )}
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {(col.valueFilters || []).map((vf, vfi) => (
+                                          <div key={vfi} style={{ display: 'grid', gridTemplateColumns: '110px 1fr auto', gap: '6px', alignItems: 'end', padding: '10px', background: 'rgba(99,102,241,0.05)', borderRadius: '10px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                            <div><select value={vf.operator || '=='} onChange={e => updateColValueFilter(col.id, vfi, 'operator', e.target.value)} style={{ width: '100%', padding: '8px 4px', fontSize: '11px' }}><option value="==">= Equals</option><option value="!=">≠ Not Equal</option><option value=">">{'>'} Greater</option><option value="<">{'<'} Less</option><option value=">=">≥ ≥ Equal</option><option value="<=">≤ ≤ Equal</option><option value="between">↔ Between</option><option value="contains">⊂ Contains</option></select></div>
+                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                              {vf.operator === 'between' ? (
+                                                <><input placeholder="Min" value={vf.value || ''} onChange={e => updateColValueFilter(col.id, vfi, 'value', e.target.value)} style={{ flex: 1, padding: '8px 6px', fontSize: '11px' }} /><input placeholder="Max" value={vf.valueTo || ''} onChange={e => updateColValueFilter(col.id, vfi, 'valueTo', e.target.value)} style={{ flex: 1, padding: '8px 6px', fontSize: '11px' }} /></>
+                                              ) : (
+                                                <input placeholder="Criteria..." value={vf.value || ''} onChange={e => updateColValueFilter(col.id, vfi, 'value', e.target.value)} style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }} />
+                                              )}
+                                            </div>
+                                            <button onClick={() => removeColValueFilter(col.id, vfi)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '6px' }}><X size={13} /></button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* ── Hide in Report ── */}
+                              <div style={{ paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#ef4444', cursor: 'pointer', fontWeight: '600' }}>
                                   <input type="checkbox" checked={!!col.hideInReport} onChange={e => updatePivotCol(col.id, 'hideInReport', e.target.checked)} />
-                                  Hide in Report — column is excluded from output but still available to formulas
+                                  Hide in Report — excluded from output but available to formulas
                                 </label>
                               </div>
+
                             </div>
                           ))}
                         </div>

@@ -1,352 +1,313 @@
 import React, { useMemo } from 'react';
-import {
-  BarChart, Bar, LineChart, Line, AreaChart, Area,
-  PieChart, Pie, Cell,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer,
-} from 'recharts';
 
-// ── Theme Definitions ───────────────────────────────────────────────────────
+// ── Themes ──────────────────────────────────────────────────────────────────
 const THEMES = {
-  ocean:  { colors: ['#38bdf8','#0ea5e9','#0284c7','#7dd3fc','#0369a1','#bae6fd'], glow: '0 0 40px rgba(14,165,233,0.25)', card: 'linear-gradient(145deg,rgba(14,165,233,0.08) 0%,rgba(2,132,199,0.04) 100%)', border: 'rgba(56,189,248,0.25)' },
-  fire:   { colors: ['#f97316','#ef4444','#fbbf24','#f59e0b','#dc2626','#fed7aa'], glow: '0 0 40px rgba(249,115,22,0.25)', card: 'linear-gradient(145deg,rgba(249,115,22,0.08) 0%,rgba(239,68,68,0.04) 100%)', border: 'rgba(249,115,22,0.25)' },
-  forest: { colors: ['#22c55e','#10b981','#84cc16','#4ade80','#059669','#bbf7d0'], glow: '0 0 40px rgba(34,197,94,0.25)', card: 'linear-gradient(145deg,rgba(34,197,94,0.08) 0%,rgba(16,185,129,0.04) 100%)', border: 'rgba(34,197,94,0.25)' },
-  violet: { colors: ['#a78bfa','#8b5cf6','#c084fc','#7c3aed','#d946ef','#e9d5ff'], glow: '0 0 40px rgba(139,92,246,0.25)', card: 'linear-gradient(145deg,rgba(139,92,246,0.08) 0%,rgba(124,58,237,0.04) 100%)', border: 'rgba(167,139,250,0.25)' },
-  sunset: { colors: ['#fb923c','#f43f5e','#fbbf24','#e11d48','#ec4899','#fed7aa'], glow: '0 0 40px rgba(251,146,60,0.25)', card: 'linear-gradient(145deg,rgba(251,146,60,0.08) 0%,rgba(244,63,94,0.04) 100%)', border: 'rgba(251,146,60,0.25)' },
-  steel:  { colors: ['#818cf8','#6366f1','#60a5fa','#4f46e5','#3b82f6','#c7d2fe'], glow: '0 0 40px rgba(99,102,241,0.25)', card: 'linear-gradient(145deg,rgba(99,102,241,0.08) 0%,rgba(79,70,229,0.04) 100%)', border: 'rgba(129,140,248,0.25)' },
+  steel:  { colors: ['#818cf8','#6366f1','#60a5fa','#4f46e5','#3b82f6','#c7d2fe'], card: 'linear-gradient(145deg,rgba(99,102,241,0.12) 0%,rgba(79,70,229,0.06) 100%)', border: 'rgba(129,140,248,0.35)', glow: '#818cf8' },
+  ocean:  { colors: ['#38bdf8','#0ea5e9','#0284c7','#7dd3fc','#0369a1','#bae6fd'], card: 'linear-gradient(145deg,rgba(14,165,233,0.12) 0%,rgba(2,132,199,0.06) 100%)',  border: 'rgba(56,189,248,0.35)',   glow: '#38bdf8' },
+  fire:   { colors: ['#f97316','#ef4444','#fbbf24','#f59e0b','#dc2626','#fed7aa'], card: 'linear-gradient(145deg,rgba(249,115,22,0.12) 0%,rgba(239,68,68,0.06) 100%)',   border: 'rgba(249,115,22,0.35)',   glow: '#f97316' },
+  forest: { colors: ['#22c55e','#10b981','#84cc16','#4ade80','#059669','#bbf7d0'], card: 'linear-gradient(145deg,rgba(34,197,94,0.12) 0%,rgba(16,185,129,0.06) 100%)',   border: 'rgba(34,197,94,0.35)',    glow: '#22c55e' },
+  violet: { colors: ['#a78bfa','#8b5cf6','#c084fc','#7c3aed','#d946ef','#e9d5ff'], card: 'linear-gradient(145deg,rgba(139,92,246,0.12) 0%,rgba(124,58,237,0.06) 100%)', border: 'rgba(167,139,250,0.35)',  glow: '#a78bfa' },
+  sunset: { colors: ['#fb923c','#f43f5e','#fbbf24','#e11d48','#ec4899','#fed7aa'], card: 'linear-gradient(145deg,rgba(251,146,60,0.12) 0%,rgba(244,63,94,0.06) 100%)',   border: 'rgba(251,146,60,0.35)',   glow: '#fb923c' },
 };
+const ICONS = { bar: '▊', line: '↗', area: '◿', pie: '◕', donut: '◎', radar: '⬡' };
 
-const CHART_ICONS = {
-  bar:    '▊',
-  line:   '↗',
-  area:   '◿',
-  pie:    '◕',
-  donut:  '◎',
-  radar:  '⬡',
-};
-
-// ── Build chart-ready data from AOA ────────────────────────────────────────
+// ── Data builder ─────────────────────────────────────────────────────────────
 export function buildChartData(aoa, xColumn, yColumns, maxItems = 50) {
   if (!aoa || aoa.length < 2) return { data: [], yKeys: [] };
   const headers = aoa[0].map(h => String(h ?? ''));
   const xIdx = headers.findIndex(h => h === xColumn);
-  const validYCols = (yColumns || []).filter(Boolean);
-  const yIdxs = validYCols.map(y => headers.findIndex(h => h === y)).filter(i => i >= 0);
+  const validY = (yColumns || []).filter(Boolean);
+  const yIdxs = validY.map(y => headers.findIndex(h => h === y)).filter(i => i >= 0);
   const yKeys = yIdxs.map(i => headers[i]);
-  if (xIdx < 0 || yIdxs.length === 0) return { data: [], yKeys: [] };
-
+  if (xIdx < 0 || !yIdxs.length) return { data: [], yKeys: [] };
   const data = aoa.slice(1, maxItems + 1).map(row => {
-    const label = String(row[xIdx] ?? '').trim().slice(0, 30);
+    const label = String(row[xIdx] ?? '').trim().slice(0, 25);
     if (!label) return null;
     const item = { name: label };
     yIdxs.forEach((yi, i) => {
-      const raw = row[yi];
-      const n = parseFloat(String(raw ?? '').replace(/,/g, ''));
+      const n = parseFloat(String(row[yi] ?? '').replace(/,/g, ''));
       item[yKeys[i]] = isNaN(n) ? 0 : n;
     });
     return item;
   }).filter(Boolean);
-
   return { data, yKeys };
 }
 
-// ── Custom tooltip ──────────────────────────────────────────────────────────
-const CustomTooltip = ({ active, payload, label, theme }) => {
-  if (!active || !payload?.length) return null;
-  const t = THEMES[theme] || THEMES.steel;
-  return (
-    <div style={{
-      background: 'rgba(10,10,20,0.92)', border: `1px solid ${t.border}`,
-      borderRadius: '12px', padding: '12px 16px', boxShadow: `0 8px 32px rgba(0,0,0,0.5), ${t.glow}`,
-      backdropFilter: 'blur(20px)', minWidth: '140px',
-    }}>
-      <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginBottom: '8px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</p>
-      {payload.map((p, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.color, boxShadow: `0 0 8px ${p.color}` }} />
-          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', fontWeight: '600' }}>{p.name}:</span>
-          <span style={{ fontSize: '13px', color: '#fff', fontWeight: '700' }}>{typeof p.value === 'number' ? p.value.toLocaleString() : p.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
+// ── SVG layout constants ──────────────────────────────────────────────────────
+const VW = 560, VH = 260;
+const ML = 50, MR = 12, MT = 10, MB = 60;
+const CW = VW - ML - MR;   // 498
+const CH = VH - MT - MB;   // 190
 
-// ── Custom bar shape (3D gradient effect) ───────────────────────────────────
-const Bar3D = (colorIdx, themeColors) => {
-  const color = themeColors[colorIdx % themeColors.length];
-  return (props) => {
-    const { x, y, width, height, fill } = props;
-    if (!width || !height || height < 0) return null;
-    const gradId = `bar3d_${colorIdx}_${Math.round(x)}`;
-    const lighter = color;
-    const darker = color;
-    return (
-      <g>
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={lighter} stopOpacity="1" />
-            <stop offset="100%" stopColor={darker} stopOpacity="0.6" />
+function fmtVal(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return String(Math.round(n));
+}
+function niceMax(v) {
+  if (v <= 0) return 10;
+  const e = Math.pow(10, Math.floor(Math.log10(v)));
+  return Math.ceil(v / e) * e;
+}
+
+// ── Cartesian chart (bar / line / area) ──────────────────────────────────────
+function CartesianSVG({ data, yKeys, colors, type }) {
+  const maxVal = niceMax(Math.max(...data.flatMap(d => yKeys.map(k => d[k] || 0)), 1));
+  const n = data.length;
+  const xStep = CW / Math.max(n, 1);
+  const getX = i => ML + i * xStep + xStep / 2;
+  const getY = v => MT + CH * (1 - Math.min(v, maxVal) / maxVal);
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} style={{ width: '100%', display: 'block' }} aria-hidden="true">
+      <defs>
+        {type === 'area' && yKeys.map((k, i) => (
+          <linearGradient key={k} id={`ag${i}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={colors[i % colors.length]} stopOpacity="0.45" />
+            <stop offset="100%" stopColor={colors[i % colors.length]} stopOpacity="0.02" />
           </linearGradient>
-          <filter id={`shadow_${gradId}`} x="-10%" y="-10%" width="120%" height="130%">
-            <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor={color} floodOpacity="0.35" />
-          </filter>
-        </defs>
-        {/* Main bar with gradient */}
-        <rect
-          x={x} y={y} width={width} height={height}
-          fill={`url(#${gradId})`}
-          rx={Math.min(4, width / 3)}
-          filter={`url(#shadow_${gradId})`}
-        />
-        {/* Top highlight strip */}
-        <rect
-          x={x + 1} y={y} width={Math.max(0, width - 2)} height={Math.min(6, height)}
-          fill="rgba(255,255,255,0.25)"
-          rx={Math.min(4, width / 3)}
-        />
-      </g>
-    );
-  };
-};
+        ))}
+      </defs>
 
-// ── Custom dot for Line chart ───────────────────────────────────────────────
-const GlowDot = (color) => (props) => {
-  const { cx, cy } = props;
-  if (!cx || !cy) return null;
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={7} fill={color} fillOpacity="0.15" />
-      <circle cx={cx} cy={cy} r={4} fill={color} stroke="rgba(255,255,255,0.9)" strokeWidth={1.5} />
-    </g>
-  );
-};
-
-// ── RADIAN helper for pie labels ────────────────────────────────────────────
-const RADIAN = Math.PI / 180;
-const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, name, percent }) => {
-  if (percent < 0.04) return null;
-  const r = innerRadius + (outerRadius - innerRadius) * 0.5;
-  const x = cx + r * Math.cos(-midAngle * RADIAN);
-  const y = cy + r * Math.sin(-midAngle * RADIAN);
-  return (
-    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" style={{ fontSize: '11px', fontWeight: '700' }}>
-      {`${(percent * 100).toFixed(0)}%`}
-    </text>
-  );
-};
-
-// ── Axis tick styling ───────────────────────────────────────────────────────
-const tickStyle = { fill: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: 600 };
-
-// ── Main ReportChart component ──────────────────────────────────────────────
-export default function ReportChart({ config, aoa }) {
-  const { type = 'bar', title = '', xColumn, yColumns = [], colorTheme = 'steel', showLegend = true, maxItems = 50 } = config || {};
-  const theme = THEMES[colorTheme] || THEMES.steel;
-  const colors = theme.colors;
-
-  const { data, yKeys } = useMemo(() => buildChartData(aoa, xColumn, yColumns, maxItems), [aoa, xColumn, yColumns, maxItems]);
-
-  const isEmpty = !data.length || !yKeys.length;
-
-  const gradientDefs = (
-    <defs>
-      {yKeys.map((key, i) => {
-        const c = colors[i % colors.length];
+      {/* Grid + Y labels */}
+      {yTicks.map(t => {
+        const y = MT + CH * (1 - t);
         return (
-          <React.Fragment key={key}>
-            <linearGradient id={`areaGrad_${i}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={c} stopOpacity="0.7" />
-              <stop offset="95%" stopColor={c} stopOpacity="0.05" />
-            </linearGradient>
-            <linearGradient id={`lineGlow_${i}`} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor={c} stopOpacity="0.4" />
-              <stop offset="50%" stopColor={c} stopOpacity="1" />
-              <stop offset="100%" stopColor={c} stopOpacity="0.4" />
-            </linearGradient>
-          </React.Fragment>
+          <g key={t}>
+            <line x1={ML} y1={y} x2={ML + CW} y2={y} stroke="rgba(255,255,255,0.07)" />
+            <text x={ML - 5} y={y + 3} textAnchor="end" fill="rgba(255,255,255,0.45)" fontSize="9" fontFamily="system-ui,sans-serif">
+              {fmtVal(maxVal * t)}
+            </text>
+          </g>
         );
       })}
-    </defs>
+
+      {/* Axes */}
+      <line x1={ML} y1={MT} x2={ML} y2={MT + CH} stroke="rgba(255,255,255,0.18)" />
+      <line x1={ML} y1={MT + CH} x2={ML + CW} y2={MT + CH} stroke="rgba(255,255,255,0.18)" />
+
+      {/* Area fills */}
+      {type === 'area' && yKeys.map((k, ki) => {
+        if (n < 2) return null;
+        const pts = data.map((d, i) => [getX(i), getY(d[k] || 0)]);
+        const d = `M${pts[0][0]},${getY(0)} L${pts[0][0]},${pts[0][1]} ` +
+          pts.slice(1).map(p => `L${p[0]},${p[1]}`).join(' ') +
+          ` L${pts[n - 1][0]},${getY(0)} Z`;
+        return <path key={k} d={d} fill={`url(#ag${ki})`} />;
+      })}
+
+      {/* Bars */}
+      {type === 'bar' && data.map((d, i) => {
+        const gw = xStep * 0.78;
+        const bw = gw / yKeys.length;
+        const gx = getX(i) - gw / 2;
+        return yKeys.map((k, ki) => {
+          const val = d[k] || 0;
+          const bh = Math.max(0, (val / maxVal) * CH);
+          const c = colors[ki % colors.length];
+          return (
+            <rect key={k}
+              x={gx + ki * bw + 1} y={MT + CH - bh}
+              width={Math.max(1, bw - 3)} height={bh}
+              fill={c} rx="3" opacity="0.88"
+            />
+          );
+        });
+      })}
+
+      {/* Lines + dots */}
+      {(type === 'line' || type === 'area') && yKeys.map((k, ki) => {
+        const c = colors[ki % colors.length];
+        const pts = data.map((d, i) => `${getX(i)},${getY(d[k] || 0)}`);
+        return (
+          <g key={k}>
+            <polyline points={pts.join(' ')} fill="none" stroke={c} strokeWidth="2.5" strokeLinejoin="round" />
+            {data.map((d, i) => (
+              <circle key={i} cx={getX(i)} cy={getY(d[k] || 0)} r="4" fill={c} stroke="rgba(255,255,255,0.85)" strokeWidth="1.5" />
+            ))}
+          </g>
+        );
+      })}
+
+      {/* X labels */}
+      {data.map((d, i) => {
+        const x = getX(i);
+        const y = MT + CH + 14;
+        return (
+          <text key={i} x={x} y={y} textAnchor="end" fill="rgba(255,255,255,0.55)"
+            fontSize="9" fontFamily="system-ui,sans-serif"
+            transform={`rotate(-38,${x},${y})`}
+          >
+            {d.name.slice(0, 18)}
+          </text>
+        );
+      })}
+    </svg>
   );
+}
 
-  const tooltipComp = <Tooltip content={<CustomTooltip theme={colorTheme} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />;
-  const legendComp = showLegend ? (
-    <Legend wrapperStyle={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', paddingTop: '8px' }} />
-  ) : null;
-  const gridComp = <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.07)" vertical={false} />;
+// ── Pie / Donut chart ─────────────────────────────────────────────────────────
+function PieSVG({ data, yKey, colors, donut }) {
+  const total = data.reduce((s, d) => s + (d[yKey] || 0), 0);
+  if (!total) return null;
+  const cx = VW / 2, cy = VH / 2, R = 95, IR = donut ? 44 : 0;
+  let angle = -Math.PI / 2;
+  const slices = data.map((d, i) => {
+    const v = d[yKey] || 0;
+    const frac = v / total;
+    const sweep = frac * 2 * Math.PI;
+    const a1 = angle, a2 = angle + sweep;
+    angle = a2;
+    const large = sweep > Math.PI ? 1 : 0;
+    const cos1 = Math.cos(a1), sin1 = Math.sin(a1);
+    const cos2 = Math.cos(a2), sin2 = Math.sin(a2);
+    // Donut arc path
+    const path = donut
+      ? `M${cx + R * cos1},${cy + R * sin1} A${R},${R} 0 ${large} 1 ${cx + R * cos2},${cy + R * sin2} L${cx + IR * cos2},${cy + IR * sin2} A${IR},${IR} 0 ${large} 0 ${cx + IR * cos1},${cy + IR * sin1} Z`
+      : `M${cx},${cy} L${cx + R * cos1},${cy + R * sin1} A${R},${R} 0 ${large} 1 ${cx + R * cos2},${cy + R * sin2} Z`;
+    const midA = a1 + sweep / 2;
+    const lr = donut ? (R + IR) / 2 : R * 0.62;
+    return { path, midA, lr, frac, color: colors[i % colors.length], name: d.name };
+  });
 
-  const renderChart = () => {
-    if (isEmpty) return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: 'rgba(255,255,255,0.3)', fontSize: '13px', flexDirection: 'column', gap: '8px' }}>
-        <span style={{ fontSize: '28px', opacity: 0.4 }}>{CHART_ICONS[type] || '▊'}</span>
-        <span>No data — check X / Y column settings</span>
-      </div>
-    );
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} style={{ width: '100%', display: 'block' }} aria-hidden="true">
+      {slices.map((s, i) => (
+        <g key={i}>
+          <path d={s.path} fill={s.color} opacity="0.9" stroke="rgba(0,0,0,0.25)" strokeWidth="1" />
+          {s.frac > 0.04 && (
+            <text
+              x={cx + s.lr * Math.cos(s.midA)} y={cy + s.lr * Math.sin(s.midA)}
+              textAnchor="middle" dominantBaseline="middle"
+              fill="white" fontSize="11" fontWeight="700" fontFamily="system-ui,sans-serif"
+            >
+              {Math.round(s.frac * 100)}%
+            </text>
+          )}
+        </g>
+      ))}
+    </svg>
+  );
+}
 
-    if (type === 'bar') return (
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data} margin={{ top: 16, right: 16, bottom: 40, left: 0 }} barCategoryGap="25%">
-          {gradientDefs}
-          {gridComp}
-          <XAxis dataKey="name" tick={tickStyle} tickLine={false} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} angle={-35} textAnchor="end" interval="preserveStartEnd" />
-          <YAxis tick={tickStyle} tickLine={false} axisLine={false} width={45} />
-          {tooltipComp}{legendComp}
-          {yKeys.map((key, i) => (
-            <Bar key={key} dataKey={key} fill={colors[i % colors.length]} shape={Bar3D(i, colors)} radius={[4, 4, 0, 0]} maxBarSize={60} />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
-    );
-
-    if (type === 'line') return (
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={data} margin={{ top: 16, right: 16, bottom: 40, left: 0 }}>
-          {gradientDefs}
-          {gridComp}
-          <XAxis dataKey="name" tick={tickStyle} tickLine={false} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} angle={-35} textAnchor="end" interval="preserveStartEnd" />
-          <YAxis tick={tickStyle} tickLine={false} axisLine={false} width={45} />
-          {tooltipComp}{legendComp}
-          {yKeys.map((key, i) => {
-            const c = colors[i % colors.length];
-            return (
-              <Line key={key} type="monotone" dataKey={key} stroke={c} strokeWidth={3}
-                dot={GlowDot(c)} activeDot={{ r: 7, fill: c, stroke: '#fff', strokeWidth: 2 }}
-                style={{ filter: `drop-shadow(0 0 6px ${c})` }} />
-            );
-          })}
-        </LineChart>
-      </ResponsiveContainer>
-    );
-
-    if (type === 'area') return (
-      <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={data} margin={{ top: 16, right: 16, bottom: 40, left: 0 }}>
-          {gradientDefs}
-          {gridComp}
-          <XAxis dataKey="name" tick={tickStyle} tickLine={false} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} angle={-35} textAnchor="end" interval="preserveStartEnd" />
-          <YAxis tick={tickStyle} tickLine={false} axisLine={false} width={45} />
-          {tooltipComp}{legendComp}
-          {yKeys.map((key, i) => {
-            const c = colors[i % colors.length];
-            return (
-              <Area key={key} type="monotone" dataKey={key}
-                stroke={c} strokeWidth={2.5} fill={`url(#areaGrad_${i})`}
-                dot={false} activeDot={{ r: 6, fill: c, stroke: '#fff', strokeWidth: 2 }} />
-            );
-          })}
-        </AreaChart>
-      </ResponsiveContainer>
-    );
-
-    if (type === 'pie' || type === 'donut') {
-      const pieKey = yKeys[0];
-      const pieData = data.map((d, i) => ({ name: d.name, value: d[pieKey] || 0 }));
-      const inner = type === 'donut' ? '45%' : 0;
-      return (
-        <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <defs>
-              {pieData.map((_, i) => {
-                const c = colors[i % colors.length];
-                return (
-                  <radialGradient key={i} id={`pieGrad_${i}`} cx="30%" cy="30%">
-                    <stop offset="0%" stopColor={c} stopOpacity="1" />
-                    <stop offset="100%" stopColor={c} stopOpacity="0.65" />
-                  </radialGradient>
-                );
-              })}
-              <filter id="pieShadow">
-                <feDropShadow dx="0" dy="4" stdDeviation="6" floodOpacity="0.4" />
-              </filter>
-            </defs>
-            <Pie data={pieData} cx="50%" cy="50%" outerRadius="70%" innerRadius={inner}
-              dataKey="value" labelLine={false} label={renderPieLabel}
-              filter="url(#pieShadow)" strokeWidth={2} stroke="rgba(0,0,0,0.3)">
-              {pieData.map((_, i) => (
-                <Cell key={i} fill={`url(#pieGrad_${i})`} />
-              ))}
-            </Pie>
-            <Tooltip content={<CustomTooltip theme={colorTheme} />} />
-            {legendComp}
-          </PieChart>
-        </ResponsiveContainer>
-      );
-    }
-
-    if (type === 'radar') {
-      const radarKey = yKeys[0];
-      return (
-        <ResponsiveContainer width="100%" height={300}>
-          <RadarChart data={data.slice(0, 12)}>
-            <defs>
-              <linearGradient id="radarGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={colors[0]} stopOpacity="0.6" />
-                <stop offset="100%" stopColor={colors[0]} stopOpacity="0.1" />
-              </linearGradient>
-            </defs>
-            <PolarGrid stroke="rgba(255,255,255,0.1)" />
-            <PolarAngleAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.55)', fontSize: 10, fontWeight: 600 }} />
-            {yKeys.map((key, i) => {
-              const c = colors[i % colors.length];
-              return (
-                <Radar key={key} dataKey={key} stroke={c} strokeWidth={2}
-                  fill={c} fillOpacity={0.2} dot={{ r: 3, fill: c }} />
-              );
-            })}
-            {tooltipComp}{legendComp}
-          </RadarChart>
-        </ResponsiveContainer>
-      );
-    }
-
-    return null;
+// ── Radar chart ───────────────────────────────────────────────────────────────
+function RadarSVG({ data, yKey, colors }) {
+  const n = Math.min(data.length, 12);
+  const pts = data.slice(0, n);
+  const maxVal = niceMax(Math.max(...pts.map(d => d[yKey] || 0), 1));
+  const cx = VW / 2, cy = VH / 2, R = 90;
+  const aStep = (2 * Math.PI) / n;
+  const pt = (i, v) => {
+    const a = i * aStep - Math.PI / 2;
+    const r = (v / maxVal) * R;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
   };
+  const outerPt = i => pt(i, maxVal);
+  const polyPts = pts.map((d, i) => pt(i, d[yKey] || 0).join(',')).join(' ');
+
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} style={{ width: '100%', display: 'block' }} aria-hidden="true">
+      {/* Grid rings */}
+      {[0.25, 0.5, 0.75, 1].map(t => {
+        const ring = Array.from({ length: n }, (_, i) => {
+          const [x, y] = pt(i, maxVal * t); return `${x},${y}`;
+        }).join(' ');
+        return <polygon key={t} points={ring} fill="none" stroke="rgba(255,255,255,0.1)" />;
+      })}
+      {/* Spokes */}
+      {Array.from({ length: n }, (_, i) => {
+        const [x, y] = outerPt(i);
+        return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="rgba(255,255,255,0.1)" />;
+      })}
+      {/* Data */}
+      <polygon points={polyPts} fill={colors[0]} fillOpacity="0.22" stroke={colors[0]} strokeWidth="2.5" />
+      {pts.map((d, i) => {
+        const [x, y] = pt(i, d[yKey] || 0);
+        return <circle key={i} cx={x} cy={y} r="4" fill={colors[0]} stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" />;
+      })}
+      {/* Labels */}
+      {pts.map((d, i) => {
+        const [x, y] = pt(i, maxVal * 1.18);
+        return (
+          <text key={i} x={x} y={y} textAnchor="middle" dominantBaseline="middle"
+            fill="rgba(255,255,255,0.6)" fontSize="10" fontFamily="system-ui,sans-serif"
+          >
+            {d.name.slice(0, 10)}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+export default function ReportChart({ config, aoa }) {
+  const {
+    type = 'bar', title = '', xColumn, yColumns = [],
+    colorTheme = 'steel', showLegend = true, maxItems = 50,
+  } = config || {};
+  const theme = THEMES[colorTheme] || THEMES.steel;
+  const { data, yKeys } = useMemo(
+    () => buildChartData(aoa, xColumn, yColumns, maxItems),
+    [aoa, xColumn, yColumns, maxItems],
+  );
+  const isEmpty = !data.length || !yKeys.length;
+
+  const chartBody = isEmpty ? (
+    <div style={{ height: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'rgba(255,255,255,0.35)', fontSize: '13px', fontFamily: 'system-ui,sans-serif' }}>
+      <span style={{ fontSize: '30px' }}>{ICONS[type] || '▊'}</span>
+      No data — check X / Y column settings
+    </div>
+  ) : type === 'pie' || type === 'donut' ? (
+    <PieSVG data={data} yKey={yKeys[0]} colors={theme.colors} donut={type === 'donut'} />
+  ) : type === 'radar' ? (
+    <RadarSVG data={data} yKey={yKeys[0]} colors={theme.colors} />
+  ) : (
+    <CartesianSVG data={data} yKeys={yKeys} colors={theme.colors} type={type} />
+  );
 
   return (
     <div style={{
       background: theme.card,
       border: `1px solid ${theme.border}`,
       borderRadius: '20px',
-      padding: '24px',
-      boxShadow: `0 24px 64px rgba(0,0,0,0.35), ${theme.glow}, inset 0 1px 0 rgba(255,255,255,0.08)`,
-      backdropFilter: 'blur(20px)',
+      padding: '20px',
+      boxShadow: `0 8px 32px rgba(0,0,0,0.3), 0 0 40px ${theme.glow}22`,
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Background glow orb */}
-      <div style={{
-        position: 'absolute', top: '-40px', right: '-40px',
-        width: '160px', height: '160px', borderRadius: '50%',
-        background: colors[0], opacity: 0.06, filter: 'blur(40px)',
-        pointerEvents: 'none',
-      }} />
-      {/* Chart type badge */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-        <div style={{
-          width: '36px', height: '36px', borderRadius: '10px',
-          background: `linear-gradient(135deg, ${colors[0]}, ${colors[1] || colors[0]})`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '16px', boxShadow: `0 4px 12px ${colors[0]}55`,
-        }}>
-          {CHART_ICONS[type] || '▊'}
+      {/* Glow orb */}
+      <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '130px', height: '130px', borderRadius: '50%', background: theme.glow, opacity: 0.08, filter: 'blur(32px)', pointerEvents: 'none' }} />
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+        <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: `linear-gradient(135deg,${theme.colors[0]},${theme.colors[1] || theme.colors[0]})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', flexShrink: 0, boxShadow: `0 4px 12px ${theme.glow}55` }}>
+          {ICONS[type] || '▊'}
         </div>
-        <div>
-          <h3 style={{
-            margin: 0, fontSize: '15px', fontWeight: '700',
-            background: `linear-gradient(90deg, ${colors[0]}, ${colors[1] || colors[0]})`,
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: '14px', fontWeight: '700', color: 'rgba(255,255,255,0.92)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {title || `${type.charAt(0).toUpperCase() + type.slice(1)} Chart`}
-          </h3>
-          <p style={{ margin: 0, fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
-            {data.length} data points · {yKeys.join(', ')}
-          </p>
+          </div>
+          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
+            {data.length} rows{yKeys.length ? ` · ${yKeys.slice(0, 2).join(', ')}${yKeys.length > 2 ? '…' : ''}` : ''}
+          </div>
         </div>
       </div>
-      {renderChart()}
+
+      {chartBody}
+
+      {/* Legend */}
+      {showLegend && !isEmpty && type !== 'pie' && type !== 'donut' && yKeys.length > 1 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '10px' }}>
+          {yKeys.map((k, i) => (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '3px', background: theme.colors[i % theme.colors.length] }} />
+              <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', fontWeight: '600' }}>{k}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

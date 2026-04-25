@@ -177,7 +177,7 @@ function ChartEditor({ chart, onChange, availableHeaders, sectionNames, onClose 
 }
 
 // ── Main Panel ──────────────────────────────────────────────────────────────
-export default function ChartConfigPanel({ chartConfigs = [], onChange, availableHeaders = [], sectionNames = null }) {
+export default function ChartConfigPanel({ chartConfigs = [], onChange, availableHeaders = [], sectionNames = null, sectionHeaders = null }) {
   const [editingId, setEditingId] = useState(null);
   const [open, setOpen] = useState(true);
 
@@ -251,7 +251,7 @@ export default function ChartConfigPanel({ chartConfigs = [], onChange, availabl
                     <ChartEditor
                       chart={chart}
                       onChange={updateChart}
-                      availableHeaders={availableHeaders}
+                      availableHeaders={sectionHeaders?.[chart.sectionIndex ?? 0] ?? availableHeaders}
                       sectionNames={sectionNames}
                       onClose={() => setEditingId(null)}
                     />

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { db } from '../firebase/config';
-import { collection, query, getDocs } from 'firebase/firestore';
+import { collection, query, getDocs, getDoc, doc } from 'firebase/firestore';
 import XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -11,7 +11,8 @@ import {
   BarChart4, Eye, Table2, Search, ExternalLink, Filter
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import ReportChart, { buildChartData } from '../components/ReportChart';
+import ReportChart from '../components/ReportChart';
+import { chartConfigToImageBuffer } from '../utils/chartToImage';
 
 // ── Core helpers (mirrored from GenerateReport, self-contained) ───────────────
 
@@ -451,6 +452,9 @@ async function processTemplateForView(template, masterFile) {
       .map(gf => cleanFieldName(gf.conditionCol))
   );
 
+  // Run constant checks against raw masterData (before any filter/transform)
+  const validationResults = runConstantChecks(masterData, template.constantChecks, getMV, cleanFieldName);
+
   let filteredMD = [...masterData];
   if (template.isGlobalFilterEnabled !== false && template.globalFilters?.length) {
     template.globalFilters.forEach(gf => {
@@ -477,6 +481,49 @@ async function processTemplateForView(template, masterFile) {
     filteredMD = filteredMD.filter(r => template.mappings.filter(m => m.type === 'condition' && m.conditionCol).every(m => evalCond(r, m)));
   }
 
+  // If constant checks are configured, restrict the report to only rows that failed at least one check
+  const activeChecks = (template.constantChecks || []).filter(c => c.column);
+  console.log('[ConstantCheck] configured checks:', template.constantChecks);
+  console.log('[ConstantCheck] active checks (with column set):', activeChecks);
+  if (activeChecks.length > 0) {
+    const cmp = (actual, expected, op) => {
+      const a = String(actual).toLowerCase(), e = String(expected).toLowerCase();
+      if (op === 'eq')           return a === e;
+      if (op === 'neq')          return a !== e;
+      if (op === 'contains')     return a.includes(e);
+      if (op === 'not_contains') return !a.includes(e);
+      if (op === 'starts_with')  return a.startsWith(e);
+      if (op === 'ends_with')    return a.endsWith(e);
+      return a === e;
+    };
+    // Log what each check resolves to on the first data row so misconfigurations are visible
+    if (filteredMD.length > 0) {
+      const sample = filteredMD[0];
+      activeChecks.forEach((check, i) => {
+        const fVal = check.filterColumn ? String(getMV(sample, check.filterColumn) ?? '').trim() : '(no filter)';
+        const aVal = String(getMV(sample, check.column) ?? '').trim();
+        console.log(`[ConstantCheck] check[${i}]: filterColumn="${check.filterColumn}" → sample="${fVal}" (want "${check.filterValue}") | column="${check.column}" → sample="${aVal}" (want "${check.expectedValue}")`);
+      });
+    }
+    const beforeCount = filteredMD.length;
+    filteredMD = filteredMD.filter(row =>
+      activeChecks.some(check => {
+        const { column, expectedValue = '', operator = 'eq', filterColumn = '', filterValue = '' } = check;
+        const expected = String(expectedValue).trim();
+        const hasFilter = filterColumn.trim() && filterValue.trim();
+        if (hasFilter) {
+          const fActual = String(getMV(row, filterColumn) ?? '').trim();
+          if (fActual.toLowerCase() !== filterValue.trim().toLowerCase()) return false;
+        }
+        const actual = String(getMV(row, column) ?? '').trim();
+        return !cmp(actual, expected, operator);
+      })
+    );
+    console.log(`[ConstantCheck] rows before filter: ${beforeCount} → after filter: ${filteredMD.length}`);
+  } else {
+    console.warn('[ConstantCheck] No active checks found — report will show all data. Make sure checks are saved (click Update Library) and have a Column selected.');
+  }
+
   // ── PIVOT ───────────────────────────────────────────────────────────────────
   if (template.type === 'pivot') {
     let pCols = [...(template.pivotColumns || [])];
@@ -498,7 +545,7 @@ async function processTemplateForView(template, masterFile) {
         const gk = cleanVal(getMV(r, rowField), rowTx, rowField) || String(getMV(r, rowField) || '').trim();
         return [gk, ...visPCols.map(p => applyRound(cleanVal(getMV(r, p.source), p, p.source), p))];
       })];
-      return { aoa: flatAOA, sections: null, topHeader: template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null };
+      return { aoa: flatAOA, sections: null, topHeader: template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null, validationResults };
     }
 
     const rowsByGroup = {};
@@ -580,7 +627,7 @@ async function processTemplateForView(template, masterFile) {
       finalAOA.push(totalRow);
     }
 
-    return { aoa: finalAOA, sections: null, topHeader: template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null };
+    return { aoa: finalAOA, sections: null, topHeader: template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null, validationResults };
   }
 
   // ── MULTI-TABLE (type === 'multi_table', from MultiTableDesigner) ────────────
@@ -734,7 +781,7 @@ async function processTemplateForView(template, masterFile) {
           ? (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '') || null
           : template.headerConfig.text || null)
       : null;
-    return { aoa: null, sections, topHeader };
+    return { aoa: null, sections, topHeader, validationResults };
   }
 
   // ── VISUAL MAPPER (direct / default) ────────────────────────────────────────
@@ -814,13 +861,77 @@ async function processTemplateForView(template, masterFile) {
     finalAOA.push(vmTotalRow);
   }
 
+  // Append "Expected <col>" columns only when the template option is enabled
+  if (template.constantShowExpected && activeChecks.length > 0 && finalAOA.length > 1) {
+    const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const uniqueCols = [...new Set(activeChecks.map(c => c.column))];
+    uniqueCols.forEach(col => {
+      const checksForCol = activeChecks.filter(c => c.column === col);
+      // find which AOA column index holds the filterColumn value (for row-level lookup)
+      finalAOA[0] = [...finalAOA[0], `Expected ${col}`];
+      for (let ri = 1; ri < finalAOA.length; ri++) {
+        const aoaRow = finalAOA[ri];
+        const match = checksForCol.find(check => {
+          const hasF = check.filterColumn?.trim() && check.filterValue?.trim();
+          if (!hasF) return true;
+          const fcIdx = activeMappings.findIndex(m => norm(m.source || '') === norm(check.filterColumn));
+          if (fcIdx < 0) return false;
+          return String(aoaRow[fcIdx] ?? '').trim().toLowerCase() === check.filterValue.trim().toLowerCase();
+        });
+        finalAOA[ri] = [...aoaRow, match ? match.expectedValue : ''];
+      }
+    });
+  }
+
   const topHeader = template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null;
-  return { aoa: finalAOA, sections: null, topHeader };
+  return { aoa: finalAOA, sections: null, topHeader, validationResults };
+}
+
+// ── Constant check engine ────────────────────────────────────────────────────
+function runConstantChecks(masterData, constantChecks, getMVFn, cleanFn) {
+  if (!constantChecks?.length || !masterData?.length) return [];
+
+  const masterKeys = Object.keys(masterData[0] || {});
+
+  const compareStr = (actual, expected, operator) => {
+    const a = actual.toLowerCase(), e = expected.toLowerCase();
+    if (operator === 'eq')           return a === e;
+    if (operator === 'neq')          return a !== e;
+    if (operator === 'contains')     return a.includes(e);
+    if (operator === 'not_contains') return !a.includes(e);
+    if (operator === 'starts_with')  return a.startsWith(e);
+    if (operator === 'ends_with')    return a.endsWith(e);
+    return a === e;
+  };
+
+  return constantChecks.map(check => {
+    const { column = '', expectedValue = '', operator = 'eq', label, displayColumn, filterColumn = '', filterValue = '' } = check;
+    const expected = String(expectedValue).trim();
+    const hasFilter = filterColumn.trim() && filterValue.trim();
+    const failedRows = [];
+
+    masterData.forEach((row, idx) => {
+      if (hasFilter) {
+        const fActual = String(getMVFn(row, cleanFn(filterColumn)) ?? '').trim();
+        if (fActual.toLowerCase() !== filterValue.trim().toLowerCase()) return;
+      }
+      const actual = String(getMVFn(row, cleanFn(column)) ?? '').trim();
+      if (!compareStr(actual, expected, operator)) {
+        const entry = { rowNumber: idx + 1, actualValue: actual, rawRow: row };
+        if (displayColumn) entry.displayValue = String(getMVFn(row, cleanFn(displayColumn)) ?? '').trim();
+        if (hasFilter) entry.filterValue = String(getMVFn(row, cleanFn(filterColumn)) ?? '').trim();
+        failedRows.push(entry);
+      }
+    });
+
+    const scopeLabel = hasFilter ? `${filterColumn} = "${filterValue.trim()}"` : 'All rows';
+    return { label: label || (hasFilter ? `${filterColumn}="${filterValue.trim()}" → ${column}` : column), column, expectedValue: expected, operator, displayColumn, filterColumn, filterValue: filterValue.trim(), hasFilter, scopeLabel, failedRows, masterKeys };
+  });
 }
 
 // ── Download helper (converts AOA to styled Excel) ────────────────────────────
 
-async function downloadAsExcel(aoa, sections, templateName, topHeader) {
+async function downloadAsExcel(aoa, sections, templateName, topHeader, chartConfigs = [], validationResults = []) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Report');
   const thin = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
@@ -873,6 +984,122 @@ async function downloadAsExcel(aoa, sections, templateName, topHeader) {
     });
   } else {
     writeAOA(aoa, topHeader);
+  }
+
+  // Embed chart images below the table data
+  if (chartConfigs.length > 0) {
+    currR++; // blank gap row
+    const nc = sections
+      ? Math.max(...sections.map(s => (s.aoa[0] || []).length || 1), 1)
+      : (aoa?.[0] || []).length || 1;
+    if (nc > 1) try { ws.mergeCells(currR, 1, currR, nc); } catch (_) {}
+    const hdr = ws.getCell(currR, 1);
+    hdr.value = 'Charts';
+    hdr.alignment = { horizontal: 'left', vertical: 'middle' };
+    hdr.font = { bold: true, size: 13, color: { argb: 'FF2D5F8A' } };
+    hdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+    ws.getRow(currR).height = 22;
+    currR++;
+
+    for (const cfg of chartConfigs) {
+      const srcAoa = sections
+        ? (sections[cfg.sectionIndex ?? 0]?.aoa || sections[0]?.aoa || [])
+        : (aoa || []);
+      try {
+        const buf = await chartConfigToImageBuffer(cfg, srcAoa);
+        if (buf) {
+          const imgId = wb.addImage({ buffer: buf, extension: 'png' });
+          ws.addImage(imgId, {
+            tl: { col: 0, row: currR - 1 },
+            ext: { width: 800, height: 370 },
+          });
+          currR += 21; // reserve rows for image height (~370px / ~18px per row)
+        }
+      } catch (e) {
+        console.error('Chart image error:', e);
+      }
+    }
+  }
+
+  // Add Validation Results as a separate worksheet (full row data)
+  if (validationResults.length > 0) {
+    const wsV = wb.addWorksheet('Validation Results');
+    const thinV = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
+    const styleV = (c, opts = {}) => {
+      c.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+      c.border = thinV;
+      if (opts.bold) c.font = { bold: true, size: opts.size || 11 };
+      if (opts.color) c.font = { ...(c.font || {}), color: { argb: opts.color } };
+      if (opts.fill) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: opts.fill } };
+    };
+    let vR = 1;
+    let maxCols = 1;
+
+    validationResults.forEach(result => {
+      const keys = result.masterKeys || [];
+      // columns: all master columns | Expected [col]
+      const hdrs = [...keys, 'Expected ' + result.column];
+      const colCount = Math.max(hdrs.length, 2);
+      maxCols = Math.max(maxCols, colCount);
+
+      // Section header
+      try { wsV.mergeCells(vR, 1, vR, colCount); } catch (_) {}
+      const sh = wsV.getCell(vR, 1);
+      sh.value = (result.label || result.column) +
+        (result.hasFilter ? `  —  when ${result.filterColumn} = "${result.filterValue}"` : '');
+      sh.alignment = { horizontal: 'left', vertical: 'middle' };
+      sh.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+      sh.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2D5F8A' } };
+      wsV.getRow(vR).height = 24; vR++;
+
+      // Scope sub-header
+      try { wsV.mergeCells(vR, 1, vR, colCount); } catch (_) {}
+      const scope = wsV.getCell(vR, 1);
+      scope.value = result.hasFilter
+        ? `Scope: rows where ${result.filterColumn} = "${result.filterValue}" · ${result.failedRows.length} mismatch${result.failedRows.length !== 1 ? 'es' : ''} found`
+        : `Scope: all rows · ${result.failedRows.length} mismatch${result.failedRows.length !== 1 ? 'es' : ''} found`;
+      scope.alignment = { horizontal: 'left', vertical: 'middle' };
+      scope.font = { italic: true, size: 10, color: { argb: 'FF555577' } };
+      scope.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
+      wsV.getRow(vR).height = 16; vR++;
+
+      // Column headers
+      hdrs.forEach((h, ci) => {
+        const c = wsV.getCell(vR, ci + 1);
+        c.value = h;
+        const isCheckCol = h === result.column;
+        const isExpected = ci === hdrs.length - 1;
+        if (isExpected) styleV(c, { bold: true, fill: 'FFD4EDDA', color: 'FF1B5E20' });
+        else if (isCheckCol) styleV(c, { bold: true, fill: 'FFFFF3CD', color: 'FF7D3C00' });
+        else styleV(c, { bold: true, fill: 'FFF1F5F9' });
+      });
+      wsV.getRow(vR).height = 20; vR++;
+
+      if (result.failedRows.length === 0) {
+        try { wsV.mergeCells(vR, 1, vR, colCount); } catch (_) {}
+        const c = wsV.getCell(vR, 1);
+        c.value = '✓ All values match — no mismatches found';
+        styleV(c, { fill: 'FFE8F5E9' }); vR++;
+      } else {
+        result.failedRows.forEach(fr => {
+          keys.forEach((key, ci) => {
+            const c = wsV.getCell(vR, ci + 1);
+            c.value = fr.rawRow ? String(fr.rawRow[key] ?? '') : '';
+            const isCheckCol = key === result.column || key.toLowerCase().replace(/[^a-z0-9]/g,'') === result.column.toLowerCase().replace(/[^a-z0-9]/g,'');
+            if (isCheckCol) styleV(c, { fill: 'FFFFF3E0', color: 'FFE65100' });
+            else styleV(c, {});
+          });
+          // Expected value column at end
+          const expC = wsV.getCell(vR, keys.length + 1);
+          expC.value = result.expectedValue;
+          styleV(expC, { fill: 'FFE8F5E9', color: 'FF1B5E20' });
+          vR++;
+        });
+      }
+      vR++; // gap between checks
+    });
+
+    wsV.columns = Array(maxCols).fill(null).map(() => ({ width: 22 }));
   }
 
   const buf = await wb.xlsx.writeBuffer();
@@ -1232,12 +1459,23 @@ export default function ViewReport() {
     }
   };
 
+  // Always re-fetch template from Firestore so we get the latest constantChecks, chartConfigs, etc.
+  const fetchFreshTemplate = async (template) => {
+    try {
+      const snap = await getDoc(doc(db, 'templates', template.id));
+      if (snap.exists()) return { id: snap.id, ...snap.data() };
+    } catch (_) {}
+    return template; // fallback to cached version
+  };
+
   const handleTemplateSelect = async (template) => {
     setSelectedTemplate(template);
     setIsProcessing(true);
     setError(null);
     try {
-      const result = await processTemplateForView(template, masterFile);
+      const fresh = await fetchFreshTemplate(template);
+      setSelectedTemplate(fresh);
+      const result = await processTemplateForView(fresh, masterFile);
       setReportResult(result);
       setStep(3);
     } catch (err) {
@@ -1255,8 +1493,10 @@ export default function ViewReport() {
     setIsProcessing(true);
     setError(null);
     try {
-      const result = await processTemplateForView(template, masterFile);
-      await downloadAsExcel(result.aoa, result.sections, template.name, result.topHeader);
+      const fresh = await fetchFreshTemplate(template);
+      setSelectedTemplate(fresh);
+      const result = await processTemplateForView(fresh, masterFile);
+      await downloadAsExcel(result.aoa, result.sections, fresh.name, result.topHeader, fresh.chartConfigs || [], result.validationResults || []);
     } catch (err) {
       setError(`Download failed: ${err.message}`);
     } finally {
@@ -1269,7 +1509,7 @@ export default function ViewReport() {
     if (!reportResult) return;
     setIsDownloading(true);
     try {
-      await downloadAsExcel(reportResult.aoa, reportResult.sections, selectedTemplate?.name, reportResult.topHeader);
+      await downloadAsExcel(reportResult.aoa, reportResult.sections, selectedTemplate?.name, reportResult.topHeader, selectedTemplate?.chartConfigs || [], reportResult.validationResults || []);
     } catch (err) {
       setError(`Download failed: ${err.message}`);
     } finally {
@@ -1565,7 +1805,7 @@ export default function ViewReport() {
   }
 
   // ── Step 3: Report View ────────────────────────────────────────────────────
-  const { aoa, sections, topHeader } = reportResult || {};
+  const { aoa, sections, topHeader, validationResults } = reportResult || {};
   const totalRows = aoa ? aoa.length - 1 : sections ? sections.reduce((s, sec) => s + sec.aoa.length - 1, 0) : 0;
 
   return (
@@ -1644,14 +1884,101 @@ export default function ViewReport() {
                 const srcAoa = sections
                   ? (sections[cfg.sectionIndex ?? 0]?.aoa || sections[0]?.aoa || [])
                   : (aoa || []);
-                const { data, yKeys } = buildChartData(srcAoa, cfg.xColumn, cfg.yColumns, cfg.maxItems || 50);
-                if (!data.length || !yKeys.length) return null;
                 return <ReportChart key={cfg.id} config={cfg} aoa={srcAoa} />;
               })}
             </div>
           </div>
         );
       })()}
+
+      {/* ── Validation Results ── */}
+      {validationResults?.length > 0 && (
+        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f97316' }} />
+            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>Validation Results</h3>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              {validationResults.reduce((s, r) => s + r.failedRows.length, 0)} mismatch{validationResults.reduce((s, r) => s + r.failedRows.length, 0) !== 1 ? 'es' : ''} found
+            </span>
+          </div>
+          {validationResults.map((result, ri) => {
+            const hasMismatches = result.failedRows.length > 0;
+            return (
+              <div key={ri} style={{ border: `1px solid ${hasMismatches ? 'rgba(249,115,22,0.35)' : 'rgba(34,197,94,0.35)'}`, borderRadius: '14px', overflow: 'hidden' }}>
+                {/* Check header */}
+                <div style={{ padding: '12px 16px', background: hasMismatches ? 'rgba(249,115,22,0.08)' : 'rgba(34,197,94,0.08)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: hasMismatches ? '#f97316' : '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', flexShrink: 0 }}>
+                    {hasMismatches ? '✗' : '✓'}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text)' }}>{result.label || result.column}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      {result.hasFilter && <span style={{ background: 'rgba(99,102,241,0.15)', color: 'var(--primary)', borderRadius: '4px', padding: '1px 6px', marginRight: '6px', fontWeight: '600' }}>When {result.filterColumn} = "{result.filterValue}"</span>}
+                      {result.column} — expected "{result.expectedValue}"
+                      {hasMismatches
+                        ? ` · ${result.failedRows.length} row${result.failedRows.length !== 1 ? 's' : ''} do not match`
+                        : ' · All values match'}
+                    </div>
+                  </div>
+                </div>
+                {/* Mismatch table — full row data */}
+                {hasMismatches && (() => {
+                  const keys = result.masterKeys || [];
+                  const cleanCol = result.column.toLowerCase().replace(/[^a-z0-9]/g, '');
+                  return (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--glass-subtle)' }}>
+                            {keys.map(k => {
+                              const isCheck = k.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanCol;
+                              return (
+                                <th key={k} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: '700', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
+                                  color: isCheck ? '#f97316' : 'var(--text-muted)',
+                                  background: isCheck ? 'rgba(249,115,22,0.08)' : 'transparent' }}>
+                                  {k}
+                                </th>
+                              );
+                            })}
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: '700', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', color: '#22c55e', background: 'rgba(34,197,94,0.08)' }}>
+                              Expected {result.column}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {result.failedRows.slice(0, 200).map((fr, fi) => (
+                            <tr key={fi} style={{ borderBottom: '1px solid var(--border)', background: fi % 2 === 0 ? 'transparent' : 'var(--glass-subtle)' }}>
+                              {keys.map(k => {
+                                const isCheck = k.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanCol;
+                                const val = fr.rawRow ? String(fr.rawRow[k] ?? '') : '';
+                                return (
+                                  <td key={k} style={{ padding: '7px 12px', whiteSpace: 'nowrap',
+                                    color: isCheck ? '#f97316' : 'var(--text)',
+                                    fontFamily: isCheck ? 'monospace' : 'inherit',
+                                    fontWeight: isCheck ? '600' : '400',
+                                    background: isCheck ? 'rgba(249,115,22,0.05)' : 'transparent' }}>
+                                    {val || (isCheck ? '(empty)' : '—')}
+                                  </td>
+                                );
+                              })}
+                              <td style={{ padding: '7px 12px', color: '#22c55e', fontFamily: 'monospace', fontWeight: '600', background: 'rgba(34,197,94,0.05)', whiteSpace: 'nowrap' }}>
+                                {result.expectedValue}
+                              </td>
+                            </tr>
+                          ))}
+                          {result.failedRows.length > 200 && (
+                            <tr><td colSpan={keys.length + 1} style={{ padding: '8px 14px', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center' }}>… and {result.failedRows.length - 200} more rows (see Excel export)</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

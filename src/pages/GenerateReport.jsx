@@ -1208,6 +1208,34 @@ export default function GenerateReport() {
           }
           if (template.mappings?.filter(m => m.type === 'condition' && m.conditionCol).length > 0) filteredMD = filteredMD.filter(r => template.mappings.filter(m => m.type === 'condition' && m.conditionCol).every(m => evaluateCondition(r, m)));
 
+          // Constant check filter — keep only rows that fail at least one configured check
+          const _activeChecks = (template.constantChecks || []).filter(c => c.column);
+          if (_activeChecks.length > 0) {
+            const _cmp = (actual, expected, op) => {
+              const a = String(actual).toLowerCase(), e = String(expected).toLowerCase();
+              if (op === 'eq')           return a === e;
+              if (op === 'neq')          return a !== e;
+              if (op === 'contains')     return a.includes(e);
+              if (op === 'not_contains') return !a.includes(e);
+              if (op === 'starts_with')  return a.startsWith(e);
+              if (op === 'ends_with')    return a.endsWith(e);
+              return a === e;
+            };
+            filteredMD = filteredMD.filter(row =>
+              _activeChecks.some(check => {
+                const { column, expectedValue = '', operator = 'eq', filterColumn = '', filterValue = '' } = check;
+                const expected = String(expectedValue).trim();
+                const hasFilter = filterColumn.trim() && filterValue.trim();
+                if (hasFilter) {
+                  const fActual = String(getMasterValue(row, filterColumn) ?? '').trim();
+                  if (fActual.toLowerCase() !== filterValue.trim().toLowerCase()) return false;
+                }
+                const actual = String(getMasterValue(row, column) ?? '').trim();
+                return !_cmp(actual, expected, operator);
+              })
+            );
+          }
+
           if (template.type === 'pivot') {
             let pCols = [...(template.pivotColumns || [])];
             if (pCols.length === 0 && template.valueFields?.length > 0) pCols = template.valueFields.map((vf, i) => ({ id: `leg-${i}`, type: 'aggregation', ...vf }));
@@ -1585,6 +1613,29 @@ export default function GenerateReport() {
                 });
                 finalAOA.push(vmTotalRow);
               }
+            }
+
+            // Append "Expected <col>" columns only when the template option is enabled
+            if (template.constantShowExpected && _activeChecks.length > 0 && finalAOA.length > 1) {
+              const _norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const _uniqueCols = [...new Set(_activeChecks.map(c => c.column))];
+              _uniqueCols.forEach(col => {
+                const checksForCol = _activeChecks.filter(c => c.column === col);
+                finalAOA[0] = [...finalAOA[0], `Expected ${col}`];
+                for (let ri = 1; ri < finalAOA.length; ri++) {
+                  const aoaRow = finalAOA[ri];
+                  const match = checksForCol.find(check => {
+                    const hasF = check.filterColumn?.trim() && check.filterValue?.trim();
+                    if (!hasF) return true;
+                    const fcIdx = useFallback
+                      ? columnHeaders.findIndex(h => _norm(h) === _norm(check.filterColumn))
+                      : activeMappings.findIndex(m => _norm(m.source || '') === _norm(check.filterColumn));
+                    if (fcIdx < 0) return false;
+                    return String(aoaRow[fcIdx] ?? '').trim().toLowerCase() === check.filterValue.trim().toLowerCase();
+                  });
+                  finalAOA[ri] = [...aoaRow, match ? match.expectedValue : ''];
+                }
+              });
             }
 
             // Compute which column indices (0-based in finalAOA) have enableMerging set

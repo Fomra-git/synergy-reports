@@ -27,6 +27,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import SearchableDropdown from '../components/SearchableDropdown';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import ChartConfigPanel from '../components/ChartConfigPanel';
+import ConstantCheckPanel from '../components/ConstantCheckPanel';
 import FormulaBuilder from '../components/FormulaBuilder';
 import { ArrowLeft } from 'lucide-react';
 import ModernModal from '../components/ModernModal';
@@ -97,8 +98,19 @@ export default function VisualExcelMapping() {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    fetchTemplates();
-    fetchCategories();
+    const init = async () => {
+      setLoading(true);
+      try {
+        const [tplSnap, catSnap] = await Promise.all([
+          getDocs(query(collection(db, 'templates'))),
+          getDocs(collection(db, 'reportCategories')),
+        ]);
+        setTemplates(tplSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) { console.error('Error loading data:', err); }
+      finally { setLoading(false); }
+    };
+    init();
   }, []);
 
   const fetchCategories = async () => {
@@ -465,7 +477,7 @@ export default function VisualExcelMapping() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '24px', height: 'calc(100vh - 220px)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '440px 1fr', gap: '24px', height: 'calc(100vh - 220px)' }}>
         
         {/* SIDEBAR */}
         <div className="sidebar-config" style={{ overflow: 'hidden' }}>
@@ -473,7 +485,7 @@ export default function VisualExcelMapping() {
             
             {/* TABS HEADER */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--glass-subtle)' }}>
-              {['columns', 'general', 'filters', 'report', 'charts'].map(tab => (
+              {['columns', 'general', 'filters', 'report', 'charts', 'checks'].map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveSidebarTab(tab)}
@@ -956,7 +968,26 @@ export default function VisualExcelMapping() {
                   <ChartConfigPanel
                     chartConfigs={formData.chartConfigs || []}
                     onChange={configs => setFormData(prev => ({ ...prev, chartConfigs: configs }))}
-                    availableHeaders={masterHeaders}
+                    availableHeaders={(() => {
+                      const cols = (formData.mappings || [])
+                        .filter(m => m.type !== 'condition' && !m.hideInReport)
+                        .map(m => (m.target || m.source || '').trim())
+                        .filter(Boolean);
+                      return cols.length ? cols : masterHeaders;
+                    })()}
+                  />
+                </div>
+              )}
+
+              {/* TAB 6: CONSTANT CHECKS */}
+              {activeSidebarTab === 'checks' && (
+                <div style={{ padding: '16px' }}>
+                  <ConstantCheckPanel
+                    constantChecks={formData.constantChecks || []}
+                    onChange={checks => setFormData(prev => ({ ...prev, constantChecks: checks }))}
+                    masterHeaders={masterHeaders}
+                    showExpected={formData.constantShowExpected || false}
+                    onShowExpectedChange={v => setFormData(prev => ({ ...prev, constantShowExpected: v }))}
                   />
                 </div>
               )}

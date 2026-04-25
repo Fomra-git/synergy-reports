@@ -39,6 +39,7 @@ import ModernModal from '../components/ModernModal';
 import FormulaBuilder from '../components/FormulaBuilder';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import ChartConfigPanel from '../components/ChartConfigPanel';
+import ConstantCheckPanel from '../components/ConstantCheckPanel';
 
 export default function PivotTemplateManager() {
   const navigate = useNavigate();
@@ -94,8 +95,19 @@ export default function PivotTemplateManager() {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    fetchTemplates();
-    fetchCategories();
+    const init = async () => {
+      setLoading(true);
+      try {
+        const [tplSnap, catSnap] = await Promise.all([
+          getDocs(query(collection(db, 'templates'))),
+          getDocs(collection(db, 'reportCategories')),
+        ]);
+        setTemplates(tplSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.type === 'pivot'));
+        setCategories(catSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) { console.error('Error loading data:', err); }
+      finally { setLoading(false); }
+    };
+    init();
   }, []);
 
   const fetchCategories = async () => {
@@ -1584,7 +1596,25 @@ export default function PivotTemplateManager() {
            <ChartConfigPanel
              chartConfigs={formData.chartConfigs || []}
              onChange={configs => setFormData(prev => ({ ...prev, chartConfigs: configs }))}
-             availableHeaders={masterHeaders}
+             availableHeaders={(() => {
+               const rowLabel = formData.rowField || 'Group';
+               const colLabels = (formData.pivotColumns || [])
+                 .filter(c => !c.hideInReport && c.type !== 'grouping' &&
+                   !(formData.rowField && c.type === 'property' && c.source === formData.rowField))
+                 .map(c => c.displayName || c.source || 'Untitled')
+                 .filter(Boolean);
+               const all = formData.rowField ? [rowLabel, ...colLabels] : colLabels;
+               return all.length ? all : masterHeaders;
+             })()}
+           />
+
+           {/* CONSTANT CHECKS SECTION */}
+           <ConstantCheckPanel
+             constantChecks={formData.constantChecks || []}
+             onChange={checks => setFormData(prev => ({ ...prev, constantChecks: checks }))}
+             masterHeaders={masterHeaders}
+             showExpected={formData.constantShowExpected || false}
+             onShowExpectedChange={v => setFormData(prev => ({ ...prev, constantShowExpected: v }))}
            />
 
           </div>
