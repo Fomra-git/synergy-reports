@@ -539,13 +539,26 @@ async function processTemplateForView(template, masterFile) {
       const sorted = [...filteredMD].sort((a, b) =>
         String(getMV(a, rowField) || '').trim().localeCompare(String(getMV(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
       );
+      let flatRows = sorted;
+      if (template.mergeByCol) {
+        const seen = new Set();
+        flatRows = sorted.filter(r => {
+          const gk = String(getMV(r, rowField) || '').trim();
+          const dk = String(getMV(r, template.mergeByCol) || '').trim();
+          if (!dk) return true;
+          const key = `${gk}||${dk}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
       const visPCols = pCols.filter(p => !p.hideInReport);
       const flatHdrs = [rowField || 'Group', ...visPCols.map(p => p.displayName || p.source || 'Untitled')];
-      const flatAOA = [flatHdrs, ...sorted.map(r => {
+      const flatAOA = [flatHdrs, ...flatRows.map(r => {
         const gk = cleanVal(getMV(r, rowField), rowTx, rowField) || String(getMV(r, rowField) || '').trim();
         return [gk, ...visPCols.map(p => applyRound(cleanVal(getMV(r, p.source), p, p.source), p))];
       })];
-      return { aoa: flatAOA, sections: null, topHeader: template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null, validationResults };
+      return { aoa: flatAOA, sections: null, mergeFirstCol: true, topHeader: template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null, validationResults };
     }
 
     const rowsByGroup = {};
@@ -627,7 +640,7 @@ async function processTemplateForView(template, masterFile) {
       finalAOA.push(totalRow);
     }
 
-    return { aoa: finalAOA, sections: null, topHeader: template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null, validationResults };
+    return { aoa: finalAOA, sections: null, mergeFirstCol: !!(template.mergePropertyCol && rowField && finalAOA.length > 2), topHeader: template.isHeaderEnabled && template.headerConfig ? (template.headerConfig.type === 'custom' ? template.headerConfig.text : (masterData.length > 0 ? getMV(masterData[0], template.headerConfig.sourceCol) : '')) : null, validationResults };
   }
 
   // ── MULTI-TABLE (type === 'multi_table', from MultiTableDesigner) ────────────
@@ -649,10 +662,23 @@ async function processTemplateForView(template, masterFile) {
         const sorted = [...sectionData].sort((a, b) =>
           String(getMV(a, rowField) || '').trim().localeCompare(String(getMV(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
         );
+        let flatRows = sorted;
+        if (section.mergeByCol) {
+          const seen = new Set();
+          flatRows = sorted.filter(r => {
+            const gk = String(getMV(r, rowField) || '').trim();
+            const dk = String(getMV(r, section.mergeByCol) || '').trim();
+            if (!dk) return true;
+            const key = `${gk}||${dk}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        }
         const visPCols = pCols.filter(p => !p.hideInReport);
         const flatHeaders = [section.rowFieldDisplayName || rowField, ...visPCols.map(p => p.displayName || p.source || 'Untitled')];
         const flatAOA = [flatHeaders];
-        sorted.forEach(r => {
+        flatRows.forEach(r => {
           const gk = cleanVal(getMV(r, rowField), rowTx, rowField) || String(getMV(r, rowField) || '').trim();
           flatAOA.push([gk, ...visPCols.map(p => applyRound(cleanVal(getMV(r, p.source), p, p.source), p))]);
         });
@@ -773,7 +799,7 @@ async function processTemplateForView(template, masterFile) {
           }
         });
       }
-      return { title: section.title || '', aoa: buildSectionAOA(section, sectionData) };
+      return { title: section.title || '', aoa: buildSectionAOA(section, sectionData), mergeFirstCol: !!(section.rowField && (section.isFlatList || section.mergePropertyCol)) };
     });
 
     const topHeader = template.isHeaderEnabled && template.headerConfig
@@ -931,7 +957,7 @@ function runConstantChecks(masterData, constantChecks, getMVFn, cleanFn) {
 
 // ── Download helper (converts AOA to styled Excel) ────────────────────────────
 
-async function downloadAsExcel(aoa, sections, templateName, topHeader, chartConfigs = [], validationResults = []) {
+async function downloadAsExcel(aoa, sections, templateName, topHeader, chartConfigs = [], validationResults = [], mergeFirstCol = false) {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Report');
   const thin = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
@@ -943,6 +969,26 @@ async function downloadAsExcel(aoa, sections, templateName, topHeader, chartConf
   };
 
   let currR = 1;
+
+  const mergeGroupColWs = (dataAOA, firstDataExcelRow) => {
+    if (dataAOA.length < 3) return;
+    let runStart = firstDataExcelRow;
+    let runVal = dataAOA[1][0];
+    for (let i = 2; i < dataAOA.length; i++) {
+      const val = dataAOA[i][0];
+      if (val !== runVal || val === '' || val == null) {
+        if (firstDataExcelRow + i - 2 > runStart) {
+          try { ws.mergeCells(runStart, 1, firstDataExcelRow + i - 2, 1); ws.getCell(runStart, 1).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; } catch (_) {}
+        }
+        runStart = firstDataExcelRow + i - 1;
+        runVal = val;
+      }
+    }
+    const lastR = firstDataExcelRow + dataAOA.length - 2;
+    if (lastR > runStart) {
+      try { ws.mergeCells(runStart, 1, lastR, 1); ws.getCell(runStart, 1).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; } catch (_) {}
+    }
+  };
 
   // Report name title row — merged across full table width, always at the very top
   if (templateName) {
@@ -979,11 +1025,15 @@ async function downloadAsExcel(aoa, sections, templateName, topHeader, chartConf
         if (nc > 1) try { ws.mergeCells(currR, 1, currR, nc); } catch (_) {}
         const c = ws.getCell(currR, 1); c.value = sec.title; styleCell(c, { bold: true, size: 12, fill: 'FFE2E8F0' }); ws.getRow(currR).height = 22; currR++;
       }
+      const beforeR = currR;
       writeAOA(sec.aoa, null);
+      if (sec.mergeFirstCol) mergeGroupColWs(sec.aoa, beforeR + 1);
       if (idx < sections.length - 1) currR++;
     });
   } else {
+    const beforeR = currR;
     writeAOA(aoa, topHeader);
+    if (mergeFirstCol && aoa) mergeGroupColWs(aoa, beforeR + (topHeader ? 2 : 1));
   }
 
   // Embed chart images below the table data
@@ -1496,7 +1546,7 @@ export default function ViewReport() {
       const fresh = await fetchFreshTemplate(template);
       setSelectedTemplate(fresh);
       const result = await processTemplateForView(fresh, masterFile);
-      await downloadAsExcel(result.aoa, result.sections, fresh.name, result.topHeader, fresh.chartConfigs || [], result.validationResults || []);
+      await downloadAsExcel(result.aoa, result.sections, fresh.name, result.topHeader, fresh.chartConfigs || [], result.validationResults || [], result.mergeFirstCol || false);
     } catch (err) {
       setError(`Download failed: ${err.message}`);
     } finally {
@@ -1509,7 +1559,7 @@ export default function ViewReport() {
     if (!reportResult) return;
     setIsDownloading(true);
     try {
-      await downloadAsExcel(reportResult.aoa, reportResult.sections, selectedTemplate?.name, reportResult.topHeader, selectedTemplate?.chartConfigs || [], reportResult.validationResults || []);
+      await downloadAsExcel(reportResult.aoa, reportResult.sections, selectedTemplate?.name, reportResult.topHeader, selectedTemplate?.chartConfigs || [], reportResult.validationResults || [], reportResult.mergeFirstCol || false);
     } catch (err) {
       setError(`Download failed: ${err.message}`);
     } finally {

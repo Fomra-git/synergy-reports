@@ -75,6 +75,8 @@ export default function PivotTemplateManager() {
     isPivotSummaryEnabled: false,
     isRowTotalEnabled: false,
     isFlatList: false,
+    mergePropertyCol: false,
+    mergeByCol: '',
     sortConfig: { enabled: false, column: '', direction: 'asc', type: 'auto' },
     chartConfigs: [],
   });
@@ -199,6 +201,8 @@ export default function PivotTemplateManager() {
         isPivotSummaryEnabled: !!t.isPivotSummaryEnabled,
         isRowTotalEnabled: !!t.isRowTotalEnabled,
         isFlatList: !!t.isFlatList,
+        mergePropertyCol: !!t.mergePropertyCol,
+        mergeByCol: t.mergeByCol || '',
         sortConfig: t.sortConfig || { enabled: false, column: '', direction: 'asc', type: 'auto' },
         chartConfigs: t.chartConfigs || [],
         // Initialize isManual for old templates
@@ -879,6 +883,14 @@ export default function PivotTemplateManager() {
                        onChange={e => setFormData(prev => ({ ...prev, isFlatList: e.target.checked }))}
                      />
                    </label>
+                   <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: '700' }} title="Merge identical consecutive values in the property/row-field column in Excel output">
+                     Merge Property Column:
+                     <input
+                       type="checkbox"
+                       checked={!!formData.mergePropertyCol}
+                       onChange={e => setFormData(prev => ({ ...prev, mergePropertyCol: e.target.checked, mergeByCol: e.target.checked ? prev.mergeByCol : '' }))}
+                     />
+                   </label>
                    <label className="switch-label" style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: '700' }}>
                      Sort Rows:
                      <input
@@ -889,6 +901,22 @@ export default function PivotTemplateManager() {
                    </label>
                 </div>
              </div>
+             {formData.mergePropertyCol && (
+               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', padding: '12px 16px', background: 'var(--glass-subtle)', borderRadius: '10px', border: '1px solid var(--border)', marginTop: '8px' }}>
+                 <div className="form-group" style={{ marginBottom: 0 }}>
+                   <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }}>Deduplicate rows by column</label>
+                   <SearchableDropdown
+                     options={masterHeaders}
+                     value={formData.mergeByCol || ''}
+                     onChange={v => setFormData(prev => ({ ...prev, mergeByCol: v }))}
+                     placeholder="Select column to deduplicate by (e.g. Patient ID)..."
+                   />
+                 </div>
+                 <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '2px' }}>
+                   <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.4' }}>Within each group, keep only the first row per unique value (e.g. one row per patient UID)</p>
+                 </div>
+               </div>
+             )}
              {formData.sortConfig?.enabled && (
                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', padding: '12px 16px', background: 'var(--glass-subtle)', borderRadius: '10px', border: '1px solid var(--border)' }}>
                  <div className="form-group" style={{ marginBottom: 0 }}>

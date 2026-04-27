@@ -32,6 +32,8 @@ const emptySection = () => ({
   isPivotSummaryEnabled: false,
   isRowTotalEnabled: false,
   isFlatList: false,
+  mergePropertyCol: false,
+  mergeByCol: '',
 });
 
 const emptyForm = () => ({
@@ -848,6 +850,7 @@ export default function MultiTableDesigner() {
                         { key: 'isPivotSummaryEnabled', label: 'Grand Total Row', desc: 'Sum totals at bottom' },
                         { key: 'isRowTotalEnabled', label: 'Row Totals', desc: 'Cross-tab column sums' },
                         { key: 'isFlatList', label: 'Flat List Mode', desc: 'One row per record, group column merged' },
+                        { key: 'mergePropertyCol', label: 'Merge Property Column', desc: 'Merge identical values in first column & deduplicate rows' },
                       ].map(opt => (
                         <div key={opt.key} style={cardSty}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -862,6 +865,23 @@ export default function MultiTableDesigner() {
                         </div>
                       ))}
                     </div>
+
+                    {/* Merge-by column selector — shown when Merge Property Column is ON */}
+                    {activeSection.mergePropertyCol && (
+                      <div style={{ ...cardSty, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <p style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text)' }}>Deduplicate rows by column</p>
+                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Within each group, keep only the first row per unique value in this column (e.g. Patient ID)</p>
+                        <SearchableDropdown
+                          options={masterHeaders}
+                          value={activeSection.mergeByCol || ''}
+                          onChange={v => updateSection('mergeByCol', v)}
+                          placeholder="Select column (e.g. Patient ID / UID)..."
+                        />
+                        {activeSection.mergeByCol && (
+                          <button onClick={() => updateSection('mergeByCol', '')} style={{ alignSelf: 'flex-start', fontSize: '11px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>Clear</button>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
 
