@@ -823,7 +823,7 @@ export default function GenerateReport() {
               const cur = cRows.filter(r => parseSbDate(getMasterValue(r, dateCol)) === targetDate).length;
               let conv = 0;
               if (col.displayMode === 'triple') {
-                conv = cRows.filter(r => (parseSafeNum(getMasterValue(r, aptNoCol)) - parseSafeNum(getMasterValue(r, appNoCol))) > 6).length;
+                conv = cRows.filter(r => (parseSafeNum(getMasterValue(r, aptNoCol)) - parseSafeNum(getMasterValue(r, appNoCol))) >= 6).length;
               }
               rowContext[group.id + ':' + col.id + ':cur'] = cur;
               rowContext[group.id + ':' + col.id + ':total'] = total;
