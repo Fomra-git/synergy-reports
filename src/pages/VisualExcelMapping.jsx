@@ -250,6 +250,19 @@ export default function VisualExcelMapping() {
     }
   };
 
+  // Recursively strip undefined values so Firestore doesn't reject the document
+  const sanitizeForFirestore = (val) => {
+    if (Array.isArray(val)) return val.map(sanitizeForFirestore);
+    if (val !== null && typeof val === 'object') {
+      return Object.fromEntries(
+        Object.entries(val)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => [k, sanitizeForFirestore(v)])
+      );
+    }
+    return val;
+  };
+
   const handleSave = async () => {
     if (!formData.name) {
       setModal({
@@ -265,12 +278,19 @@ export default function VisualExcelMapping() {
     setIsSaving(true);
     setSaveStatus('Saving...');
     try {
+      // Strip the local 'id' field (it belongs in the doc ref, not the doc data)
+      // and remove any undefined values that Firestore would reject
+      const { id: _id, ...rawData } = formData;
+      const dataToSave = sanitizeForFirestore(rawData);
+
       if (selectedTemplateId) {
-        await updateDoc(doc(db, 'templates', selectedTemplateId), formData);
+        await updateDoc(doc(db, 'templates', selectedTemplateId), dataToSave);
         await updateCategoryAssignment(selectedTemplateId);
+        // Keep local templates state in sync so reloading without navigation shows current data
+        setTemplates(prev => prev.map(t => t.id === selectedTemplateId ? { id: selectedTemplateId, ...dataToSave } : t));
       } else {
         const docRef = await addDoc(collection(db, 'templates'), {
-          ...formData,
+          ...dataToSave,
           createdAt: new Date().toISOString()
         });
         setSelectedTemplateId(docRef.id);
@@ -381,25 +401,19 @@ export default function VisualExcelMapping() {
   };
 
   const confirmMapping = () => {
-    const newMappings = [...(formData.mappings || [])];
     const colLetter = activeCell?.colLetter;
     if (!colLetter) return;
-
-    // Check if mapping for this column already exists
-    const existingIdx = newMappings.findIndex(m => m.tag === colLetter);
-    
-    const mappingObj = {
-      ...modalData,
-      tag: colLetter // Hidden tag to identify the visual column
-    };
-
-    if (existingIdx >= 0) {
-      newMappings[existingIdx] = mappingObj;
-    } else {
-      newMappings.push(mappingObj);
-    }
-
-    setFormData(prev => ({ ...prev, mappings: newMappings }));
+    const mappingObj = { ...modalData, tag: colLetter };
+    setFormData(prev => {
+      const newMappings = [...(prev.mappings || [])];
+      const existingIdx = newMappings.findIndex(m => m.tag === colLetter);
+      if (existingIdx >= 0) {
+        newMappings[existingIdx] = mappingObj;
+      } else {
+        newMappings.push(mappingObj);
+      }
+      return { ...prev, mappings: newMappings };
+    });
     setShowModal(false);
   };
 
