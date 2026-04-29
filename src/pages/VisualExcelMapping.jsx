@@ -168,14 +168,11 @@ export default function VisualExcelMapping() {
     }
     const t = templatesSource.find(temp => temp.id === id);
     if (t) {
-      // Auto-migrate legacy mappings (missing tags) to grid positions
-      const migratedMappings = (t.mappings || []).map((m, idx) => {
-        if (!m.tag) {
-          // Assign sequential tags A, B, C...
-          return { ...m, tag: String.fromCharCode(65 + idx) };
-        }
-        return m;
-      });
+      // Always retag sequentially (A, B, C…) so gaps from deletions don't cause collisions
+      const migratedMappings = (t.mappings || []).map((m, idx) => ({
+        ...m,
+        tag: String.fromCharCode(65 + idx),
+      }));
 
       setFormData({
         ...t,
@@ -418,10 +415,11 @@ export default function VisualExcelMapping() {
   };
 
   const removeMapping = (colLetter) => {
-    setFormData(prev => ({
-      ...prev,
-      mappings: (prev.mappings || []).filter(m => m.tag !== colLetter)
-    }));
+    setFormData(prev => {
+      const filtered = (prev.mappings || []).filter(m => m.tag !== colLetter);
+      const retagged = filtered.map((m, i) => ({ ...m, tag: String.fromCharCode(65 + i) }));
+      return { ...prev, mappings: retagged };
+    });
   };
 
   const filteredHeaders = masterHeaders.filter(h => 
