@@ -1266,6 +1266,21 @@ export default function GenerateReport() {
                   if (!bestRows[gv] || (d && (!bestRows[gv].d || d > bestRows[gv].d))) bestRows[gv] = { row: r, d };
                 });
                 filteredMD = Object.values(bestRows).map(x => x.row);
+              } else if (gf.operator === 'repeat_visit' && gf.clientCol) {
+                const rvGroups = {};
+                filteredMD.forEach(r => {
+                  const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                  const date   = String(getMasterValue(r, gf.conditionCol) || '').trim();
+                  if (!client || !date) return;
+                  const key = client + '\x00' + date;
+                  rvGroups[key] = (rvGroups[key] || 0) + 1;
+                });
+                const minN = Math.max(2, parseInt(gf.minCount) || 2);
+                filteredMD = filteredMD.filter(r => {
+                  const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                  const date   = String(getMasterValue(r, gf.conditionCol) || '').trim();
+                  return (rvGroups[client + '\x00' + date] || 0) >= minN;
+                });
               } else {
                 filteredMD = filteredMD.filter(r => evaluateCondition(r, gf));
               }
@@ -1515,6 +1530,21 @@ export default function GenerateReport() {
                       if (!bestRows[gv] || (d && (!bestRows[gv].d || d > bestRows[gv].d))) bestRows[gv] = { row: r, d };
                     });
                     sectionData = Object.values(bestRows).map(x => x.row);
+                  } else if (gf.operator === 'repeat_visit' && gf.clientCol) {
+                    const rvGroups = {};
+                    sectionData.forEach(r => {
+                      const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                      const date   = String(getMasterValue(r, gf.conditionCol) || '').trim();
+                      if (!client || !date) return;
+                      const key = client + '\x00' + date;
+                      rvGroups[key] = (rvGroups[key] || 0) + 1;
+                    });
+                    const minN = Math.max(2, parseInt(gf.minCount) || 2);
+                    sectionData = sectionData.filter(r => {
+                      const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                      const date   = String(getMasterValue(r, gf.conditionCol) || '').trim();
+                      return (rvGroups[client + '\x00' + date] || 0) >= minN;
+                    });
                   } else { sectionData = sectionData.filter(r => evaluateCondition(r, gf)); }
                 });
               }

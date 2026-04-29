@@ -971,6 +971,8 @@ function FilterRow({ f, masterHeaders, masterUniqueValues, onChange, onRemove })
             <option value="this_month">This Month</option>
             <option value="prev_month">Previous Month</option>
             <option value="not_seen_within_days">Not Seen Within Days</option>
+            <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Visit ──</option>
+            <option value="repeat_visit">Repeat Visit (Same Day)</option>
           </select>
           {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
             <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
@@ -980,6 +982,14 @@ function FilterRow({ f, masterHeaders, masterUniqueValues, onChange, onRemove })
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <input type="number" min="1" placeholder="Days (e.g. 3)" value={(f.conditionVals || [])[0] || ''} onChange={e => onChange('conditionVals', [e.target.value])} style={{ padding: '8px', fontSize: '12px' }} />
               <SearchableDropdown options={masterHeaders} value={f.groupByCol || ''} onChange={v => onChange('groupByCol', v)} placeholder="Patient / Group By Column..." />
+            </div>
+          ) : f.operator === 'repeat_visit' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => onChange('clientCol', v)} placeholder="Client / Patient ID Column..." />
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Min visits/day:</span>
+                <input type="number" min="2" value={f.minCount || 2} onChange={e => onChange('minCount', parseInt(e.target.value) || 2)} style={{ padding: '7px', fontSize: '12px', width: '65px' }} />
+              </div>
             </div>
           ) : f.operator === 'between' ? (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>

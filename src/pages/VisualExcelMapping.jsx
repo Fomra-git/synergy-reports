@@ -752,6 +752,8 @@ export default function VisualExcelMapping() {
                             <option value="this_month">This Month</option>
                             <option value="prev_month">Previous Month</option>
                             <option value="not_seen_within_days">Not Seen Within Days</option>
+                            <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Visit ──</option>
+                            <option value="repeat_visit">Repeat Visit (Same Day)</option>
                           </select>
 
                           {(filter.operator === 'this_month' || filter.operator === 'prev_month') ? (
@@ -762,6 +764,14 @@ export default function VisualExcelMapping() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                               <input type="number" min="1" placeholder="Days (e.g. 3)" value={filter.conditionVals?.[0] || ''} onChange={e => handleGlobalFilterChange(index, 'conditionVals', [e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
                               <SearchableDropdown options={masterHeaders} value={filter.groupByCol || ''} onChange={v => handleGlobalFilterChange(index, 'groupByCol', v)} placeholder="Patient / Group By Column..." />
+                            </div>
+                          ) : filter.operator === 'repeat_visit' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <SearchableDropdown options={masterHeaders} value={filter.clientCol || ''} onChange={v => handleGlobalFilterChange(index, 'clientCol', v)} placeholder="Client / Patient ID Column..." />
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Min visits/day:</span>
+                                <input type="number" min="2" value={filter.minCount || 2} onChange={e => handleGlobalFilterChange(index, 'minCount', parseInt(e.target.value) || 2)} style={{ padding: '6px', fontSize: '11px', width: '60px' }} />
+                              </div>
                             </div>
                           ) : filter.operator !== 'unique' && (
                             <div style={{ position: 'relative' }}>

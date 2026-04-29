@@ -700,6 +700,8 @@ export default function PivotTemplateManager() {
                             <option value="this_month">This Month</option>
                             <option value="prev_month">Previous Month</option>
                             <option value="not_seen_within_days">Not Seen Within Days</option>
+                            <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Visit ──</option>
+                            <option value="repeat_visit">Repeat Visit (Same Day)</option>
                             </select>
 
                             <div style={{ flex: 1.5, position: 'relative' }}>
@@ -711,6 +713,14 @@ export default function PivotTemplateManager() {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                   <input type="number" min="1" placeholder="Days (e.g. 3)" value={f.conditionVals?.[0] || ''} onChange={e => updateFilter('globalFilters', i, 'conditionVals', [e.target.value])} style={{ padding: '6px', fontSize: '11px' }} />
                                   <SearchableDropdown options={masterHeaders} value={f.groupByCol || ''} onChange={v => updateFilter('globalFilters', i, 'groupByCol', v)} placeholder="Patient / Group By Column..." />
+                                </div>
+                              ) : f.operator === 'repeat_visit' ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updateFilter('globalFilters', i, 'clientCol', v)} placeholder="Client / Patient ID Column..." />
+                                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Min visits/day:</span>
+                                    <input type="number" min="2" value={f.minCount || 2} onChange={e => updateFilter('globalFilters', i, 'minCount', parseInt(e.target.value) || 2)} style={{ padding: '6px', fontSize: '11px', width: '60px' }} />
+                                  </div>
                                 </div>
                               ) : (<>
                               <div style={{ position: 'absolute', top: '-18px', right: '0', display: 'flex', gap: '8px' }}>
