@@ -556,6 +556,28 @@ export default function GenerateReport() {
         return `${sign}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
       };
 
+      const FORMULA_FNS = {
+        SUM:     (...a) => a.reduce((s, v) => s + (Number(v) || 0), 0),
+        AVG:     (...a) => a.length ? a.reduce((s, v) => s + (Number(v) || 0), 0) / a.length : 0,
+        AVERAGE: (...a) => a.length ? a.reduce((s, v) => s + (Number(v) || 0), 0) / a.length : 0,
+        ABS:     (n) => Math.abs(Number(n) || 0),
+        SQRT:    (n) => Math.sqrt(Number(n) || 0),
+        POW:     (b, e) => Math.pow(Number(b) || 0, Number(e) || 0),
+        MOD:     (a, b) => (Number(a) || 0) % (Number(b) || 1),
+        ROUND:   (n, d) => { const f = Math.pow(10, Number(d) || 0); return Math.round((Number(n) || 0) * f) / f; },
+        CEIL:    (n) => Math.ceil(Number(n) || 0),
+        FLOOR:   (n) => Math.floor(Number(n) || 0),
+        TRUNC:   (n) => Math.trunc(Number(n) || 0),
+        MAX:     (...a) => Math.max(...a.map(v => Number(v) || 0)),
+        MIN:     (...a) => Math.min(...a.map(v => Number(v) || 0)),
+        LOG:     (n) => Math.log(Number(n) || 0),
+        LOG10:   (n) => Math.log10(Number(n) || 0),
+        SIGN:    (n) => Math.sign(Number(n) || 0),
+        IF:      (cond, t, f) => cond ? t : f,
+      };
+      const _fnNames  = Object.keys(FORMULA_FNS);
+      const _fnValues = Object.values(FORMULA_FNS);
+
       const evaluateReportFormula = (formula, row, rowContext = {}) => {
         if (!formula) return '';
         try {
@@ -571,7 +593,7 @@ export default function GenerateReport() {
             const val = getMasterValue(row, token);
             return val === undefined || val === null || val === '' ? '0' : String(val).replace(/,/g, '');
           });
-          const result = new Function('Math', `return (${f})`)(Math);
+          const result = new Function('Math', ..._fnNames, `return (${f})`)(Math, ..._fnValues);
           return (result === undefined || result === null || isNaN(result)) ? '' : result;
         } catch (err) {
           return '';

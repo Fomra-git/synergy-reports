@@ -2,7 +2,26 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, X, Database, Layers, Calculator, ChevronDown } from 'lucide-react';
 
 const OPERATORS = ['+', '-', '*', '/', '(', ')', ','];
-const FUNCTIONS = ['ABS(', 'ROUND(', 'CEIL(', 'FLOOR(', 'MAX(', 'MIN('];
+
+const FUNCTION_GROUPS = [
+  { label: 'Aggregation', fns: ['SUM(', 'AVG(', 'MAX(', 'MIN('] },
+  { label: 'Math',        fns: ['ABS(', 'SQRT(', 'POW(', 'MOD('] },
+  { label: 'Rounding',   fns: ['ROUND(', 'CEIL(', 'FLOOR(', 'TRUNC('] },
+  { label: 'Other',      fns: ['LOG(', 'LOG10(', 'SIGN(', 'IF('] },
+];
+
+const ALL_FUNCTIONS = FUNCTION_GROUPS.flatMap(g => g.fns);
+
+// Build regex: sort longer names first so LOG10( isn't swallowed by LOG(
+const fnRegexPart = ALL_FUNCTIONS
+  .slice()
+  .sort((a, b) => b.length - a.length)
+  .map(f => f.replace('(', '\\('))
+  .join('|');
+const TOKEN_REGEX = new RegExp(
+  `(\\[.*?\\])|(\\{.*?\\})|(\\d+\\.\\d+|\\d+)|(${fnRegexPart})|([\\+\\-\\*\\/\\(\\)\\,])`,
+  'g'
+);
 
 /**
  * FormulaBuilder
@@ -33,16 +52,13 @@ export default function FormulaBuilder({ formula, masterHeaders = [], templateCo
   // Parse formula string into token array on mount/formula change
   useEffect(() => {
     if (!formula) { setTokens([]); return; }
-
-    // Match [MasterCol], {TemplateCol}, numbers, functions, operators
-    const regex = /(\[.*?\])|(\{.*?\})|(\d+\.\d+|\d+)|(ABS\(|ROUND\(|CEIL\(|FLOOR\(|MAX\(|MIN\()|([\+\-\*\/\(\)\,])/g;
-    const matches = [...formula.matchAll(regex)];
+    const matches = [...formula.matchAll(TOKEN_REGEX)];
     const newTokens = matches.map(m => {
-      if (m[1]) return { type: 'master', value: m[1].replace(/\[|\]/g, '') };
+      if (m[1]) return { type: 'master',   value: m[1].replace(/\[|\]/g, '') };
       if (m[2]) return { type: 'template', value: m[2].replace(/\{|\}/g, '') };
-      if (m[3]) return { type: 'const', value: m[3] };
-      if (m[4]) return { type: 'func', value: m[4] };
-      if (m[5]) return { type: 'op', value: m[5] };
+      if (m[3]) return { type: 'const',    value: m[3] };
+      if (m[4]) return { type: 'func',     value: m[4] };
+      if (m[5]) return { type: 'op',       value: m[5] };
       return null;
     }).filter(Boolean);
     setTokens(newTokens);
@@ -51,7 +67,7 @@ export default function FormulaBuilder({ formula, masterHeaders = [], templateCo
   // Stringify tokens back to formula expression
   const updateFormula = (newTokens) => {
     const str = newTokens.map(t => {
-      if (t.type === 'master') return `[${t.value}]`;
+      if (t.type === 'master')   return `[${t.value}]`;
       if (t.type === 'template') return `{${t.value}}`;
       return t.value;
     }).join(' ');
@@ -81,7 +97,7 @@ export default function FormulaBuilder({ formula, masterHeaders = [], templateCo
     master:   { bg: 'rgba(99,102,241,0.25)',  border: 'rgba(99,102,241,0.8)',  label: 'M' },
     template: { bg: 'rgba(16,185,129,0.25)',  border: 'rgba(16,185,129,0.8)', label: 'T' },
     func:     { bg: 'rgba(236,72,153,0.2)',   border: '#ec4899',               label: 'f' },
-    op:       { bg: 'rgba(255,255,255,0.07)', border: 'var(--glass-strong)', label: '' },
+    op:       { bg: 'rgba(255,255,255,0.07)', border: 'var(--glass-strong)',   label: '' },
     const:    { bg: 'rgba(245,158,11,0.15)',  border: 'rgba(245,158,11,0.6)', label: '#' },
   };
 
@@ -162,11 +178,11 @@ export default function FormulaBuilder({ formula, masterHeaders = [], templateCo
           {showAddMenu && (
             <div className="glass" style={{
               position: 'absolute', top: '100%', left: 0, zIndex: 200,
-              marginTop: '6px', width: '300px', padding: '16px',
+              marginTop: '6px', width: '320px', padding: '16px',
               background: 'var(--bg-card)',
               display: 'flex', flexDirection: 'column', gap: '14px',
               boxShadow: '0 12px 40px rgba(0,0,0,0.2), 0 0 0 1px var(--border)',
-              maxHeight: '420px', overflowY: 'auto'
+              maxHeight: '500px', overflowY: 'auto'
             }}>
 
               {/* ─── INSERT COLUMN (tabbed) ─── */}
@@ -225,14 +241,24 @@ export default function FormulaBuilder({ formula, masterHeaders = [], templateCo
                 )}
               </div>
 
-              {/* ─── INSERT FUNCTION ─── */}
+              {/* ─── INSERT FUNCTION (grouped) ─── */}
               <div>
-                <label style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', marginBottom: '6px', display: 'block' }}>Insert Function</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '5px' }}>
-                  {FUNCTIONS.map(f => (
-                    <button key={f} type="button" onClick={() => addToken('func', f)} className="btn-secondary" style={{ padding: '5px', fontSize: '10px' }}>
-                      {f.replace('(', '()')}
-                    </button>
+                <label style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', marginBottom: '8px', display: 'block' }}>Insert Function</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {FUNCTION_GROUPS.map(group => (
+                    <div key={group.label}>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '5px', paddingLeft: '2px' }}>{group.label}</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px' }}>
+                        {group.fns.map(f => (
+                          <button key={f} type="button" onClick={() => addToken('func', f)} className="btn-secondary"
+                            style={{ padding: '5px 3px', fontSize: '10px', textAlign: 'center' }}
+                            title={FN_DESCRIPTIONS[f] || ''}
+                          >
+                            {f.replace('(', '()')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -262,3 +288,22 @@ export default function FormulaBuilder({ formula, masterHeaders = [], templateCo
     </div>
   );
 }
+
+const FN_DESCRIPTIONS = {
+  'SUM(':   'SUM(a, b, …) — total of all arguments',
+  'AVG(':   'AVG(a, b, …) — average of all arguments',
+  'MAX(':   'MAX(a, b, …) — largest value',
+  'MIN(':   'MIN(a, b, …) — smallest value',
+  'ABS(':   'ABS(n) — absolute value',
+  'SQRT(':  'SQRT(n) — square root',
+  'POW(':   'POW(base, exp) — base raised to exp',
+  'MOD(':   'MOD(a, b) — remainder of a ÷ b',
+  'ROUND(': 'ROUND(n, decimals?) — round to nearest (optional decimal places)',
+  'CEIL(':  'CEIL(n) — round up to integer',
+  'FLOOR(': 'FLOOR(n) — round down to integer',
+  'TRUNC(': 'TRUNC(n) — drop decimal, keep integer part',
+  'LOG(':   'LOG(n) — natural logarithm (base e)',
+  'LOG10(': 'LOG10(n) — base-10 logarithm',
+  'SIGN(':  'SIGN(n) — returns -1, 0, or 1',
+  'IF(':    'IF(condition, valueIfTrue, valueIfFalse)',
+};
