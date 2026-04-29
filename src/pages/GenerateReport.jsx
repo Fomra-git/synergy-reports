@@ -1544,6 +1544,9 @@ export default function GenerateReport() {
                   nr[cleanTargetKey] = value;
                   rowContext[targetKey] = value;
                   rowContext[cleanTargetKey] = value;
+                  if (m.enableMerging && m.mergeByColumn) {
+                    nr['\x00mb_' + cleanTargetKey] = String(getMasterValue(row, m.mergeByColumn) || '').trim().toLowerCase();
+                  }
                 });
                 return { data: nr };
               });
@@ -1561,18 +1564,21 @@ export default function GenerateReport() {
 
             // Group-aggregate by merge columns, then sort for contiguous visual merging
             if (!useFallback) {
-              const mergeSortKeys = activeMappings
+              const mergeMapEntries = activeMappings
                 .filter(m => m.enableMerging)
-                .map(m => cleanFieldName(m.target || m.source || '') || '');
+                .map(m => {
+                  const tk = cleanFieldName(m.target || m.source || '') || '';
+                  return { targetKey: tk, groupKey: m.mergeByColumn ? '\x00mb_' + tk : tk };
+                });
 
-              if (mergeSortKeys.length > 0) {
-                // Collapse rows sharing the same merge-column values into one row,
+              if (mergeMapEntries.length > 0) {
+                // Collapse rows sharing the same group-key values into one row,
                 // summing count/condition_count columns across the group.
                 const groupMap = new Map();
                 const groupOrder = [];
                 reportData.forEach(item => {
-                  const key = mergeSortKeys
-                    .map(k => String(item.data[k] ?? '').toLowerCase().trim())
+                  const key = mergeMapEntries
+                    .map(e => String(item.data[e.groupKey] ?? '').toLowerCase().trim())
                     .join('\0');
                   if (!groupMap.has(key)) {
                     groupMap.set(key, { data: { ...item.data } });
@@ -1600,11 +1606,11 @@ export default function GenerateReport() {
                   return { data: item.data };
                 });
 
-                // Sort so primary merge column groups are contiguous
+                // Sort so groups are contiguous for visual cell merging
                 reportData.sort((a, b) => {
-                  for (const key of mergeSortKeys) {
-                    const av = String(a.data[key] ?? '').toLowerCase();
-                    const bv = String(b.data[key] ?? '').toLowerCase();
+                  for (const e of mergeMapEntries) {
+                    const av = String(a.data[e.groupKey] ?? '').toLowerCase();
+                    const bv = String(b.data[e.groupKey] ?? '').toLowerCase();
                     if (av < bv) return -1;
                     if (av > bv) return 1;
                   }

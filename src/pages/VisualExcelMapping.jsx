@@ -74,7 +74,8 @@ export default function VisualExcelMapping() {
     operator: '==',
     conditionVals: [],
     trueOut: '',
-    falseOut: ''
+    falseOut: '',
+    mergeByColumn: ''
   });
 
   const [formData, setFormData] = useState({
@@ -1124,7 +1125,7 @@ export default function VisualExcelMapping() {
                         const newIdx = (formData.mappings || []).length;
                         const newLetter = String.fromCharCode(65 + newIdx);
                         setActiveCell({ colIndex: newIdx, colLetter: newLetter });
-                        setModalData({ type: 'direct', target: '', source: '', enableMerging: false, totalType: 'none', totalLabel: '', findText: '', replaceWith: '', columnFilters: [] });
+                        setModalData({ type: 'direct', target: '', source: '', enableMerging: false, mergeByColumn: '', totalType: 'none', totalLabel: '', findText: '', replaceWith: '', columnFilters: [] });
                         setShowModal(true);
                       }}
                     >
@@ -1252,6 +1253,23 @@ export default function VisualExcelMapping() {
                              }} />
                           </div>
                        </div>
+
+                       {modalData.enableMerging && (
+                         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '12px' }}>
+                           <p style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>Merge based on column</p>
+                           <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>Select which column's value determines row grouping (e.g. Patient ID, Doctor ID). Leave blank to group by this column's own value.</p>
+                           <SearchableDropdown
+                             options={masterHeaders}
+                             value={modalData.mergeByColumn || ''}
+                             onChange={v => setModalData(prev => ({ ...prev, mergeByColumn: v }))}
+                             placeholder="Select column to group by..."
+                             zIndex={1100}
+                           />
+                           {modalData.mergeByColumn && (
+                             <button onClick={() => setModalData(prev => ({ ...prev, mergeByColumn: '' }))} style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>Clear</button>
+                           )}
+                         </div>
+                       )}
 
                        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
                           <div style={{ flex: 1 }}>
