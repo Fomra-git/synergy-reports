@@ -1267,18 +1267,18 @@ export default function GenerateReport() {
                 });
                 filteredMD = Object.values(bestRows).map(x => x.row);
               } else if (gf.operator === 'repeat_visit' && gf.clientCol) {
+                const _rvNorm = (rawVal) => { const d = parseReportDate(rawVal); return (d && !isNaN(d.getTime())) ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : String(rawVal || '').trim().split('T')[0].split(' ')[0]; };
                 const rvGroups = {};
-                filteredMD.forEach(r => {
+                masterData.forEach(r => {
                   const client = String(getMasterValue(r, gf.clientCol) || '').trim();
-                  const date   = String(getMasterValue(r, gf.conditionCol) || '').trim();
+                  const date   = _rvNorm(getMasterValue(r, gf.conditionCol));
                   if (!client || !date) return;
-                  const key = client + '\x00' + date;
-                  rvGroups[key] = (rvGroups[key] || 0) + 1;
+                  rvGroups[client + '\x00' + date] = (rvGroups[client + '\x00' + date] || 0) + 1;
                 });
                 const minN = Math.max(2, parseInt(gf.minCount) || 2);
                 filteredMD = filteredMD.filter(r => {
                   const client = String(getMasterValue(r, gf.clientCol) || '').trim();
-                  const date   = String(getMasterValue(r, gf.conditionCol) || '').trim();
+                  const date   = _rvNorm(getMasterValue(r, gf.conditionCol));
                   return (rvGroups[client + '\x00' + date] || 0) >= minN;
                 });
               } else {
@@ -1531,18 +1531,18 @@ export default function GenerateReport() {
                     });
                     sectionData = Object.values(bestRows).map(x => x.row);
                   } else if (gf.operator === 'repeat_visit' && gf.clientCol) {
+                    const _rvNorm = (rawVal) => { const d = parseReportDate(rawVal); return (d && !isNaN(d.getTime())) ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : String(rawVal || '').trim().split('T')[0].split(' ')[0]; };
                     const rvGroups = {};
-                    sectionData.forEach(r => {
+                    masterData.forEach(r => {
                       const client = String(getMasterValue(r, gf.clientCol) || '').trim();
-                      const date   = String(getMasterValue(r, gf.conditionCol) || '').trim();
+                      const date   = _rvNorm(getMasterValue(r, gf.conditionCol));
                       if (!client || !date) return;
-                      const key = client + '\x00' + date;
-                      rvGroups[key] = (rvGroups[key] || 0) + 1;
+                      rvGroups[client + '\x00' + date] = (rvGroups[client + '\x00' + date] || 0) + 1;
                     });
                     const minN = Math.max(2, parseInt(gf.minCount) || 2);
                     sectionData = sectionData.filter(r => {
                       const client = String(getMasterValue(r, gf.clientCol) || '').trim();
-                      const date   = String(getMasterValue(r, gf.conditionCol) || '').trim();
+                      const date   = _rvNorm(getMasterValue(r, gf.conditionCol));
                       return (rvGroups[client + '\x00' + date] || 0) >= minN;
                     });
                   } else { sectionData = sectionData.filter(r => evaluateCondition(r, gf)); }
