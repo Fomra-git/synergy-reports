@@ -1624,41 +1624,10 @@ export default function GenerateReport() {
                 });
 
               if (mergeMapEntries.length > 0) {
-                // Collapse rows sharing the same group-key values into one row,
-                // summing count/condition_count columns across the group.
-                const groupMap = new Map();
-                const groupOrder = [];
-                reportData.forEach(item => {
-                  const key = mergeMapEntries
-                    .map(e => String(item.data[e.groupKey] ?? '').toLowerCase().trim())
-                    .join('\0');
-                  if (!groupMap.has(key)) {
-                    groupMap.set(key, { data: { ...item.data } });
-                    groupOrder.push(key);
-                  } else {
-                    const existing = groupMap.get(key).data;
-                    activeMappings.forEach((m, mi) => {
-                      if (m.type === 'count' || m.type === 'condition_count') {
-                        const col = cleanFieldName(m.target || m.source || `Column${mi + 1}`) || `Column${mi + 1}`;
-                        existing[col] = (Number(existing[col]) || 0) + (Number(item.data[col]) || 0);
-                      }
-                    });
-                  }
-                });
-
-                // Rebuild reportData from groups and reassign serial numbers
-                reportData = groupOrder.map((key, idx) => {
-                  const item = groupMap.get(key);
-                  activeMappings.forEach((m, mi) => {
-                    if (m.type === 'serial') {
-                      const col = cleanFieldName(m.target || m.source || `Column${mi + 1}`) || `Column${mi + 1}`;
-                      item.data[col] = idx + 1;
-                    }
-                  });
-                  return { data: item.data };
-                });
-
-                // Sort so groups are contiguous for visual cell merging
+                // Sort so rows with identical merge-key values are contiguous.
+                // The Excel cell-merge step handles the visual spanning; we must
+                // NOT collapse rows here or multi-value rows (e.g. different
+                // doctors for the same patient on the same day) would be lost.
                 reportData.sort((a, b) => {
                   for (const e of mergeMapEntries) {
                     const av = String(a.data[e.groupKey] ?? '').toLowerCase();
