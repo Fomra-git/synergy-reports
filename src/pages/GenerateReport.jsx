@@ -3,6 +3,7 @@ import { db } from '../firebase/config';
 import { collection, query, getDocs, addDoc } from 'firebase/firestore';
 import XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
+import { chartConfigToImageBuffer } from '../utils/chartToImage';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
@@ -626,7 +627,7 @@ export default function GenerateReport() {
         return applyRound(cleanValue(getMasterValue(row, sourceField), mapping, sourceField), mapping);
       };
 
-      const excelJSExport = async (fAOA, colHdrs, tHdr, layouts = [], highlightEmpty = true, mergeColIndices = [], reportName = '') => {
+      const excelJSExport = async (fAOA, colHdrs, tHdr, layouts = [], highlightEmpty = true, mergeColIndices = [], reportName = '', chartConfigs = []) => {
         const workbook = new ExcelJS.Workbook(); const worksheet = workbook.addWorksheet('Report');
         let currR = 1;
         const mergeEnd = Math.max(1, colHdrs.length, (fAOA[0] || []).length);
@@ -680,6 +681,19 @@ export default function GenerateReport() {
           });
         }
         worksheet.columns.forEach(c => c.width = 25);
+        if (chartConfigs && chartConfigs.length > 0) {
+          let chartR = currR + fAOA.length + 1;
+          for (const cfg of chartConfigs) {
+            try {
+              const buf = await chartConfigToImageBuffer(cfg, fAOA);
+              if (buf) {
+                const imgId = workbook.addImage({ buffer: buf, extension: 'png' });
+                worksheet.addImage(imgId, { tl: { col: 0, row: chartR - 1 }, ext: { width: 800, height: 370 } });
+                chartR += 21;
+              }
+            } catch (e) { console.error('Chart image error:', e); }
+          }
+        }
         return await workbook.xlsx.writeBuffer();
       };
 
@@ -1064,7 +1078,7 @@ export default function GenerateReport() {
       };
 
       // ── Multi-table Excel export ──────────────────────────────────────────
-      const exportMultiSectionExcel = async (sectionInfos, topHeader, layout, reportName = '') => {
+      const exportMultiSectionExcel = async (sectionInfos, topHeader, layout, reportName = '', chartConfigs = []) => {
         const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Report');
         const thin = { top:{style:'thin'}, left:{style:'thin'}, bottom:{style:'thin'}, right:{style:'thin'} };
         const applyS = (c, opts = {}) => {
@@ -1140,6 +1154,23 @@ export default function GenerateReport() {
             if (idx < sectionInfos.length - 1) currR++;
           });
           ws.columns.forEach(c => c.width = 25);
+        }
+        if (chartConfigs && chartConfigs.length > 0) {
+          const maxAoaRows = Math.max(...sectionInfos.map(si => si.aoa.length), 0);
+          let chartR = layout === 'horizontal'
+            ? currR + 1 + maxAoaRows + 2
+            : currR + 1;
+          for (const cfg of chartConfigs) {
+            const srcAoa = sectionInfos[cfg.sectionIndex ?? 0]?.aoa || sectionInfos[0]?.aoa || [];
+            try {
+              const buf = await chartConfigToImageBuffer(cfg, srcAoa);
+              if (buf) {
+                const imgId = wb.addImage({ buffer: buf, extension: 'png' });
+                ws.addImage(imgId, { tl: { col: 0, row: chartR - 1 }, ext: { width: 800, height: 370 } });
+                chartR += 21;
+              }
+            } catch (e) { console.error('Chart image error:', e); }
+          }
         }
         return await wb.xlsx.writeBuffer();
       };
@@ -1289,7 +1320,7 @@ export default function GenerateReport() {
                 return [gk, ...visiblePCols.map(p => applyRound(cleanValue(getMasterValue(r, p.source), p, p.source), p))];
               })];
               columnHeaders = flatHdrs;
-              const excelBuffer = await excelJSExport(flatAOA, columnHeaders, topReportHeader, [], false, [0], template.name || '');
+              const excelBuffer = await excelJSExport(flatAOA, columnHeaders, topReportHeader, [], false, [0], template.name || '', template.chartConfigs || []);
               let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
               if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
               const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -1437,7 +1468,7 @@ export default function GenerateReport() {
             }
 
             columnHeaders = headers;
-            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, [], false, (template.mergePropertyCol && isPG && finalAOA.length > 2) ? [0] : [], template.name || '');
+            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, [], false, (template.mergePropertyCol && isPG && finalAOA.length > 2) ? [0] : [], template.name || '', template.chartConfigs || []);
             let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
             if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
             const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -1472,7 +1503,7 @@ export default function GenerateReport() {
                   ? (masterData.length > 0 ? getMasterValue(masterData[0], template.headerConfig.sourceCol) : '') || null
                   : template.headerConfig.text || null)
               : null;
-            const mtBuffer = await exportMultiSectionExcel(sectionInfos, topHdr, template.layout || 'vertical', template.name || '');
+            const mtBuffer = await exportMultiSectionExcel(sectionInfos, topHdr, template.layout || 'vertical', template.name || '', template.chartConfigs || []);
             let mtFileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
             if (!mtFileName.toLowerCase().endsWith('.xlsx')) mtFileName += '.xlsx';
             const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -1673,7 +1704,7 @@ export default function GenerateReport() {
               }
               return acc;
             }, []);
-            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, [], !!template.isHighlightEmptyEnabled, mergeColIndices, template.name || '');
+            const excelBuffer = await excelJSExport(finalAOA, columnHeaders, topReportHeader, [], !!template.isHighlightEmptyEnabled, mergeColIndices, template.name || '', template.chartConfigs || []);
             let fileName = (template.fileNameFormat || `{name}.xlsx`).replace('{name}', template.name || 'Report').replace('{date}', new Date().toISOString().slice(0, 10));
             if (!fileName.toLowerCase().endsWith('.xlsx')) fileName += '.xlsx';
             const excelMimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
