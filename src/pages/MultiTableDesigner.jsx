@@ -1015,6 +1015,7 @@ function FilterRow({ f, masterHeaders, masterUniqueValues, onChange, onRemove })
             <option value="not_seen_within_days">Not Seen Within Days</option>
             <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Visit ──</option>
             <option value="repeat_visit">Repeat Visit (Same Day)</option>
+            <option value="value_deviation">Type Deviation (e.g. OP → HV)</option>
           </select>
           {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
             <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
@@ -1032,6 +1033,13 @@ function FilterRow({ f, masterHeaders, masterUniqueValues, onChange, onRemove })
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Min visits/day:</span>
                 <input type="number" min="2" value={f.minCount || 2} onChange={e => onChange('minCount', parseInt(e.target.value) || 2)} style={{ padding: '7px', fontSize: '12px', width: '65px' }} />
               </div>
+            </div>
+          ) : f.operator === 'value_deviation' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => onChange('clientCol', v)} placeholder="Client / Patient ID Column..." />
+              <input placeholder="From type (e.g. Outpatient) — optional" value={f.fromVal || ''} onChange={e => onChange('fromVal', e.target.value)} style={{ padding: '7px', fontSize: '12px' }} />
+              <input placeholder="To type (e.g. House Visit) — optional" value={f.toVal || ''} onChange={e => onChange('toVal', e.target.value)} style={{ padding: '7px', fontSize: '12px' }} />
+              <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field = Appt Type column. Leave From/To blank to match any type change.</span>
             </div>
           ) : f.operator === 'between' ? (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>

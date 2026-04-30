@@ -702,6 +702,7 @@ export default function PivotTemplateManager() {
                             <option value="not_seen_within_days">Not Seen Within Days</option>
                             <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Visit ──</option>
                             <option value="repeat_visit">Repeat Visit (Same Day)</option>
+                            <option value="value_deviation">Type Deviation (e.g. OP → HV)</option>
                             </select>
 
                             <div style={{ flex: 1.5, position: 'relative' }}>
@@ -721,6 +722,13 @@ export default function PivotTemplateManager() {
                                     <span style={{ fontSize: '10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Min visits/day:</span>
                                     <input type="number" min="2" value={f.minCount || 2} onChange={e => updateFilter('globalFilters', i, 'minCount', parseInt(e.target.value) || 2)} style={{ padding: '6px', fontSize: '11px', width: '60px' }} />
                                   </div>
+                                </div>
+                              ) : f.operator === 'value_deviation' ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updateFilter('globalFilters', i, 'clientCol', v)} placeholder="Client / Patient ID Column..." />
+                                  <input placeholder="From type (e.g. Outpatient) — optional" value={f.fromVal || ''} onChange={e => updateFilter('globalFilters', i, 'fromVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
+                                  <input placeholder="To type (e.g. House Visit) — optional" value={f.toVal || ''} onChange={e => updateFilter('globalFilters', i, 'toVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
+                                  <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field above = Appt Type column. Leave From/To blank to match any change.</span>
                                 </div>
                               ) : (<>
                               <div style={{ position: 'absolute', top: '-18px', right: '0', display: 'flex', gap: '8px' }}>

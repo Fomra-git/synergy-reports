@@ -1281,6 +1281,29 @@ export default function GenerateReport() {
                   const date   = _rvNorm(getMasterValue(r, gf.conditionCol));
                   return (rvGroups[client + '\x00' + date] || 0) >= minN;
                 });
+              } else if (gf.operator === 'value_deviation' && gf.clientCol && gf.conditionCol) {
+                // Find clients who have appeared with multiple appointment types (e.g. Outpatient → House Visit)
+                const clientTypes = {};
+                masterData.forEach(r => {
+                  const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                  const typeVal = String(getMasterValue(r, gf.conditionCol) || '').trim().toLowerCase();
+                  if (!client || !typeVal) return;
+                  if (!clientTypes[client]) clientTypes[client] = new Set();
+                  clientTypes[client].add(typeVal);
+                });
+                const fromVal = (gf.fromVal || '').trim().toLowerCase();
+                const toVal   = (gf.toVal   || '').trim().toLowerCase();
+                const qualifying = new Set(
+                  Object.entries(clientTypes)
+                    .filter(([, types]) => {
+                      if (fromVal && toVal) return types.has(fromVal) && types.has(toVal);
+                      if (fromVal) return types.has(fromVal) && types.size > 1;
+                      if (toVal)   return types.has(toVal)   && types.size > 1;
+                      return types.size > 1;
+                    })
+                    .map(([client]) => client)
+                );
+                filteredMD = filteredMD.filter(r => qualifying.has(String(getMasterValue(r, gf.clientCol) || '').trim()));
               } else {
                 filteredMD = filteredMD.filter(r => evaluateCondition(r, gf));
               }
@@ -1545,6 +1568,28 @@ export default function GenerateReport() {
                       const date   = _rvNorm(getMasterValue(r, gf.conditionCol));
                       return (rvGroups[client + '\x00' + date] || 0) >= minN;
                     });
+                  } else if (gf.operator === 'value_deviation' && gf.clientCol && gf.conditionCol) {
+                    const clientTypes = {};
+                    masterData.forEach(r => {
+                      const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                      const typeVal = String(getMasterValue(r, gf.conditionCol) || '').trim().toLowerCase();
+                      if (!client || !typeVal) return;
+                      if (!clientTypes[client]) clientTypes[client] = new Set();
+                      clientTypes[client].add(typeVal);
+                    });
+                    const fromVal = (gf.fromVal || '').trim().toLowerCase();
+                    const toVal   = (gf.toVal   || '').trim().toLowerCase();
+                    const qualifying = new Set(
+                      Object.entries(clientTypes)
+                        .filter(([, types]) => {
+                          if (fromVal && toVal) return types.has(fromVal) && types.has(toVal);
+                          if (fromVal) return types.has(fromVal) && types.size > 1;
+                          if (toVal)   return types.has(toVal)   && types.size > 1;
+                          return types.size > 1;
+                        })
+                        .map(([client]) => client)
+                    );
+                    sectionData = sectionData.filter(r => qualifying.has(String(getMasterValue(r, gf.clientCol) || '').trim()));
                   } else { sectionData = sectionData.filter(r => evaluateCondition(r, gf)); }
                 });
               }

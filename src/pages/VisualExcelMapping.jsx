@@ -754,6 +754,7 @@ export default function VisualExcelMapping() {
                             <option value="not_seen_within_days">Not Seen Within Days</option>
                             <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Visit ──</option>
                             <option value="repeat_visit">Repeat Visit (Same Day)</option>
+                            <option value="value_deviation">Type Deviation (e.g. OP → HV)</option>
                           </select>
 
                           {(filter.operator === 'this_month' || filter.operator === 'prev_month') ? (
@@ -772,6 +773,13 @@ export default function VisualExcelMapping() {
                                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Min visits/day:</span>
                                 <input type="number" min="2" value={filter.minCount || 2} onChange={e => handleGlobalFilterChange(index, 'minCount', parseInt(e.target.value) || 2)} style={{ padding: '6px', fontSize: '11px', width: '60px' }} />
                               </div>
+                            </div>
+                          ) : filter.operator === 'value_deviation' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <SearchableDropdown options={masterHeaders} value={filter.clientCol || ''} onChange={v => handleGlobalFilterChange(index, 'clientCol', v)} placeholder="Client / Patient ID Column..." />
+                              <input placeholder="From type (e.g. Outpatient) — optional" value={filter.fromVal || ''} onChange={e => handleGlobalFilterChange(index, 'fromVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
+                              <input placeholder="To type (e.g. House Visit) — optional" value={filter.toVal || ''} onChange={e => handleGlobalFilterChange(index, 'toVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
+                              <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field = Appt Type column. Leave From/To blank to match any type change.</span>
                             </div>
                           ) : filter.operator !== 'unique' && (
                             <div style={{ position: 'relative' }}>
