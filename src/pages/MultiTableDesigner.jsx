@@ -101,8 +101,6 @@ export default function MultiTableDesigner() {
   const [saveStatus, setSaveStatus] = useState('');
   const [formData, setFormData] = useState(emptyForm());
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'info', mode: 'alert', confirmText: 'OK', onConfirm: null });
-  const [showRowTx, setShowRowTx] = useState(false);
-  const [showColTx, setShowColTx] = useState(false);
 
   const fileInputRef = useRef(null);
 
@@ -546,39 +544,26 @@ export default function MultiTableDesigner() {
                       <div className="form-group">
                         <label style={labelSty}>Row Field (Group By) *</label>
                         <SearchableDropdown options={masterHeaders} value={activeSection.rowField} onChange={v => updateSection('rowField', v)} placeholder="Select row field..." />
-                        {activeSection.rowField && (
-                          <div style={{ marginTop: '6px' }}>
-                            <button
-                              type="button"
-                              onClick={() => setShowRowTx(v => !v)}
-                              style={{ background: 'none', border: 'none', color: 'var(--secondary)', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 0' }}
-                            >
-                              <Sparkles size={11} /> {showRowTx ? 'Hide' : 'Clean Data'}
-                            </button>
-                            {showRowTx && (
-                              <div className="glass" style={{ marginTop: '4px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                                  <input placeholder="Find..." value={activeSection.rowFieldTransforms?.findText || ''} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, findText: e.target.value })} style={{ padding: '6px', fontSize: '11px' }} />
-                                  <input placeholder="Replace..." value={activeSection.rowFieldTransforms?.replaceWith || ''} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, replaceWith: e.target.value })} style={{ padding: '6px', fontSize: '11px' }} />
-                                </div>
-                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                  <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                                    <input type="checkbox" checked={!!activeSection.rowFieldTransforms?.simplifyDate} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, simplifyDate: e.target.checked })} /> Simplify Date
-                                  </label>
-                                  <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                                    <input type="checkbox" checked={!!activeSection.rowFieldTransforms?.simplifyTime} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, simplifyTime: e.target.checked })} /> Simplify Time
-                                  </label>
-                                  <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--primary)', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
-                                    <input type="checkbox" checked={!!activeSection.rowFieldTransforms?.normalizeMonth} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, normalizeMonth: e.target.checked })} /> Month
-                                  </label>
-                                  <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--primary)' }}>
-                                    <input type="checkbox" checked={!!activeSection.rowFieldTransforms?.normalizeWeek} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, normalizeWeek: e.target.checked })} /> Week (Rel.)
-                                  </label>
-                                </div>
-                              </div>
-                            )}
+                        <div style={{ marginTop: '8px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--glass-subtle)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                            <input placeholder="Find text..." value={activeSection.rowFieldTransforms?.findText || ''} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, findText: e.target.value })} style={{ padding: '6px', fontSize: '11px' }} />
+                            <input placeholder="Replace with..." value={activeSection.rowFieldTransforms?.replaceWith || ''} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, replaceWith: e.target.value })} style={{ padding: '6px', fontSize: '11px' }} />
                           </div>
-                        )}
+                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={!!activeSection.rowFieldTransforms?.simplifyDate} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, simplifyDate: e.target.checked })} /> Simplify Date
+                            </label>
+                            <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={!!activeSection.rowFieldTransforms?.simplifyTime} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, simplifyTime: e.target.checked })} /> Simplify Time
+                            </label>
+                            <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--primary)', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
+                              <input type="checkbox" checked={!!activeSection.rowFieldTransforms?.normalizeMonth} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, normalizeMonth: e.target.checked })} /> Month
+                            </label>
+                            <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--primary)' }}>
+                              <input type="checkbox" checked={!!activeSection.rowFieldTransforms?.normalizeWeek} onChange={e => updateSection('rowFieldTransforms', { ...activeSection.rowFieldTransforms, normalizeWeek: e.target.checked })} /> Week (Rel.)
+                            </label>
+                          </div>
+                        </div>
                       </div>
                       <div className="form-group">
                         <label style={labelSty}>Row Field Display Name</label>
@@ -591,39 +576,26 @@ export default function MultiTableDesigner() {
                       <div className="form-group">
                         <label style={labelSty}>Column Field (Cross-Tab, optional)</label>
                         <SearchableDropdown options={['', ...masterHeaders]} value={activeSection.colField || ''} onChange={v => updateSection('colField', v)} placeholder="Pivot columns by..." />
-                        {activeSection.colField && (
-                          <div style={{ marginTop: '6px' }}>
-                            <button
-                              type="button"
-                              onClick={() => setShowColTx(v => !v)}
-                              style={{ background: 'none', border: 'none', color: 'var(--secondary)', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 0' }}
-                            >
-                              <Sparkles size={11} /> {showColTx ? 'Hide' : 'Clean Data'}
-                            </button>
-                            {showColTx && (
-                              <div className="glass" style={{ marginTop: '4px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                                  <input placeholder="Find..." value={activeSection.colFieldTransforms?.findText || ''} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, findText: e.target.value })} style={{ padding: '6px', fontSize: '11px' }} />
-                                  <input placeholder="Replace..." value={activeSection.colFieldTransforms?.replaceWith || ''} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, replaceWith: e.target.value })} style={{ padding: '6px', fontSize: '11px' }} />
-                                </div>
-                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                  <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                                    <input type="checkbox" checked={!!activeSection.colFieldTransforms?.simplifyDate} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, simplifyDate: e.target.checked })} /> Simplify Date
-                                  </label>
-                                  <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                                    <input type="checkbox" checked={!!activeSection.colFieldTransforms?.simplifyTime} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, simplifyTime: e.target.checked })} /> Simplify Time
-                                  </label>
-                                  <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--primary)', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
-                                    <input type="checkbox" checked={!!activeSection.colFieldTransforms?.normalizeMonth} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, normalizeMonth: e.target.checked })} /> Month
-                                  </label>
-                                  <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--primary)' }}>
-                                    <input type="checkbox" checked={!!activeSection.colFieldTransforms?.normalizeWeek} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, normalizeWeek: e.target.checked })} /> Week (Rel.)
-                                  </label>
-                                </div>
-                              </div>
-                            )}
+                        <div style={{ marginTop: '8px', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--glass-subtle)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                            <input placeholder="Find text..." value={activeSection.colFieldTransforms?.findText || ''} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, findText: e.target.value })} style={{ padding: '6px', fontSize: '11px' }} />
+                            <input placeholder="Replace with..." value={activeSection.colFieldTransforms?.replaceWith || ''} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, replaceWith: e.target.value })} style={{ padding: '6px', fontSize: '11px' }} />
                           </div>
-                        )}
+                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={!!activeSection.colFieldTransforms?.simplifyDate} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, simplifyDate: e.target.checked })} /> Simplify Date
+                            </label>
+                            <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={!!activeSection.colFieldTransforms?.simplifyTime} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, simplifyTime: e.target.checked })} /> Simplify Time
+                            </label>
+                            <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--primary)', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
+                              <input type="checkbox" checked={!!activeSection.colFieldTransforms?.normalizeMonth} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, normalizeMonth: e.target.checked })} /> Month
+                            </label>
+                            <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--primary)' }}>
+                              <input type="checkbox" checked={!!activeSection.colFieldTransforms?.normalizeWeek} onChange={e => updateSection('colFieldTransforms', { ...activeSection.colFieldTransforms, normalizeWeek: e.target.checked })} /> Week (Rel.)
+                            </label>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
