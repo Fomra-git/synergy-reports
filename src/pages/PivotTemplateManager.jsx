@@ -1134,6 +1134,12 @@ export default function PivotTemplateManager() {
                     <button onClick={() => addPivotColumn('last_visit_date')} className="btn-secondary" style={{ padding: '8px 12px', fontSize: '11px', gap: '6px' }}>
                       <Calendar size={14} /> Last Visit Date
                     </button>
+                    <button onClick={() => addPivotColumn('deviation_change_date')} className="btn-secondary" style={{ padding: '8px 12px', fontSize: '11px', gap: '6px', borderColor: '#8b5cf6', color: '#8b5cf6' }}>
+                      <Calendar size={14} /> Type Change Date
+                    </button>
+                    <button onClick={() => addPivotColumn('deviation_prev_type')} className="btn-secondary" style={{ padding: '8px 12px', fontSize: '11px', gap: '6px', borderColor: '#8b5cf6', color: '#8b5cf6' }}>
+                      <Layers size={14} /> Prev Appt Type
+                    </button>
                   </div>
                </div>
 
@@ -1160,16 +1166,16 @@ export default function PivotTemplateManager() {
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <div style={{ 
-                                padding: '8px', 
-                                borderRadius: '8px', 
-                                background: col.type === 'aggregation' ? 'rgba(99,102,241,0.1)' : col.type === 'property' ? 'rgba(16,185,129,0.1)' : col.type === 'grouping' ? 'rgba(245,158,11,0.15)' : 'rgba(236,72,153,0.1)',
-                                color: col.type === 'aggregation' ? 'var(--primary)' : col.type === 'property' ? 'var(--success)' : col.type === 'grouping' ? '#f59e0b' : '#ec4899'
+                              <div style={{
+                                padding: '8px',
+                                borderRadius: '8px',
+                                background: col.type === 'aggregation' ? 'rgba(99,102,241,0.1)' : col.type === 'property' ? 'rgba(16,185,129,0.1)' : col.type === 'grouping' ? 'rgba(245,158,11,0.15)' : (col.type === 'deviation_change_date' || col.type === 'deviation_prev_type') ? 'rgba(139,92,246,0.12)' : 'rgba(236,72,153,0.1)',
+                                color: col.type === 'aggregation' ? 'var(--primary)' : col.type === 'property' ? 'var(--success)' : col.type === 'grouping' ? '#f59e0b' : (col.type === 'deviation_change_date' || col.type === 'deviation_prev_type') ? '#8b5cf6' : '#ec4899'
                               }}>
-                                {col.type === 'aggregation' ? <BarChart4 size={16} /> : col.type === 'property' ? <Layers size={16} /> : col.type === 'grouping' ? <TableIcon size={16} /> : <Calculator size={16} />}
+                                {col.type === 'aggregation' ? <BarChart4 size={16} /> : col.type === 'property' ? <Layers size={16} /> : col.type === 'grouping' ? <TableIcon size={16} /> : (col.type === 'deviation_change_date' || col.type === 'deviation_prev_type') ? <Calendar size={16} /> : <Calculator size={16} />}
                               </div>
                               <span style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                {col.type === 'grouping' ? 'Grouping (Row) Field' : `${col.type} Column`}
+                                {col.type === 'grouping' ? 'Grouping (Row) Field' : col.type === 'deviation_change_date' ? 'Type Change Date' : col.type === 'deviation_prev_type' ? 'Previous Appt Type' : `${col.type} Column`}
                               </span>
                            </div>
                            <div style={{ display: 'flex', gap: '6px' }}>
@@ -1179,8 +1185,8 @@ export default function PivotTemplateManager() {
                            </div>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: (col.type === 'formula') ? '1fr' : '1fr 1fr', gap: '16px' }}>
-                           {col.type !== 'formula' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: (col.type === 'formula' || col.type === 'deviation_change_date' || col.type === 'deviation_prev_type') ? '1fr' : '1fr 1fr', gap: '16px' }}>
+                           {col.type !== 'formula' && col.type !== 'deviation_change_date' && col.type !== 'deviation_prev_type' && (
                              <div className="form-group">
                                 <label style={{ fontSize: '11px' }}>{col.type === 'grouping' ? 'Master Column to Group By' : col.type === 'last_visit_date' ? 'Date Column (Visit Date)' : 'Source Master Column'}</label>
                                 <SearchableDropdown
@@ -1196,6 +1202,39 @@ export default function PivotTemplateManager() {
                              <div className="form-group">
                                <label style={{ fontSize: '11px' }}>Patient / Group By Column</label>
                                <SearchableDropdown options={masterHeaders} value={col.groupByCol || ''} onChange={val => updatePivotColumn(col.id, 'groupByCol', val)} placeholder="Patient ID column..." />
+                             </div>
+                           )}
+
+                           {(col.type === 'deviation_change_date' || col.type === 'deviation_prev_type') && (
+                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '14px', background: 'rgba(139,92,246,0.05)', borderRadius: '12px', border: '1px solid rgba(139,92,246,0.2)' }}>
+                               <p style={{ fontSize: '11px', color: '#8b5cf6', fontWeight: '700', margin: 0 }}>
+                                 {col.type === 'deviation_change_date' ? 'Shows the date when the client first transitioned to the target appointment type.' : 'Shows the appointment type the client had before the transition.'}
+                               </p>
+                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                 <div className="form-group">
+                                   <label style={{ fontSize: '11px' }}>Appointment Type Column</label>
+                                   <SearchableDropdown options={masterHeaders} value={col.source || ''} onChange={val => updatePivotColumn(col.id, 'source', val)} placeholder="e.g. Appt Type..." />
+                                 </div>
+                                 <div className="form-group">
+                                   <label style={{ fontSize: '11px' }}>Date Column</label>
+                                   <SearchableDropdown options={masterHeaders} value={col.dateCol || ''} onChange={val => updatePivotColumn(col.id, 'dateCol', val)} placeholder="Select date column..." />
+                                 </div>
+                                 <div className="form-group">
+                                   <label style={{ fontSize: '11px' }}>Client / Patient ID Column</label>
+                                   <SearchableDropdown options={masterHeaders} value={col.clientCol || ''} onChange={val => updatePivotColumn(col.id, 'clientCol', val)} placeholder="Select patient ID column..." />
+                                 </div>
+                               </div>
+                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                 <div className="form-group">
+                                   <label style={{ fontSize: '11px' }}>From Type (optional)</label>
+                                   <input type="text" placeholder="e.g. Outpatient" value={col.fromVal || ''} onChange={e => updatePivotColumn(col.id, 'fromVal', e.target.value)} style={{ padding: '8px', fontSize: '12px' }} />
+                                 </div>
+                                 <div className="form-group">
+                                   <label style={{ fontSize: '11px' }}>To Type (optional)</label>
+                                   <input type="text" placeholder="e.g. House Visit" value={col.toVal || ''} onChange={e => updatePivotColumn(col.id, 'toVal', e.target.value)} style={{ padding: '8px', fontSize: '12px' }} />
+                                 </div>
+                               </div>
+                               <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Leave From/To blank to detect any type change. Uses the first qualifying transition sorted by date.</p>
                              </div>
                            )}
 

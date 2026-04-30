@@ -414,6 +414,52 @@ export default function GenerateReport() {
         });
       }
 
+      // ── Type-Transition context (change date / previous type) ─────────────────
+      const transitionContext = {};
+      {
+        const txTuples = [];
+        const collectTX = (cols) => (cols || []).forEach(c => {
+          if ((c.type === 'deviation_change_date' || c.type === 'deviation_prev_type') && c.clientCol && c.dateCol && c.source)
+            txTuples.push({ clientCol: cleanFieldName(c.clientCol), dateCol: cleanFieldName(c.dateCol), typeCol: cleanFieldName(c.source), fromVal: (c.fromVal || '').trim().toLowerCase(), toVal: (c.toVal || '').trim().toLowerCase() });
+        });
+        targetTemplates.forEach(t => {
+          collectTX(t.mappings);
+          collectTX(t.pivotColumns);
+          (t.sections || []).forEach(s => collectTX(s.pivotColumns));
+        });
+        txTuples.forEach(({ clientCol, dateCol, typeCol, fromVal, toVal }) => {
+          const key = `${clientCol}__${dateCol}__${typeCol}__${fromVal}__${toVal}`;
+          if (transitionContext[key]) return;
+          const clientHistory = {};
+          masterData.forEach(row => {
+            const client = String(getMasterValue(row, clientCol) || '').trim();
+            if (!client) return;
+            const d = parseReportDate(getMasterValue(row, dateCol));
+            const tv = String(getMasterValue(row, typeCol) || '').trim().toLowerCase();
+            if (!d || isNaN(d.getTime())) return;
+            if (!clientHistory[client]) clientHistory[client] = [];
+            clientHistory[client].push({ d, tv });
+          });
+          const result = {};
+          Object.entries(clientHistory).forEach(([client, visits]) => {
+            visits.sort((a, b) => a.d - b.d);
+            let prevType = visits[0]?.tv || '';
+            for (let i = 1; i < visits.length; i++) {
+              const curType = visits[i].tv;
+              if (curType === prevType) continue;
+              const matchFrom = !fromVal || prevType === fromVal;
+              const matchTo = !toVal || curType === toVal;
+              if (matchFrom && matchTo) {
+                result[client] = { changeDate: visits[i].d, prevType };
+                break;
+              }
+              prevType = curType;
+            }
+          });
+          transitionContext[key] = result;
+        });
+      }
+
       const evaluateCondition = (row, mapping) => {
         if (!mapping) return true;
         if (mapping.type === 'repeat_visit') {
@@ -694,7 +740,10 @@ export default function GenerateReport() {
         if (!mapping) return '';
         // Column-level conditions: blank this cell if the row fails any condition
         if (mapping.columnFilters && mapping.columnFilters.length > 0) {
-          const passes = mapping.columnFilters.every(f => (f.type !== 'expr_compare' && !f.conditionCol) || evaluateCondition(row, f));
+          const passes = mapping.columnFilters.every(f => {
+            if (f.type === 'repeat_visit' || f.type === 'value_deviation') return evaluateCondition(row, f);
+            return (f.type !== 'expr_compare' && !f.conditionCol) || evaluateCondition(row, f);
+          });
           if (!passes) return '';
         }
         const type = mapping.type || 'direct';
@@ -735,6 +784,22 @@ export default function GenerateReport() {
           const gv = String(getMasterValue(row, mapping.groupByCol || '') || '').trim();
           const ls = gv ? ctx.lastSeen[gv] : null;
           return ls ? fmtLastVisit(ls) : '';
+        }
+        if (type === 'deviation_change_date' || type === 'deviation_prev_type') {
+          const typeCol = cleanFieldName(sourceField);
+          const clientCol = cleanFieldName(mapping.clientCol || '');
+          const dateColTX = cleanFieldName(mapping.dateCol || '');
+          if (!clientCol || !dateColTX || !typeCol) return '';
+          const fromVal = (mapping.fromVal || '').trim().toLowerCase();
+          const toVal = (mapping.toVal || '').trim().toLowerCase();
+          const txKey = `${clientCol}__${dateColTX}__${typeCol}__${fromVal}__${toVal}`;
+          const txCtx = transitionContext[txKey];
+          if (!txCtx) return '';
+          const client = String(getMasterValue(row, clientCol) || '').trim();
+          const info = txCtx[client];
+          if (!info) return '';
+          if (type === 'deviation_change_date') return info.changeDate ? fmtLastVisit(info.changeDate) : '';
+          return info.prevType || '';
         }
         return applyRound(cleanValue(getMasterValue(row, sourceField), mapping, sourceField), mapping);
       };
@@ -1145,6 +1210,22 @@ export default function GenerateReport() {
             let maxD = null;
             fr.forEach(r => { const d = parseReportDate(getMasterValue(r, p.source)); if (d && !isNaN(d.getTime()) && (!maxD || d > maxD)) maxD = d; });
             v = maxD ? fmtLastVisit(maxD) : '';
+          } else if (p.type === 'deviation_change_date' || p.type === 'deviation_prev_type') {
+            if (fr.length === 0) { v = ''; }
+            else {
+              const typeColS = cleanFieldName(p.source || '');
+              const clientColS = cleanFieldName(p.clientCol || '');
+              const dateColS = cleanFieldName(p.dateCol || '');
+              const fvS = (p.fromVal || '').trim().toLowerCase();
+              const tvS = (p.toVal || '').trim().toLowerCase();
+              const txKeyS = `${clientColS}__${dateColS}__${typeColS}__${fvS}__${tvS}`;
+              const txCtxS = transitionContext[txKeyS];
+              const clientS = String(getMasterValue(fr[0], clientColS) || '').trim();
+              const infoS = txCtxS ? txCtxS[clientS] : null;
+              if (!infoS) { v = ''; }
+              else if (p.type === 'deviation_change_date') { v = infoS.changeDate ? fmtLastVisit(infoS.changeDate) : ''; }
+              else { v = infoS.prevType || ''; }
+            }
           } else { v = (!isTotal && fr.length > 0) ? getMasterValue(fr[0], p.source) : ''; }
           v = applyRound(v, p);
           const key = p.displayName || p.source || ''; if (key) ctx[key] = v; return v;
@@ -1435,7 +1516,7 @@ export default function GenerateReport() {
             const rowField = template.rowField, colField = template.colField, isPG = !!rowField;
             // When colField is set (cross-tab mode), property/grouping columns repeat under every
             // column group which duplicates the row label — only aggregation & formula make sense.
-            if (colField) pCols = pCols.filter(p => p.type === 'aggregation' || p.type === 'formula' || p.type === 'last_visit_date');
+            if (colField) pCols = pCols.filter(p => p.type === 'aggregation' || p.type === 'formula' || p.type === 'last_visit_date' || p.type === 'deviation_change_date' || p.type === 'deviation_prev_type');
             if (excludedCols.size > 0) pCols = pCols.filter(p => !excludedCols.has(cleanFieldName(p.source || '')));
             // Remove property/grouping columns that duplicate the rowField (row label already shown as first column)
             if (rowField) {
@@ -1537,6 +1618,22 @@ export default function GenerateReport() {
                 let maxD = null;
                 fr.forEach(r => { const d = parseReportDate(getMasterValue(r, p.source)); if (d && !isNaN(d.getTime()) && (!maxD || d > maxD)) maxD = d; });
                 v = maxD ? fmtLastVisit(maxD) : '';
+              } else if (p.type === 'deviation_change_date' || p.type === 'deviation_prev_type') {
+                if (fr.length === 0) { v = ''; }
+                else {
+                  const typeCol = cleanFieldName(p.source || '');
+                  const clientColP = cleanFieldName(p.clientCol || '');
+                  const dateColP = cleanFieldName(p.dateCol || '');
+                  const fv = (p.fromVal || '').trim().toLowerCase();
+                  const tv = (p.toVal || '').trim().toLowerCase();
+                  const txKey = `${clientColP}__${dateColP}__${typeCol}__${fv}__${tv}`;
+                  const txCtx = transitionContext[txKey];
+                  const client = String(getMasterValue(fr[0], clientColP) || '').trim();
+                  const info = txCtx ? txCtx[client] : null;
+                  if (!info) { v = ''; }
+                  else if (p.type === 'deviation_change_date') { v = info.changeDate ? fmtLastVisit(info.changeDate) : ''; }
+                  else { v = info.prevType || ''; }
+                }
               } else {
                 // property / grouping — never show a data value in total rows
                 v = (!isTotal && fr.length > 0) ? getMasterValue(fr[0], p.source) : '';

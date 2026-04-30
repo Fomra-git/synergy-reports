@@ -1217,6 +1217,9 @@ export default function VisualExcelMapping() {
                    <option value="condition_count">Conditional Count (Dashboard Summary)</option>
                    <option value="time_diff">Time Difference</option>
                    <option value="last_visit_date">Last Visit Date</option>
+                   <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Type Transition ──</option>
+                   <option value="deviation_change_date">Type Change Date</option>
+                   <option value="deviation_prev_type">Previous Appt Type</option>
                  </select>
                </div>
 
@@ -1244,6 +1247,37 @@ export default function VisualExcelMapping() {
                      <SearchableDropdown options={masterHeaders} value={modalData.groupByCol || ''} onChange={val => setModalData(prev => ({ ...prev, groupByCol: val }))} placeholder="Select patient ID column..." zIndex={1100} />
                    </div>
                    <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Shows the latest date found in the date column for each unique value in the group-by column.</p>
+                 </div>
+               )}
+
+               {(modalData.type === 'deviation_change_date' || modalData.type === 'deviation_prev_type') && (
+                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(139,92,246,0.05)', padding: '14px', borderRadius: '12px', border: '1px solid rgba(139,92,246,0.2)' }}>
+                   <p style={{ fontSize: '11px', fontWeight: '700', color: '#8b5cf6', margin: 0 }}>
+                     {modalData.type === 'deviation_change_date' ? 'Type Change Date — date when the client first transitioned to the target appointment type.' : 'Previous Appt Type — the appointment type the client had before the transition.'}
+                   </p>
+                   <div className="form-group">
+                     <label style={{ fontSize: '11px' }}>Appointment Type Column</label>
+                     <SearchableDropdown options={masterHeaders} value={modalData.source || ''} onChange={val => setModalData(prev => ({ ...prev, source: val }))} placeholder="e.g. Appt Type..." zIndex={1100} />
+                   </div>
+                   <div className="form-group">
+                     <label style={{ fontSize: '11px' }}>Date Column (Visit Date)</label>
+                     <SearchableDropdown options={masterHeaders} value={modalData.dateCol || ''} onChange={val => setModalData(prev => ({ ...prev, dateCol: val }))} placeholder="Select date column..." zIndex={1100} />
+                   </div>
+                   <div className="form-group">
+                     <label style={{ fontSize: '11px' }}>Client / Patient ID Column</label>
+                     <SearchableDropdown options={masterHeaders} value={modalData.clientCol || ''} onChange={val => setModalData(prev => ({ ...prev, clientCol: val }))} placeholder="Select patient ID column..." zIndex={1100} />
+                   </div>
+                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                     <div className="form-group">
+                       <label style={{ fontSize: '11px' }}>From Type (optional)</label>
+                       <input type="text" placeholder="e.g. Outpatient" value={modalData.fromVal || ''} onChange={e => setModalData(prev => ({ ...prev, fromVal: e.target.value }))} style={{ padding: '8px', fontSize: '12px' }} />
+                     </div>
+                     <div className="form-group">
+                       <label style={{ fontSize: '11px' }}>To Type (optional)</label>
+                       <input type="text" placeholder="e.g. House Visit" value={modalData.toVal || ''} onChange={e => setModalData(prev => ({ ...prev, toVal: e.target.value }))} style={{ padding: '8px', fontSize: '12px' }} />
+                     </div>
+                   </div>
+                   <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Leave From/To blank to detect any type change. Uses the first qualifying transition found when visits are sorted by date.</p>
                  </div>
                )}
 

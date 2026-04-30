@@ -609,9 +609,11 @@ export default function MultiTableDesigner() {
                             { type: 'aggregation', icon: <Calculator size={11} />, label: 'Aggregation' },
                             { type: 'formula', icon: <BarChart4 size={11} />, label: 'Formula' },
                             { type: 'last_visit_date', icon: <Calendar size={11} />, label: 'Last Visit Date' },
+                            { type: 'deviation_change_date', icon: <Calendar size={11} />, label: 'Type Change Date', color: '#8b5cf6' },
+                            { type: 'deviation_prev_type', icon: <Database size={11} />, label: 'Prev Appt Type', color: '#8b5cf6' },
                           ].map(bt => (
                             <button key={bt.type} onClick={() => addPivotCol(bt.type)}
-                              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 10px', background: 'var(--glass-bg)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>
+                              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 10px', background: 'var(--glass-bg)', border: `1px solid ${bt.color || 'var(--border)'}`, borderRadius: '8px', color: bt.color || 'var(--text-muted)', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>
                               {bt.icon} {bt.label}
                             </button>
                           ))}
@@ -630,9 +632,9 @@ export default function MultiTableDesigner() {
                               {/* ── Header row ── */}
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '700',
-                                  background: col.type === 'grouping' ? 'rgba(16,185,129,0.15)' : col.type === 'formula' ? 'rgba(236,72,153,0.15)' : col.type === 'last_visit_date' ? 'rgba(245,158,11,0.15)' : 'rgba(99,102,241,0.15)',
-                                  color: col.type === 'grouping' ? 'var(--success)' : col.type === 'formula' ? '#ec4899' : col.type === 'last_visit_date' ? '#f59e0b' : 'var(--primary)' }}>
-                                  {col.type.replace('_', ' ').toUpperCase()}
+                                  background: col.type === 'grouping' ? 'rgba(16,185,129,0.15)' : col.type === 'formula' ? 'rgba(236,72,153,0.15)' : col.type === 'last_visit_date' ? 'rgba(245,158,11,0.15)' : (col.type === 'deviation_change_date' || col.type === 'deviation_prev_type') ? 'rgba(139,92,246,0.15)' : 'rgba(99,102,241,0.15)',
+                                  color: col.type === 'grouping' ? 'var(--success)' : col.type === 'formula' ? '#ec4899' : col.type === 'last_visit_date' ? '#f59e0b' : (col.type === 'deviation_change_date' || col.type === 'deviation_prev_type') ? '#8b5cf6' : 'var(--primary)' }}>
+                                  {col.type === 'deviation_change_date' ? 'TYPE CHANGE DATE' : col.type === 'deviation_prev_type' ? 'PREV APPT TYPE' : col.type.replace('_', ' ').toUpperCase()}
                                 </span>
                                 <span style={{ flex: 1, fontSize: '13px', fontWeight: '600', color: 'var(--text-muted)' }}>{col.displayName || col.source || 'Untitled'}</span>
                                 <button onClick={() => movePivotCol(ci, 'up')} disabled={ci === 0} style={{ padding: '3px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><ArrowUp size={12} /></button>
@@ -659,6 +661,40 @@ export default function MultiTableDesigner() {
                                 <div className="form-group">
                                   <label style={labelSty}>Patient / Group By Column</label>
                                   <SearchableDropdown options={masterHeaders} value={col.groupByCol || ''} onChange={v => updatePivotCol(col.id, 'groupByCol', v)} placeholder="Patient ID column..." />
+                                </div>
+                              )}
+
+                              {/* ── Type transition: change date / prev type ── */}
+                              {(col.type === 'deviation_change_date' || col.type === 'deviation_prev_type') && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px', background: 'rgba(139,92,246,0.05)', borderRadius: '10px', border: '1px solid rgba(139,92,246,0.2)', gridColumn: '1 / -1' }}>
+                                  <p style={{ fontSize: '11px', color: '#8b5cf6', fontWeight: '700', margin: 0 }}>
+                                    {col.type === 'deviation_change_date' ? 'Shows the date when the client first transitioned to the target appointment type.' : 'Shows the appointment type the client had before the transition.'}
+                                  </p>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    <div className="form-group">
+                                      <label style={labelSty}>Appointment Type Column</label>
+                                      <SearchableDropdown options={masterHeaders} value={col.source || ''} onChange={v => updatePivotCol(col.id, 'source', v)} placeholder="e.g. Appt Type..." />
+                                    </div>
+                                    <div className="form-group">
+                                      <label style={labelSty}>Date Column</label>
+                                      <SearchableDropdown options={masterHeaders} value={col.dateCol || ''} onChange={v => updatePivotCol(col.id, 'dateCol', v)} placeholder="Select date column..." />
+                                    </div>
+                                    <div className="form-group">
+                                      <label style={labelSty}>Client / Patient ID Column</label>
+                                      <SearchableDropdown options={masterHeaders} value={col.clientCol || ''} onChange={v => updatePivotCol(col.id, 'clientCol', v)} placeholder="Select patient ID column..." />
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    <div className="form-group">
+                                      <label style={labelSty}>From Type (optional)</label>
+                                      <input type="text" placeholder="e.g. Outpatient" value={col.fromVal || ''} onChange={e => updatePivotCol(col.id, 'fromVal', e.target.value)} style={{ padding: '8px', fontSize: '12px' }} />
+                                    </div>
+                                    <div className="form-group">
+                                      <label style={labelSty}>To Type (optional)</label>
+                                      <input type="text" placeholder="e.g. House Visit" value={col.toVal || ''} onChange={e => updatePivotCol(col.id, 'toVal', e.target.value)} style={{ padding: '8px', fontSize: '12px' }} />
+                                    </div>
+                                  </div>
+                                  <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Leave From/To blank to detect any type change. Uses the first qualifying transition sorted by date.</p>
                                 </div>
                               )}
 
