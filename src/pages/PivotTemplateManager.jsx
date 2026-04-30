@@ -1427,16 +1427,46 @@ export default function PivotTemplateManager() {
 
                                   {/* Header: type toggle + remove */}
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ display: 'flex', gap: '4px' }}>
-                                      {[['simple', 'Simple'], ['expr_compare', 'Expression'], ['time_range', 'Time Range']].map(([t, lbl]) => {
-                                        const active = t === 'expr_compare' ? f.type === 'expr_compare' : t === 'time_range' ? f.type === 'time_range' : (!f.type || f.type === 'simple');
-                                        return <button key={t} onClick={() => updateColRowFilter(col.id, fi, 'type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? '#f59e0b' : 'var(--border)'}`, background: active ? 'rgba(245,158,11,0.15)' : 'transparent', color: active ? '#f59e0b' : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
+                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                      {[['simple', 'Simple'], ['expr_compare', 'Expr'], ['time_range', 'Time'], ['repeat_visit', 'Repeat Visit'], ['value_deviation', 'Type Dev.']].map(([t, lbl]) => {
+                                        const active = t === 'expr_compare' ? f.type === 'expr_compare' : t === 'time_range' ? f.type === 'time_range' : t === 'repeat_visit' ? f.type === 'repeat_visit' : t === 'value_deviation' ? f.type === 'value_deviation' : (!f.type || f.type === 'simple');
+                                        const isVisit = t === 'repeat_visit' || t === 'value_deviation';
+                                        return <button key={t} onClick={() => updateColRowFilter(col.id, fi, 'type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? (isVisit ? '#8b5cf6' : '#f59e0b') : 'var(--border)'}`, background: active ? (isVisit ? 'rgba(139,92,246,0.15)' : 'rgba(245,158,11,0.15)') : 'transparent', color: active ? (isVisit ? '#8b5cf6' : '#f59e0b') : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
                                       })}
                                     </div>
                                     <button onClick={() => removeColRowFilter(col.id, fi)} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px' }}><X size={14} /></button>
                                   </div>
 
-                                  {f.type === 'expr_compare' ? (
+                                  {f.type === 'repeat_visit' ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                      <div>
+                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Date Column</label>
+                                        <SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'conditionCol', v)} placeholder="Select date column..." />
+                                      </div>
+                                      <div>
+                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Client / Patient ID Column</label>
+                                        <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'clientCol', v)} placeholder="Select client column..." />
+                                      </div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Min visits/day:</label>
+                                        <input type="number" min="2" value={f.minCount || 2} onChange={e => updateColRowFilter(col.id, fi, 'minCount', parseInt(e.target.value) || 2)} style={{ padding: '6px', fontSize: '11px', width: '70px' }} />
+                                      </div>
+                                    </div>
+                                  ) : f.type === 'value_deviation' ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                      <div>
+                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Appointment Type Column</label>
+                                        <SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'conditionCol', v)} placeholder="e.g. Appt Type..." />
+                                      </div>
+                                      <div>
+                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Client / Patient ID Column</label>
+                                        <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'clientCol', v)} placeholder="Select client column..." />
+                                      </div>
+                                      <input placeholder="From type (e.g. Outpatient) — optional" value={f.fromVal || ''} onChange={e => updateColRowFilter(col.id, fi, 'fromVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
+                                      <input placeholder="To type (e.g. House Visit) — optional" value={f.toVal || ''} onChange={e => updateColRowFilter(col.id, fi, 'toVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
+                                      <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change.</span>
+                                    </div>
+                                  ) : f.type === 'expr_compare' ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 54px 1fr', gap: '6px', alignItems: 'start' }}>
                                         <div>

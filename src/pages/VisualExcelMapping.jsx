@@ -1798,16 +1798,46 @@ export default function VisualExcelMapping() {
                      <div key={fi} style={{ padding: '12px', background: 'var(--glass-bg)', borderRadius: '10px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                        {/* Header: type toggle + remove */}
                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                         <div style={{ display: 'flex', gap: '4px' }}>
-                           {[['simple', 'Simple'], ['expr_compare', 'Expression'], ['time_range', 'Time Range']].map(([t, lbl]) => {
-                             const active = t === 'expr_compare' ? f.type === 'expr_compare' : t === 'time_range' ? f.type === 'time_range' : (!f.type || f.type === 'simple');
-                             return <button key={t} type="button" onClick={() => updCF('type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? 'var(--primary)' : 'var(--border)'}`, background: active ? 'rgba(99,102,241,0.12)' : 'transparent', color: active ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
+                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                           {[['simple', 'Simple'], ['expr_compare', 'Expr'], ['time_range', 'Time'], ['repeat_visit', 'Repeat Visit'], ['value_deviation', 'Type Dev.']].map(([t, lbl]) => {
+                             const active = t === 'expr_compare' ? f.type === 'expr_compare' : t === 'time_range' ? f.type === 'time_range' : t === 'repeat_visit' ? f.type === 'repeat_visit' : t === 'value_deviation' ? f.type === 'value_deviation' : (!f.type || f.type === 'simple');
+                             const isVisit = t === 'repeat_visit' || t === 'value_deviation';
+                             return <button key={t} type="button" onClick={() => updCF('type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? (isVisit ? '#8b5cf6' : 'var(--primary)') : 'var(--border)'}`, background: active ? (isVisit ? 'rgba(139,92,246,0.12)' : 'rgba(99,102,241,0.12)') : 'transparent', color: active ? (isVisit ? '#8b5cf6' : 'var(--primary)') : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
                            })}
                          </div>
                          <button type="button" onClick={() => setModalData(prev => ({ ...prev, columnFilters: (prev.columnFilters || []).filter((_, i) => i !== fi) }))} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}><X size={14} /></button>
                        </div>
 
-                       {f.type === 'expr_compare' ? (
+                       {f.type === 'repeat_visit' ? (
+                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                           <div>
+                             <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Date Column</label>
+                             <SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => updCF('conditionCol', v)} placeholder="Select date column..." zIndex={1200} />
+                           </div>
+                           <div>
+                             <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Client / Patient ID Column</label>
+                             <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updCF('clientCol', v)} placeholder="Select client column..." zIndex={1200} />
+                           </div>
+                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                             <label style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Min visits/day:</label>
+                             <input type="number" min="2" value={f.minCount || 2} onChange={e => updCF('minCount', parseInt(e.target.value) || 2)} style={{ padding: '6px 8px', fontSize: '12px', width: '70px' }} />
+                           </div>
+                         </div>
+                       ) : f.type === 'value_deviation' ? (
+                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                           <div>
+                             <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Appointment Type Column</label>
+                             <SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => updCF('conditionCol', v)} placeholder="e.g. Appt Type..." zIndex={1200} />
+                           </div>
+                           <div>
+                             <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Client / Patient ID Column</label>
+                             <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updCF('clientCol', v)} placeholder="Select client column..." zIndex={1200} />
+                           </div>
+                           <input type="text" placeholder="From type (e.g. Outpatient) — optional" value={f.fromVal || ''} onChange={e => updCF('fromVal', e.target.value)} style={{ padding: '6px 8px', fontSize: '12px' }} />
+                           <input type="text" placeholder="To type (e.g. House Visit) — optional" value={f.toVal || ''} onChange={e => updCF('toVal', e.target.value)} style={{ padding: '6px 8px', fontSize: '12px' }} />
+                           <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change.</span>
+                         </div>
+                       ) : f.type === 'expr_compare' ? (
                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 54px 1fr', gap: '6px' }}>
                              <div>

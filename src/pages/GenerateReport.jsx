@@ -347,8 +347,97 @@ export default function GenerateReport() {
         });
       }
 
+      // ── Repeat-Visit row-condition context ────────────────────────────────────
+      const _rvNormDate = (v) => { const d = parseReportDate(v); return (d && !isNaN(d.getTime())) ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : String(v || '').trim().split('T')[0].split(' ')[0]; };
+      const rvRowContext = {};
+      {
+        const rvPairs = [];
+        const collectRV = (filters) => (filters || []).forEach(f => {
+          if (f.type === 'repeat_visit' && f.clientCol && f.conditionCol)
+            rvPairs.push({ clientCol: cleanFieldName(f.clientCol), dateCol: cleanFieldName(f.conditionCol) });
+        });
+        targetTemplates.forEach(t => {
+          (t.mappings || []).forEach(m => collectRV(m.columnFilters));
+          (t.pivotColumns || []).forEach(p => collectRV(p.rowFilters));
+          (t.sections || []).forEach(s => (s.pivotColumns || []).forEach(p => collectRV(p.rowFilters)));
+        });
+        rvPairs.forEach(({ clientCol, dateCol }) => {
+          const key = `${clientCol}__${dateCol}`;
+          if (rvRowContext[key]) return;
+          const counts = {};
+          masterData.forEach(row => {
+            const client = String(getMasterValue(row, clientCol) || '').trim();
+            const date = _rvNormDate(getMasterValue(row, dateCol));
+            if (!client || !date) return;
+            const k = `${client}\x00${date}`;
+            counts[k] = (counts[k] || 0) + 1;
+          });
+          rvRowContext[key] = counts;
+        });
+      }
+
+      // ── Value-Deviation row-condition context ─────────────────────────────────
+      const vdRowContext = {};
+      {
+        const vdPairs = [];
+        const collectVD = (filters) => (filters || []).forEach(f => {
+          if (f.type === 'value_deviation' && f.clientCol && f.conditionCol)
+            vdPairs.push({ clientCol: cleanFieldName(f.clientCol), typeCol: cleanFieldName(f.conditionCol), fromVal: (f.fromVal || '').trim().toLowerCase(), toVal: (f.toVal || '').trim().toLowerCase() });
+        });
+        targetTemplates.forEach(t => {
+          (t.mappings || []).forEach(m => collectVD(m.columnFilters));
+          (t.pivotColumns || []).forEach(p => collectVD(p.rowFilters));
+          (t.sections || []).forEach(s => (s.pivotColumns || []).forEach(p => collectVD(p.rowFilters)));
+        });
+        vdPairs.forEach(({ clientCol, typeCol, fromVal, toVal }) => {
+          const key = `${clientCol}__${typeCol}__${fromVal}__${toVal}`;
+          if (vdRowContext[key]) return;
+          const clientTypes = {};
+          masterData.forEach(row => {
+            const client = String(getMasterValue(row, clientCol) || '').trim();
+            const typeVal = String(getMasterValue(row, typeCol) || '').trim().toLowerCase();
+            if (!client || !typeVal) return;
+            if (!clientTypes[client]) clientTypes[client] = new Set();
+            clientTypes[client].add(typeVal);
+          });
+          const qualifying = new Set(
+            Object.entries(clientTypes)
+              .filter(([, types]) => {
+                if (fromVal && toVal) return types.has(fromVal) && types.has(toVal);
+                if (fromVal) return types.has(fromVal) && types.size > 1;
+                if (toVal) return types.has(toVal) && types.size > 1;
+                return types.size > 1;
+              })
+              .map(([client]) => client)
+          );
+          vdRowContext[key] = qualifying;
+        });
+      }
+
       const evaluateCondition = (row, mapping) => {
         if (!mapping) return true;
+        if (mapping.type === 'repeat_visit') {
+          const clientCol = cleanFieldName(mapping.clientCol || '');
+          const dateCol = cleanFieldName(mapping.conditionCol || '');
+          if (!clientCol || !dateCol) return true;
+          const ctx = rvRowContext[`${clientCol}__${dateCol}`];
+          if (!ctx) return true;
+          const client = String(getMasterValue(row, clientCol) || '').trim();
+          const date = _rvNormDate(getMasterValue(row, dateCol));
+          const minN = Math.max(2, parseInt(mapping.minCount) || 2);
+          return (ctx[`${client}\x00${date}`] || 0) >= minN;
+        }
+        if (mapping.type === 'value_deviation') {
+          const clientCol = cleanFieldName(mapping.clientCol || '');
+          const typeCol = cleanFieldName(mapping.conditionCol || '');
+          if (!clientCol || !typeCol) return true;
+          const fromVal = (mapping.fromVal || '').trim().toLowerCase();
+          const toVal = (mapping.toVal || '').trim().toLowerCase();
+          const ctx = vdRowContext[`${clientCol}__${typeCol}__${fromVal}__${toVal}`];
+          if (!ctx) return true;
+          const client = String(getMasterValue(row, clientCol) || '').trim();
+          return ctx.has(client);
+        }
         if (mapping.type === 'expr_compare') {
           const toE = s => { const n = parseFloat(String(s || '').replace(/,/g, '').trim()); return isNaN(n) ? 0 : n; };
           const v1 = toE(getMasterValue(row, mapping.col1));
@@ -434,6 +523,7 @@ export default function GenerateReport() {
         let result = rows;
         if (col.rowFilters && col.rowFilters.length > 0) {
           result = result.filter(r => col.rowFilters.every(f => {
+            if (f.type === 'repeat_visit' || f.type === 'value_deviation') return evaluateCondition(r, f);
             if (f.type !== 'expr_compare' && !f.conditionCol) return true;
             if (f.operator === 'unique') return true;
             return evaluateCondition(r, f);
