@@ -560,7 +560,26 @@ export default function GenerateReport() {
           if (operator === '!=') return conditionVals.every(c => evalSingle(c));
           return conditionVals.some(c => evalSingle(c));
         };
-        if (mapping.rules && mapping.rules.length > 0) return mapping.rules.every(r => r.conditionCol ? evalRule(getMasterValue(row, r.conditionCol), r.operator, r.conditionVals, r.conditionCol, row, r.groupByCol) : true);
+        if (mapping.rules && mapping.rules.length > 0) return mapping.rules.every(r => {
+          if (r.type === 'expr_compare') {
+            const toE = s => { const n = parseFloat(String(s || '').replace(/,/g, '').trim()); return isNaN(n) ? 0 : n; };
+            const v1 = toE(getMasterValue(row, r.col1));
+            const v2 = toE(getMasterValue(row, r.col2));
+            let lhs = v1;
+            if (r.mathOp === '+') lhs = v1 + v2;
+            else if (r.mathOp === '-') lhs = v1 - v2;
+            else if (r.mathOp === '*') lhs = v1 * v2;
+            else if (r.mathOp === '/') lhs = v2 !== 0 ? v1 / v2 : 0;
+            const rhs = toE((r.conditionVals || [])[0]);
+            if (r.operator === '>=') return lhs >= rhs;
+            if (r.operator === '>') return lhs > rhs;
+            if (r.operator === '<=') return lhs <= rhs;
+            if (r.operator === '<') return lhs < rhs;
+            if (r.operator === '!=') return lhs !== rhs;
+            return lhs === rhs;
+          }
+          return r.conditionCol ? evalRule(getMasterValue(row, r.conditionCol), r.operator, r.conditionVals, r.conditionCol, row, r.groupByCol) : true;
+        });
         return mapping.conditionCol ? evalRule(getMasterValue(row, mapping.conditionCol), mapping.operator, mapping.conditionVals, mapping.conditionCol, row, mapping.groupByCol) : true;
       };
 

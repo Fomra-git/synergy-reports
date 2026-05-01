@@ -1689,113 +1689,138 @@ export default function VisualExcelMapping() {
                       <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)', textTransform: 'uppercase' }}>Filtering Criteria (Optional)</label>
                       
                       {/* Render Multiple Rules */}
-                      {modalData.rules?.map((rule, ridx) => (
-                        <div key={ridx} style={{ background: 'var(--glass-subtle)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', position: 'relative' }}>
-                          <button 
-                            onClick={(e) => {
-                              e.preventDefault();
-                              const newRules = [...modalData.rules];
-                              newRules.splice(ridx, 1);
-                              setModalData(prev => ({ ...prev, rules: newRules }));
-                            }}
-                            style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-
-                          <div className="form-group" style={{ marginBottom: '12px' }}>
-                            <label style={{ fontSize: '11px' }}>Condition Field</label>
-                            <SearchableDropdown 
-                              options={masterHeaders} 
-                              value={rule.conditionCol} 
-                              onChange={val => {
-                                const newRules = [...modalData.rules];
-                                newRules[ridx].conditionCol = val;
-                                setModalData(prev => ({ ...prev, rules: newRules }));
-                              }}
-                              placeholder="Select field..."
-                            />
+                      {modalData.rules?.map((rule, ridx) => {
+                        const updRule = (key, val) => {
+                          const newRules = [...modalData.rules];
+                          newRules[ridx] = { ...newRules[ridx], [key]: val };
+                          setModalData(prev => ({ ...prev, rules: newRules }));
+                        };
+                        const isExpr = rule.type === 'expr_compare';
+                        return (
+                        <div key={ridx} style={{ background: 'var(--glass-subtle)', padding: '16px', borderRadius: '12px', border: `1px solid ${isExpr ? 'rgba(245,158,11,0.3)' : 'var(--border)'}`, position: 'relative', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {/* Type toggle + remove */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {[['simple', 'Field Match'], ['expr_compare', 'Expression (Col ± Col)']].map(([t, lbl]) => {
+                                const active = t === 'expr_compare' ? isExpr : !isExpr;
+                                return <button key={t} type="button" onClick={() => updRule('type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? (isExpr ? '#f59e0b' : 'var(--primary)') : 'var(--border)'}`, background: active ? (isExpr ? 'rgba(245,158,11,0.15)' : 'rgba(99,102,241,0.1)') : 'transparent', color: active ? (isExpr ? '#f59e0b' : 'var(--primary)') : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
+                              })}
+                            </div>
+                            <button onClick={e => { e.preventDefault(); const r2 = [...modalData.rules]; r2.splice(ridx,1); setModalData(prev => ({ ...prev, rules: r2 })); }} style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer' }}><Trash2 size={12} /></button>
                           </div>
 
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                            <div className="form-group">
-                              <label style={{ fontSize: '11px' }}>Comparator</label>
-                              <select 
-                                value={rule.operator}
-                                onChange={e => {
-                                  const newRules = [...modalData.rules];
-                                  newRules[ridx].operator = e.target.value;
-                                  setModalData(prev => ({ ...prev, rules: newRules }));
-                                }}
-                                style={{ padding: '8px', fontSize: '12px' }}
-                              >
-                                <option value="==">In (==)</option>
-                                <option value="!=">Not In</option>
-                                <option value=">">Greater Than (&gt;)</option>
-                                <option value="<">Less Than (&lt;)</option>
-                                <option value=">=">Greater or Equal (&gt;=)</option>
-                                <option value="<=">Less or Equal (&lt;=)</option>
-                                <option value="contains">Has String</option>
-                                <option value="between">Range (Min,Max)</option>
-                              </select>
-                            </div>
-                            <div className="form-group">
-                              <label style={{ fontSize: '11px' }}>Criteria Values</label>
-                              <div style={{ position: 'relative' }}>
-                                 <div style={{ position: 'absolute', top: '-18px', right: '0' }}>
-                                    <button 
-                                      onClick={() => {
-                                        const newRules = [...modalData.rules];
-                                        newRules[ridx].isManual = !newRules[ridx].isManual;
-                                        setModalData(prev => ({ ...prev, rules: newRules }));
-                                      }}
-                                      style={{ background: 'none', border: 'none', color: rule.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}
-                                    >
-                                      {rule.isManual ? <List size={10} /> : <Keyboard size={10} />}
-                                      {rule.isManual ? 'List' : 'Manual'}
-                                    </button>
-                                  </div>
-                                  {rule.isManual ? (
-                                    <input 
-                                      placeholder="e.g. Val1, Val2" 
-                                      value={Array.isArray(rule.conditionVals) ? rule.conditionVals.join(', ') : rule.conditionVals || ''} 
-                                      onChange={e => {
-                                        const newRules = [...modalData.rules];
-                                        newRules[ridx].conditionVals = e.target.value.split(',').map(s => s.trim());
-                                        setModalData(prev => ({ ...prev, rules: newRules }));
-                                      }}
-                                      style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}
-                                    />
-                                  ) : (
-                                    <MultiSelectDropdown 
-                                       options={masterUniqueValues[rule.conditionCol] || []}
-                                       selectedValues={rule.conditionVals || []}
-                                       onChange={vals => {
-                                         const newRules = [...modalData.rules];
-                                         newRules[ridx].conditionVals = vals;
-                                         setModalData(prev => ({ ...prev, rules: newRules }));
-                                       }}
-                                       placeholder="Values..."
-                                    />
-                                  )}
+                          {isExpr ? (
+                            /* Expression: col1 [± col2] >= threshold */
+                            <>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 52px 1fr', gap: '8px', alignItems: 'end' }}>
+                                <div>
+                                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Column 1</label>
+                                  <SearchableDropdown options={masterHeaders} value={rule.col1 || ''} onChange={v => updRule('col1', v)} placeholder="e.g. Total Appt No." />
                                 </div>
-                            </div>
-                          </div>
+                                <div>
+                                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Math</label>
+                                  <select value={rule.mathOp || '-'} onChange={e => updRule('mathOp', e.target.value)} style={{ width: '100%', padding: '8px 2px', fontSize: '14px', textAlign: 'center' }}>
+                                    <option value="+">+</option>
+                                    <option value="-">−</option>
+                                    <option value="*">×</option>
+                                    <option value="/">/</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Column 2</label>
+                                  <SearchableDropdown options={masterHeaders} value={rule.col2 || ''} onChange={v => updRule('col2', v)} placeholder="e.g. Appt No." />
+                                </div>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '8px', alignItems: 'end' }}>
+                                <div>
+                                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Comparison</label>
+                                  <select value={rule.operator || '>='} onChange={e => updRule('operator', e.target.value)} style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }}>
+                                    <option value=">=">≥ Greater or Equal</option>
+                                    <option value=">">{'>'} Greater Than</option>
+                                    <option value="<=">≤ Less or Equal</option>
+                                    <option value="<">{'<'} Less Than</option>
+                                    <option value="==">= Equals</option>
+                                    <option value="!=">≠ Not Equal</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Threshold Value</label>
+                                  <input type="number" placeholder="e.g. 6" value={(rule.conditionVals || [])[0] || ''} onChange={e => updRule('conditionVals', [e.target.value])} style={{ width: '100%', padding: '8px', fontSize: '12px', boxSizing: 'border-box' }} />
+                                </div>
+                              </div>
+                              <p style={{ fontSize: '9px', color: '#f59e0b', margin: 0 }}>
+                                Count row if ({rule.col1 || 'Col1'} {rule.mathOp || '-'} {rule.col2 || 'Col2'}) {rule.operator || '>='} {(rule.conditionVals || [])[0] || '?'}
+                              </p>
+                            </>
+                          ) : (
+                            /* Simple: field / operator / values */
+                            <>
+                              <div className="form-group">
+                                <label style={{ fontSize: '11px' }}>Condition Field</label>
+                                <SearchableDropdown options={masterHeaders} value={rule.conditionCol || ''} onChange={val => updRule('conditionCol', val)} placeholder="Select field..." />
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '11px' }}>Comparator</label>
+                                  <select value={rule.operator || '=='} onChange={e => updRule('operator', e.target.value)} style={{ padding: '8px', fontSize: '12px' }}>
+                                    <option value="==">In (==)</option>
+                                    <option value="!=">Not In</option>
+                                    <option value=">">Greater Than</option>
+                                    <option value="<">Less Than</option>
+                                    <option value=">=">Greater or Equal</option>
+                                    <option value="<=">Less or Equal</option>
+                                    <option value="contains">Has String</option>
+                                    <option value="between">Range (Min,Max)</option>
+                                  </select>
+                                </div>
+                                <div className="form-group">
+                                  <label style={{ fontSize: '11px' }}>Criteria Values</label>
+                                  <div style={{ position: 'relative' }}>
+                                    <div style={{ position: 'absolute', top: '-18px', right: '0' }}>
+                                      <button type="button" onClick={() => updRule('isManual', !rule.isManual)} style={{ background: 'none', border: 'none', color: rule.isManual ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                        {rule.isManual ? <List size={10} /> : <Keyboard size={10} />}
+                                        {rule.isManual ? 'List' : 'Manual'}
+                                      </button>
+                                    </div>
+                                    {rule.isManual ? (
+                                      <input placeholder="e.g. Val1, Val2" value={Array.isArray(rule.conditionVals) ? rule.conditionVals.join(', ') : rule.conditionVals || ''} onChange={e => updRule('conditionVals', e.target.value.split(',').map(s => s.trim()))} style={{ width: '100%', padding: '8px 6px', fontSize: '11px' }} />
+                                    ) : (
+                                      <MultiSelectDropdown options={masterUniqueValues[rule.conditionCol] || []} selectedValues={rule.conditionVals || []} onChange={vals => updRule('conditionVals', vals)} placeholder="Values..." />
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </>
+                          )}
                         </div>
-                      ))}
+                        );
+                      })}
 
-                      <button 
+                      <button
                          className="btn-link"
                          onClick={(e) => {
                            e.preventDefault();
-                           setModalData(prev => ({ 
-                             ...prev, 
-                             rules: [...(prev.rules || []), { conditionCol: '', operator: '==', conditionVals: [], isManual: false }] 
+                           setModalData(prev => ({
+                             ...prev,
+                             rules: [...(prev.rules || []), { type: 'simple', conditionCol: '', operator: '==', conditionVals: [], isManual: false }]
                            }));
                          }}
                          style={{ width: '100%', padding: '10px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary)', border: '1px dashed var(--primary)', borderRadius: '10px', fontSize: '12px' }}
                       >
-                         <Plus size={14} /> Add New Condition
+                         <Plus size={14} /> Add Field Condition
+                      </button>
+                      <button
+                         className="btn-link"
+                         onClick={(e) => {
+                           e.preventDefault();
+                           setModalData(prev => ({
+                             ...prev,
+                             rules: [...(prev.rules || []), { type: 'expr_compare', col1: '', col2: '', mathOp: '-', operator: '>=', conditionVals: ['6'] }]
+                           }));
+                         }}
+                         style={{ width: '100%', padding: '10px', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', border: '1px dashed rgba(245,158,11,0.4)', borderRadius: '10px', fontSize: '12px' }}
+                      >
+                         <Plus size={14} /> Add Expression Condition (Col ± Col ≥ Value)
                       </button>
 
                       {(!modalData.rules || modalData.rules.length === 0) && (
