@@ -1637,9 +1637,10 @@ export default function GenerateReport() {
                 });
               }
               const visiblePCols = pCols.filter(p => !p.hideInReport);
-              // When deviation columns are present, filter flatRows to only the actual transition-event
-              // row per client (date = changeDate AND type in toVals). Without this, a client who visited
-              // multiple doctors appears once per doctor with the same transition date/category.
+              // When deviation columns are present, replace filteredMD rows for each qualifying client
+              // with the single transition-event row from masterData (date=changeDate, type in toVals).
+              // filteredMD may only contain "from" type rows (e.g. filtered to in-clinic visits),
+              // so we scan masterData directly to find the actual doctor at the transition moment.
               const _devColFL = visiblePCols.find(p => p.type === 'deviation_change_date' || p.type === 'deviation_prev_type');
               if (_devColFL) {
                 const _dpType   = cleanFieldName(_devColFL.source || '');
@@ -1648,22 +1649,36 @@ export default function GenerateReport() {
                 const { fromVals: _dpFV, toVals: _dpTV } = _normTX(_devColFL);
                 const _dpCtx = transitionContext[_txKey(_dpClient, _dpDate, _dpType, _dpFV, _dpTV)];
                 if (_dpCtx && _dpDate) {
-                  flatRows = flatRows.filter(r => {
-                    const _dpCl = String(getMasterValue(r, _dpClient) || '').trim();
-                    const _dpInfo = _dpCtx[_dpCl];
-                    if (!_dpInfo || !_dpInfo.changeDate) return true; // no transition info, keep
-                    const rowDateRaw = getMasterValue(r, _dpDate);
-                    const rowDate = rowDateRaw instanceof Date ? rowDateRaw : (rowDateRaw ? new Date(String(rowDateRaw)) : null);
-                    if (!rowDate || isNaN(rowDate.getTime())) return false;
-                    const rd = new Date(rowDate); rd.setHours(0, 0, 0, 0);
-                    const cd = new Date(_dpInfo.changeDate); cd.setHours(0, 0, 0, 0);
-                    if (rd.getTime() !== cd.getTime()) return false;
+                  const _dayMs = (v) => {
+                    const dt = v instanceof Date ? v : parseReportDate(v);
+                    if (!dt || isNaN(dt.getTime())) return NaN;
+                    const d = new Date(dt); d.setHours(0, 0, 0, 0); return d.getTime();
+                  };
+                  // Build per-client transition-event row from masterData (not filteredMD)
+                  const _txEventRow = {};
+                  masterData.forEach(r => {
+                    const cl = String(getMasterValue(r, _dpClient) || '').trim();
+                    if (_txEventRow[cl]) return;
+                    const info = _dpCtx[cl];
+                    if (!info || !info.changeDate) return;
+                    const rowMs = _dayMs(getMasterValue(r, _dpDate));
+                    if (isNaN(rowMs) || rowMs !== _dayMs(info.changeDate)) return;
                     if (_dpTV.length > 0) {
-                      const rowType = String(getMasterValue(r, _dpType) || '').trim().toLowerCase();
-                      return _dpTV.includes(rowType);
+                      const rt = String(getMasterValue(r, _dpType) || '').trim().toLowerCase();
+                      if (!_dpTV.includes(rt)) return;
                     }
-                    return true;
+                    _txEventRow[cl] = r;
                   });
+                  // Replace flatRows: qualifying clients → their transition-event row from masterData;
+                  // clients with no transition info → keep their existing flatRows entries unchanged.
+                  const _noTxRows = flatRows.filter(r => {
+                    const cl = String(getMasterValue(r, _dpClient) || '').trim();
+                    return !_dpCtx[cl];
+                  });
+                  flatRows = [...Object.values(_txEventRow), ..._noTxRows].sort((a, b) =>
+                    String(getMasterValue(a, rowField) || '').trim()
+                      .localeCompare(String(getMasterValue(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
+                  );
                 }
               }
               const flatHdrs = [rowField || 'Group', ...visiblePCols.map(p => p.displayName || p.source || 'Untitled')];
