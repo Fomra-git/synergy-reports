@@ -1592,7 +1592,22 @@ export default function GenerateReport() {
               const flatHdrs = [rowField || 'Group', ...visiblePCols.map(p => p.displayName || p.source || 'Untitled')];
               const flatAOA = [flatHdrs, ...flatRows.map(r => {
                 const gk = cleanValue(getMasterValue(r, rowField), rowTx, rowField) || String(getMasterValue(r, rowField) || '').trim();
-                return [gk, ...visiblePCols.map(p => applyRound(cleanValue(getMasterValue(r, p.source), p, p.source), p))];
+                return [gk, ...visiblePCols.map(p => {
+                  if (p.type === 'deviation_change_date' || p.type === 'deviation_prev_type') {
+                    const typeCol = cleanFieldName(p.source || '');
+                    const clientColFL = cleanFieldName(p.clientCol || '');
+                    const dateColFL = cleanFieldName(p.dateCol || '');
+                    const { fromVals: _flFV, toVals: _flTV } = _normTX(p);
+                    const txCtxFL = transitionContext[_txKey(clientColFL, dateColFL, typeCol, _flFV, _flTV)];
+                    const clientFL = String(getMasterValue(r, clientColFL) || '').trim();
+                    const infoFL = txCtxFL ? txCtxFL[clientFL] : null;
+                    if (!infoFL) return '';
+                    return p.type === 'deviation_change_date'
+                      ? (infoFL.changeDate ? fmtLastVisit(infoFL.changeDate) : '')
+                      : (infoFL.prevType || '');
+                  }
+                  return applyRound(cleanValue(getMasterValue(r, p.source), p, p.source), p);
+                })];
               })];
               columnHeaders = flatHdrs;
               const excelBuffer = await excelJSExport(flatAOA, columnHeaders, topReportHeader, [], false, [0], template.name || '', template.chartConfigs || []);
