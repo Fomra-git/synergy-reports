@@ -755,6 +755,7 @@ export default function VisualExcelMapping() {
                             <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Visit ──</option>
                             <option value="repeat_visit">Repeat Visit (Same Day)</option>
                             <option value="value_deviation">Type Deviation (e.g. OP → HV)</option>
+                            <option value="no_deviation">No Deviation (Excl. OP → HV)</option>
                           </select>
 
                           {(filter.operator === 'this_month' || filter.operator === 'prev_month') ? (
@@ -774,7 +775,7 @@ export default function VisualExcelMapping() {
                                 <input type="number" min="2" value={filter.minCount || 2} onChange={e => handleGlobalFilterChange(index, 'minCount', parseInt(e.target.value) || 2)} style={{ padding: '6px', fontSize: '11px', width: '60px' }} />
                               </div>
                             </div>
-                          ) : filter.operator === 'value_deviation' ? (
+                          ) : (filter.operator === 'value_deviation' || filter.operator === 'no_deviation') ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                               <SearchableDropdown options={masterHeaders} value={filter.clientCol || ''} onChange={v => handleGlobalFilterChange(index, 'clientCol', v)} placeholder="Client / Patient ID Column..." />
                               <div>
@@ -1874,9 +1875,9 @@ export default function VisualExcelMapping() {
                        {/* Header: type toggle + remove */}
                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                           {[['simple', 'Simple'], ['expr_compare', 'Expr'], ['time_range', 'Time'], ['repeat_visit', 'Repeat Visit'], ['value_deviation', 'Type Dev.']].map(([t, lbl]) => {
-                             const active = t === 'expr_compare' ? f.type === 'expr_compare' : t === 'time_range' ? f.type === 'time_range' : t === 'repeat_visit' ? f.type === 'repeat_visit' : t === 'value_deviation' ? f.type === 'value_deviation' : (!f.type || f.type === 'simple');
-                             const isVisit = t === 'repeat_visit' || t === 'value_deviation';
+                           {[['simple', 'Simple'], ['expr_compare', 'Expr'], ['time_range', 'Time'], ['repeat_visit', 'Repeat Visit'], ['value_deviation', 'Type Dev.'], ['no_deviation', 'No Dev.']].map(([t, lbl]) => {
+                             const active = t === 'expr_compare' ? f.type === 'expr_compare' : t === 'time_range' ? f.type === 'time_range' : t === 'repeat_visit' ? f.type === 'repeat_visit' : t === 'value_deviation' ? f.type === 'value_deviation' : t === 'no_deviation' ? f.type === 'no_deviation' : (!f.type || f.type === 'simple');
+                             const isVisit = t === 'repeat_visit' || t === 'value_deviation' || t === 'no_deviation';
                              return <button key={t} type="button" onClick={() => updCF('type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? (isVisit ? '#8b5cf6' : 'var(--primary)') : 'var(--border)'}`, background: active ? (isVisit ? 'rgba(139,92,246,0.12)' : 'rgba(99,102,241,0.12)') : 'transparent', color: active ? (isVisit ? '#8b5cf6' : 'var(--primary)') : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
                            })}
                          </div>
@@ -1898,7 +1899,7 @@ export default function VisualExcelMapping() {
                              <input type="number" min="2" value={f.minCount || 2} onChange={e => updCF('minCount', parseInt(e.target.value) || 2)} style={{ padding: '6px 8px', fontSize: '12px', width: '70px' }} />
                            </div>
                          </div>
-                       ) : f.type === 'value_deviation' ? (
+                       ) : (f.type === 'value_deviation' || f.type === 'no_deviation') ? (
                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                            <div>
                              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Appointment Type Column</label>

@@ -385,7 +385,7 @@ export default function GenerateReport() {
         });
         const vdPairs = [];
         const collectVD = (filters) => (filters || []).forEach(f => {
-          if (f.type === 'value_deviation' && f.clientCol && f.conditionCol) {
+          if ((f.type === 'value_deviation' || f.type === 'no_deviation') && f.clientCol && f.conditionCol) {
             const { fromVals, toVals } = normVD(f);
             vdPairs.push({ clientCol: cleanFieldName(f.clientCol), typeCol: cleanFieldName(f.conditionCol), fromVals, toVals, dateCol: cleanFieldName(f.dateCol || ''), strictFromTo: !!f.strictFromTo });
           }
@@ -512,7 +512,7 @@ export default function GenerateReport() {
           const minN = Math.max(2, parseInt(mapping.minCount) || 2);
           return (ctx[`${client}\x00${date}`] || 0) >= minN;
         }
-        if (mapping.type === 'value_deviation') {
+        if (mapping.type === 'value_deviation' || mapping.type === 'no_deviation') {
           const clientCol = cleanFieldName(mapping.clientCol || '');
           const typeCol = cleanFieldName(mapping.conditionCol || '');
           if (!clientCol || !typeCol) return true;
@@ -523,7 +523,7 @@ export default function GenerateReport() {
           const ctx = vdRowContext[`${clientCol}__${typeCol}__${[...fromVals].sort().join('|')}__${[...toVals].sort().join('|')}__${dateCol}__${strictFromTo ? '1' : '0'}`];
           if (!ctx) return true;
           const client = String(getMasterValue(row, clientCol) || '').trim();
-          return ctx.has(client);
+          return mapping.type === 'no_deviation' ? !ctx.has(client) : ctx.has(client);
         }
         if (mapping.type === 'expr_compare') {
           const toE = s => { const n = parseFloat(String(s || '').replace(/,/g, '').trim()); return isNaN(n) ? 0 : n; };
@@ -631,7 +631,7 @@ export default function GenerateReport() {
         let result = rows;
         if (col.rowFilters && col.rowFilters.length > 0) {
           result = result.filter(r => col.rowFilters.every(f => {
-            if (f.type === 'repeat_visit' || f.type === 'value_deviation') return evaluateCondition(r, f);
+            if (f.type === 'repeat_visit' || f.type === 'value_deviation' || f.type === 'no_deviation') return evaluateCondition(r, f);
             if (f.type !== 'expr_compare' && !f.conditionCol) return true;
             if (f.operator === 'unique') return true;
             return evaluateCondition(r, f);
@@ -803,7 +803,7 @@ export default function GenerateReport() {
         // Column-level conditions: blank this cell if the row fails any condition
         if (mapping.columnFilters && mapping.columnFilters.length > 0) {
           const passes = mapping.columnFilters.every(f => {
-            if (f.type === 'repeat_visit' || f.type === 'value_deviation') return evaluateCondition(row, f);
+            if (f.type === 'repeat_visit' || f.type === 'value_deviation' || f.type === 'no_deviation') return evaluateCondition(row, f);
             return (f.type !== 'expr_compare' && !f.conditionCol) || evaluateCondition(row, f);
           });
           if (!passes) return '';
@@ -1270,8 +1270,8 @@ export default function GenerateReport() {
             }
           } else {
             // No deviation columns: find clientCol from any value_deviation condition and dedup by client
-            const _vdF = (section.globalFilters || []).find(f => (f.operator === 'value_deviation' || f.type === 'value_deviation') && f.clientCol)
-              || pCols.flatMap(p => p.rowFilters || []).find(f => f.type === 'value_deviation' && f.clientCol);
+            const _vdF = (section.globalFilters || []).find(f => (f.operator === 'value_deviation' || f.operator === 'no_deviation' || f.type === 'value_deviation' || f.type === 'no_deviation') && f.clientCol)
+              || pCols.flatMap(p => p.rowFilters || []).find(f => (f.type === 'value_deviation' || f.type === 'no_deviation') && f.clientCol);
             if (_vdF) {
               const _vdCC = cleanFieldName(_vdF.clientCol);
               const _vdSeen = new Set();
@@ -1570,7 +1570,7 @@ export default function GenerateReport() {
                   const date   = _rvNorm(getMasterValue(r, gf.conditionCol));
                   return (rvGroups[client + '\x00' + date] || 0) >= minN;
                 });
-              } else if (gf.operator === 'value_deviation' && gf.clientCol && gf.conditionCol) {
+              } else if ((gf.operator === 'value_deviation' || gf.operator === 'no_deviation') && gf.clientCol && gf.conditionCol) {
                 const _fvs = (gf.fromVals?.length ? gf.fromVals : (gf.fromVal ? [gf.fromVal] : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
                 const _tvs = (gf.toVals?.length   ? gf.toVals   : (gf.toVal   ? [gf.toVal]   : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
                 const _gfDC = cleanFieldName(gf.dateCol || '');
@@ -1613,7 +1613,10 @@ export default function GenerateReport() {
                     if ((_fvs.length ? hasFrom : hasTo) && types.size > 1) qualifying.add(client);
                   });
                 }
-                filteredMD = filteredMD.filter(r => qualifying.has(String(getMasterValue(r, gf.clientCol) || '').trim()));
+                filteredMD = filteredMD.filter(r => {
+                  const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                  return gf.operator === 'no_deviation' ? !qualifying.has(client) : qualifying.has(client);
+                });
               } else {
                 filteredMD = filteredMD.filter(r => evaluateCondition(r, gf));
               }
@@ -1690,6 +1693,7 @@ export default function GenerateReport() {
               // so we scan masterData directly to find the actual doctor at the transition moment.
               const _devColFL = visiblePCols.find(p => p.type === 'deviation_change_date' || p.type === 'deviation_prev_type');
               if (_devColFL) {
+
                 const _dpType   = cleanFieldName(_devColFL.source || '');
                 const _dpClient = cleanFieldName(_devColFL.clientCol || '');
                 const _dpDate   = cleanFieldName(_devColFL.dateCol || '');
@@ -1732,6 +1736,18 @@ export default function GenerateReport() {
                     String(getMasterValue(a, rowField) || '').trim()
                       .localeCompare(String(getMasterValue(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
                   );
+                }
+              } else {
+                const _flVdF = (template.globalFilters || []).find(f => (f.operator === 'value_deviation' || f.operator === 'no_deviation' || f.type === 'value_deviation' || f.type === 'no_deviation') && f.clientCol)
+                  || pCols.flatMap(p => p.rowFilters || []).find(f => (f.type === 'value_deviation' || f.type === 'no_deviation') && f.clientCol);
+                if (_flVdF) {
+                  const _flCC = cleanFieldName(_flVdF.clientCol);
+                  const _flSeen = new Set();
+                  flatRows = flatRows.filter(r => {
+                    const cl = String(getMasterValue(r, _flCC) || '').trim();
+                    if (!cl || _flSeen.has(cl)) return false;
+                    _flSeen.add(cl); return true;
+                  });
                 }
               }
               const flatHdrs = [rowField || 'Group', ...visiblePCols.map(p => p.displayName || p.source || 'Untitled')];
@@ -1958,7 +1974,7 @@ export default function GenerateReport() {
                       const date   = _rvNorm(getMasterValue(r, gf.conditionCol));
                       return (rvGroups[client + '\x00' + date] || 0) >= minN;
                     });
-                  } else if (gf.operator === 'value_deviation' && gf.clientCol && gf.conditionCol) {
+                  } else if ((gf.operator === 'value_deviation' || gf.operator === 'no_deviation') && gf.clientCol && gf.conditionCol) {
                     const _fvs2 = (gf.fromVals?.length ? gf.fromVals : (gf.fromVal ? [gf.fromVal] : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
                     const _tvs2 = (gf.toVals?.length   ? gf.toVals   : (gf.toVal   ? [gf.toVal]   : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
                     const _gfDC2 = cleanFieldName(gf.dateCol || '');
@@ -2001,7 +2017,10 @@ export default function GenerateReport() {
                         if ((_fvs2.length ? hasFrom : hasTo) && types.size > 1) qualifying2.add(client);
                       });
                     }
-                    sectionData = sectionData.filter(r => qualifying2.has(String(getMasterValue(r, gf.clientCol) || '').trim()));
+                    sectionData = sectionData.filter(r => {
+                      const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                      return gf.operator === 'no_deviation' ? !qualifying2.has(client) : qualifying2.has(client);
+                    });
                   } else { sectionData = sectionData.filter(r => evaluateCondition(r, gf)); }
                 });
               }

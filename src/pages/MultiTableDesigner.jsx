@@ -823,9 +823,9 @@ export default function MultiTableDesigner() {
                                       <div key={fi} style={{ padding: '10px', background: 'rgba(245,158,11,0.05)', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.2)', display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', zIndex: (col.rowFilters?.length || 0) - fi }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                           <div style={{ display: 'flex', gap: '4px' }}>
-                                            {[['simple','Simple'],['expr_compare','Expr'],['time_range','Time'],['repeat_visit','Repeat Visit'],['value_deviation','Type Dev.']].map(([t, lbl]) => {
-                                              const active = t === 'expr_compare' ? f.type === 'expr_compare' : t === 'time_range' ? f.type === 'time_range' : t === 'repeat_visit' ? f.type === 'repeat_visit' : t === 'value_deviation' ? f.type === 'value_deviation' : (!f.type || f.type === 'simple');
-                                              const isVisit = t === 'repeat_visit' || t === 'value_deviation';
+                                            {[['simple','Simple'],['expr_compare','Expr'],['time_range','Time'],['repeat_visit','Repeat Visit'],['value_deviation','Type Dev.'],['no_deviation','No Dev.']].map(([t, lbl]) => {
+                                              const active = t === 'expr_compare' ? f.type === 'expr_compare' : t === 'time_range' ? f.type === 'time_range' : t === 'repeat_visit' ? f.type === 'repeat_visit' : t === 'value_deviation' ? f.type === 'value_deviation' : t === 'no_deviation' ? f.type === 'no_deviation' : (!f.type || f.type === 'simple');
+                                              const isVisit = t === 'repeat_visit' || t === 'value_deviation' || t === 'no_deviation';
                                               return <button key={t} onClick={() => updateColRowFilter(col.id, fi, 'type', t)} style={{ padding: '2px 8px', fontSize: '9px', borderRadius: '6px', border: `1px solid ${active ? (isVisit ? '#8b5cf6' : '#f59e0b') : 'var(--border)'}`, background: active ? (isVisit ? 'rgba(139,92,246,0.15)' : 'rgba(245,158,11,0.15)') : 'transparent', color: active ? (isVisit ? '#8b5cf6' : '#f59e0b') : 'var(--text-muted)', cursor: 'pointer', fontWeight: '700' }}>{lbl}</button>;
                                             })}
                                           </div>
@@ -857,7 +857,7 @@ export default function MultiTableDesigner() {
                                             <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Client / Patient ID Column</label><SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'clientCol', v)} placeholder="Select client column..." /></div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><label style={{ fontSize: '9px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Min visits/day:</label><input type="number" min="2" value={f.minCount || 2} onChange={e => updateColRowFilter(col.id, fi, 'minCount', parseInt(e.target.value) || 2)} style={{ padding: '6px', fontSize: '11px', width: '70px' }} /></div>
                                           </div>
-                                        ) : f.type === 'value_deviation' ? (
+                                        ) : (f.type === 'value_deviation' || f.type === 'no_deviation') ? (
                                           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Appointment Type Column</label><SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'conditionCol', v)} placeholder="e.g. Appt Type..." /></div>
                                             <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Client / Patient ID Column</label><SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'clientCol', v)} placeholder="Select client column..." /></div>
@@ -1074,6 +1074,7 @@ function FilterRow({ f, masterHeaders, masterUniqueValues, onChange, onRemove })
             <option disabled style={{ color: 'var(--text-muted)', fontSize: '10px' }}>── Visit ──</option>
             <option value="repeat_visit">Repeat Visit (Same Day)</option>
             <option value="value_deviation">Type Deviation (e.g. OP → HV)</option>
+            <option value="no_deviation">No Deviation (Excl. OP → HV)</option>
           </select>
           {(f.operator === 'this_month' || f.operator === 'prev_month') ? (
             <div style={{ fontSize: '11px', color: 'var(--primary)', padding: '4px 6px', background: 'rgba(99,102,241,0.08)', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)' }}>
@@ -1092,7 +1093,7 @@ function FilterRow({ f, masterHeaders, masterUniqueValues, onChange, onRemove })
                 <input type="number" min="2" value={f.minCount || 2} onChange={e => onChange('minCount', parseInt(e.target.value) || 2)} style={{ padding: '7px', fontSize: '12px', width: '65px' }} />
               </div>
             </div>
-          ) : f.operator === 'value_deviation' ? (
+          ) : (f.operator === 'value_deviation' || f.operator === 'no_deviation') ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => onChange('clientCol', v)} placeholder="Client / Patient ID Column..." />
               <div>
