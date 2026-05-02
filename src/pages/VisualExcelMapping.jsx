@@ -777,9 +777,15 @@ export default function VisualExcelMapping() {
                           ) : filter.operator === 'value_deviation' ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                               <SearchableDropdown options={masterHeaders} value={filter.clientCol || ''} onChange={v => handleGlobalFilterChange(index, 'clientCol', v)} placeholder="Client / Patient ID Column..." />
-                              <input placeholder="From type (e.g. Outpatient) — optional" value={filter.fromVal || ''} onChange={e => handleGlobalFilterChange(index, 'fromVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
-                              <input placeholder="To type (e.g. House Visit) — optional" value={filter.toVal || ''} onChange={e => handleGlobalFilterChange(index, 'toVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
-                              <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field = Appt Type column. Leave From/To blank to match any type change.</span>
+                              <div>
+                                <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>From Type(s) — optional</label>
+                                <MultiSelectDropdown options={masterUniqueValues[filter.conditionCol] || []} selectedValues={filter.fromVals || []} onChange={vals => handleGlobalFilterChange(index, 'fromVals', vals)} placeholder="Any from type (or add constant)..." />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label>
+                                <MultiSelectDropdown options={masterUniqueValues[filter.conditionCol] || []} selectedValues={filter.toVals || []} onChange={vals => handleGlobalFilterChange(index, 'toVals', vals)} placeholder="Any to type (or add constant)..." />
+                              </div>
+                              <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field = Appt Type column. Leave blank for any change. Use "Add Custom" for constant values.</span>
                             </div>
                           ) : filter.operator !== 'unique' && (
                             <div style={{ position: 'relative' }}>
@@ -1269,15 +1275,15 @@ export default function VisualExcelMapping() {
                    </div>
                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                      <div className="form-group">
-                       <label style={{ fontSize: '11px' }}>From Type (optional)</label>
-                       <input type="text" placeholder="e.g. Outpatient" value={modalData.fromVal || ''} onChange={e => setModalData(prev => ({ ...prev, fromVal: e.target.value }))} style={{ padding: '8px', fontSize: '12px' }} />
+                       <label style={{ fontSize: '11px' }}>From Type(s) (optional)</label>
+                       <MultiSelectDropdown options={masterUniqueValues[modalData.source] || []} selectedValues={modalData.fromVals || []} onChange={vals => setModalData(prev => ({ ...prev, fromVals: vals }))} placeholder="Any from type (or add constant)..." />
                      </div>
                      <div className="form-group">
-                       <label style={{ fontSize: '11px' }}>To Type (optional)</label>
-                       <input type="text" placeholder="e.g. House Visit" value={modalData.toVal || ''} onChange={e => setModalData(prev => ({ ...prev, toVal: e.target.value }))} style={{ padding: '8px', fontSize: '12px' }} />
+                       <label style={{ fontSize: '11px' }}>To Type(s) (optional)</label>
+                       <MultiSelectDropdown options={masterUniqueValues[modalData.source] || []} selectedValues={modalData.toVals || []} onChange={vals => setModalData(prev => ({ ...prev, toVals: vals }))} placeholder="Any to type (or add constant)..." />
                      </div>
                    </div>
-                   <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Leave From/To blank to detect any type change. Uses the first qualifying transition found when visits are sorted by date.</p>
+                   <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Leave From/To blank to detect any type change. Use "Add Custom" for constant values. Uses the first qualifying transition sorted by date.</p>
                  </div>
                )}
 
@@ -1892,9 +1898,15 @@ export default function VisualExcelMapping() {
                              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Client / Patient ID Column</label>
                              <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updCF('clientCol', v)} placeholder="Select client column..." zIndex={1200} />
                            </div>
-                           <input type="text" placeholder="From type (e.g. Outpatient) — optional" value={f.fromVal || ''} onChange={e => updCF('fromVal', e.target.value)} style={{ padding: '6px 8px', fontSize: '12px' }} />
-                           <input type="text" placeholder="To type (e.g. House Visit) — optional" value={f.toVal || ''} onChange={e => updCF('toVal', e.target.value)} style={{ padding: '6px 8px', fontSize: '12px' }} />
-                           <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change.</span>
+                           <div>
+                             <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>From Type(s) — optional</label>
+                             <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.fromVals || []} onChange={vals => updCF('fromVals', vals)} placeholder="Any from type (or add constant)..." />
+                           </div>
+                           <div>
+                             <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label>
+                             <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.toVals || []} onChange={vals => updCF('toVals', vals)} placeholder="Any to type (or add constant)..." />
+                           </div>
+                           <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change. Use "Add Custom" for constant values.</span>
                          </div>
                        ) : f.type === 'expr_compare' ? (
                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

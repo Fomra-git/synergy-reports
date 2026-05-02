@@ -379,18 +379,24 @@ export default function GenerateReport() {
       // ── Value-Deviation row-condition context ─────────────────────────────────
       const vdRowContext = {};
       {
+        const normVD = (f) => ({
+          fromVals: (f.fromVals?.length ? f.fromVals : (f.fromVal ? [f.fromVal] : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean),
+          toVals:   (f.toVals?.length   ? f.toVals   : (f.toVal   ? [f.toVal]   : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean),
+        });
         const vdPairs = [];
         const collectVD = (filters) => (filters || []).forEach(f => {
-          if (f.type === 'value_deviation' && f.clientCol && f.conditionCol)
-            vdPairs.push({ clientCol: cleanFieldName(f.clientCol), typeCol: cleanFieldName(f.conditionCol), fromVal: (f.fromVal || '').trim().toLowerCase(), toVal: (f.toVal || '').trim().toLowerCase() });
+          if (f.type === 'value_deviation' && f.clientCol && f.conditionCol) {
+            const { fromVals, toVals } = normVD(f);
+            vdPairs.push({ clientCol: cleanFieldName(f.clientCol), typeCol: cleanFieldName(f.conditionCol), fromVals, toVals });
+          }
         });
         targetTemplates.forEach(t => {
           (t.mappings || []).forEach(m => collectVD(m.columnFilters));
           (t.pivotColumns || []).forEach(p => collectVD(p.rowFilters));
           (t.sections || []).forEach(s => (s.pivotColumns || []).forEach(p => collectVD(p.rowFilters)));
         });
-        vdPairs.forEach(({ clientCol, typeCol, fromVal, toVal }) => {
-          const key = `${clientCol}__${typeCol}__${fromVal}__${toVal}`;
+        vdPairs.forEach(({ clientCol, typeCol, fromVals, toVals }) => {
+          const key = `${clientCol}__${typeCol}__${[...fromVals].sort().join('|')}__${[...toVals].sort().join('|')}`;
           if (vdRowContext[key]) return;
           const clientTypes = {};
           masterData.forEach(row => {
@@ -400,13 +406,15 @@ export default function GenerateReport() {
             if (!clientTypes[client]) clientTypes[client] = new Set();
             clientTypes[client].add(typeVal);
           });
+          const anyFrom = fromVals.length > 0, anyTo = toVals.length > 0;
           const qualifying = new Set(
             Object.entries(clientTypes)
               .filter(([, types]) => {
-                if (fromVal && toVal) return types.has(fromVal) && types.has(toVal);
-                if (fromVal) return types.has(fromVal) && types.size > 1;
-                if (toVal) return types.has(toVal) && types.size > 1;
-                return types.size > 1;
+                if (!anyFrom && !anyTo) return types.size > 1;
+                const hasFrom = !anyFrom || fromVals.some(fv => types.has(fv));
+                const hasTo   = !anyTo   || toVals.some(tv => types.has(tv));
+                if (anyFrom && anyTo) return hasFrom && hasTo;
+                return (anyFrom ? hasFrom : hasTo) && types.size > 1;
               })
               .map(([client]) => client)
           );
@@ -415,20 +423,28 @@ export default function GenerateReport() {
       }
 
       // ── Type-Transition context (change date / previous type) ─────────────────
+      const _normTX = (c) => ({
+        fromVals: (c.fromVals?.length ? c.fromVals : (c.fromVal ? [c.fromVal] : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean),
+        toVals:   (c.toVals?.length   ? c.toVals   : (c.toVal   ? [c.toVal]   : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean),
+      });
+      const _txKey = (clientCol, dateCol, typeCol, fromVals, toVals) =>
+        `${clientCol}__${dateCol}__${typeCol}__${[...fromVals].sort().join('|')}__${[...toVals].sort().join('|')}`;
       const transitionContext = {};
       {
         const txTuples = [];
         const collectTX = (cols) => (cols || []).forEach(c => {
-          if ((c.type === 'deviation_change_date' || c.type === 'deviation_prev_type') && c.clientCol && c.dateCol && c.source)
-            txTuples.push({ clientCol: cleanFieldName(c.clientCol), dateCol: cleanFieldName(c.dateCol), typeCol: cleanFieldName(c.source), fromVal: (c.fromVal || '').trim().toLowerCase(), toVal: (c.toVal || '').trim().toLowerCase() });
+          if ((c.type === 'deviation_change_date' || c.type === 'deviation_prev_type') && c.clientCol && c.dateCol && c.source) {
+            const { fromVals, toVals } = _normTX(c);
+            txTuples.push({ clientCol: cleanFieldName(c.clientCol), dateCol: cleanFieldName(c.dateCol), typeCol: cleanFieldName(c.source), fromVals, toVals });
+          }
         });
         targetTemplates.forEach(t => {
           collectTX(t.mappings);
           collectTX(t.pivotColumns);
           (t.sections || []).forEach(s => collectTX(s.pivotColumns));
         });
-        txTuples.forEach(({ clientCol, dateCol, typeCol, fromVal, toVal }) => {
-          const key = `${clientCol}__${dateCol}__${typeCol}__${fromVal}__${toVal}`;
+        txTuples.forEach(({ clientCol, dateCol, typeCol, fromVals, toVals }) => {
+          const key = _txKey(clientCol, dateCol, typeCol, fromVals, toVals);
           if (transitionContext[key]) return;
           const clientHistory = {};
           masterData.forEach(row => {
@@ -447,8 +463,8 @@ export default function GenerateReport() {
             for (let i = 1; i < visits.length; i++) {
               const curType = visits[i].tv;
               if (curType === prevType) continue;
-              const matchFrom = !fromVal || prevType === fromVal;
-              const matchTo = !toVal || curType === toVal;
+              const matchFrom = fromVals.length === 0 || fromVals.includes(prevType);
+              const matchTo   = toVals.length === 0   || toVals.includes(curType);
               if (matchFrom && matchTo) {
                 result[client] = { changeDate: visits[i].d, prevType };
                 break;
@@ -477,9 +493,9 @@ export default function GenerateReport() {
           const clientCol = cleanFieldName(mapping.clientCol || '');
           const typeCol = cleanFieldName(mapping.conditionCol || '');
           if (!clientCol || !typeCol) return true;
-          const fromVal = (mapping.fromVal || '').trim().toLowerCase();
-          const toVal = (mapping.toVal || '').trim().toLowerCase();
-          const ctx = vdRowContext[`${clientCol}__${typeCol}__${fromVal}__${toVal}`];
+          const fromVals = (mapping.fromVals?.length ? mapping.fromVals : (mapping.fromVal ? [mapping.fromVal] : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
+          const toVals   = (mapping.toVals?.length   ? mapping.toVals   : (mapping.toVal   ? [mapping.toVal]   : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
+          const ctx = vdRowContext[`${clientCol}__${typeCol}__${[...fromVals].sort().join('|')}__${[...toVals].sort().join('|')}`];
           if (!ctx) return true;
           const client = String(getMasterValue(row, clientCol) || '').trim();
           return ctx.has(client);
@@ -811,9 +827,8 @@ export default function GenerateReport() {
           const clientCol = cleanFieldName(mapping.clientCol || '');
           const dateColTX = cleanFieldName(mapping.dateCol || '');
           if (!clientCol || !dateColTX || !typeCol) return '';
-          const fromVal = (mapping.fromVal || '').trim().toLowerCase();
-          const toVal = (mapping.toVal || '').trim().toLowerCase();
-          const txKey = `${clientCol}__${dateColTX}__${typeCol}__${fromVal}__${toVal}`;
+          const { fromVals: _txFV, toVals: _txTV } = _normTX(mapping);
+          const txKey = _txKey(clientCol, dateColTX, typeCol, _txFV, _txTV);
           const txCtx = transitionContext[txKey];
           if (!txCtx) return '';
           const client = String(getMasterValue(row, clientCol) || '').trim();
@@ -823,6 +838,15 @@ export default function GenerateReport() {
           return info.prevType || '';
         }
         return applyRound(cleanValue(getMasterValue(row, sourceField), mapping, sourceField), mapping);
+      };
+
+      const toExcelVal = (v) => {
+        if (v && typeof v === 'object' && v.v !== undefined) v = v.v;
+        if (typeof v === 'string') {
+          const t = v.trim();
+          if (t !== '') { const n = Number(t); if (!isNaN(n) && String(n) === t) return n; }
+        }
+        return v;
       };
 
       const excelJSExport = async (fAOA, colHdrs, tHdr, layouts = [], highlightEmpty = true, mergeColIndices = [], reportName = '', chartConfigs = []) => {
@@ -838,7 +862,7 @@ export default function GenerateReport() {
         const numCols = (fAOA[0] || []).length;
         fAOA.forEach((row, idx) => {
           const excelRow = worksheet.getRow(currR + idx);
-          excelRow.values = row.map(v => (v && typeof v === 'object' && v.v !== undefined) ? v.v : v);
+          excelRow.values = row.map(toExcelVal);
           const isHeader = (layouts.length > 0) ? (idx === 0 || idx === 1) : idx === 0;
           for (let col = 1; col <= numCols; col++) {
             const c = excelRow.getCell(col);
@@ -1237,9 +1261,8 @@ export default function GenerateReport() {
               const typeColS = cleanFieldName(p.source || '');
               const clientColS = cleanFieldName(p.clientCol || '');
               const dateColS = cleanFieldName(p.dateCol || '');
-              const fvS = (p.fromVal || '').trim().toLowerCase();
-              const tvS = (p.toVal || '').trim().toLowerCase();
-              const txKeyS = `${clientColS}__${dateColS}__${typeColS}__${fvS}__${tvS}`;
+              const { fromVals: _sfv, toVals: _stv } = _normTX(p);
+              const txKeyS = _txKey(clientColS, dateColS, typeColS, _sfv, _stv);
               const txCtxS = transitionContext[txKeyS];
               const clientS = String(getMasterValue(fr[0], clientColS) || '').trim();
               const infoS = txCtxS ? txCtxS[clientS] : null;
@@ -1343,7 +1366,7 @@ export default function GenerateReport() {
             aoa.forEach((row, ri) => {
               const exRow = ws.getRow(dataStartR + ri);
               row.forEach((val, ci) => {
-                const c = exRow.getCell(colStart + ci); c.value = (val && typeof val === 'object' && val.v !== undefined) ? val.v : val;
+                const c = exRow.getCell(colStart + ci); c.value = toExcelVal(val);
                 applyS(c, ri === 0 ? { bold: true, fill: 'FFF1F5F9' } : {});
               });
             });
@@ -1360,7 +1383,7 @@ export default function GenerateReport() {
             }
             const sectionHeaderR = currR;
             aoa.forEach((row, ri) => {
-              const exRow = ws.getRow(currR); exRow.values = row.map(v => (v && typeof v === 'object' && v.v !== undefined) ? v.v : v);
+              const exRow = ws.getRow(currR); exRow.values = row.map(toExcelVal);
               for (let col = 1; col <= numCols; col++) applyS(exRow.getCell(col), ri === 0 ? { bold: true, fill: 'FFF1F5F9' } : {});
               currR++;
             });
@@ -1474,7 +1497,6 @@ export default function GenerateReport() {
                   return (rvGroups[client + '\x00' + date] || 0) >= minN;
                 });
               } else if (gf.operator === 'value_deviation' && gf.clientCol && gf.conditionCol) {
-                // Find clients who have appeared with multiple appointment types (e.g. Outpatient → House Visit)
                 const clientTypes = {};
                 masterData.forEach(r => {
                   const client = String(getMasterValue(r, gf.clientCol) || '').trim();
@@ -1483,15 +1505,16 @@ export default function GenerateReport() {
                   if (!clientTypes[client]) clientTypes[client] = new Set();
                   clientTypes[client].add(typeVal);
                 });
-                const fromVal = (gf.fromVal || '').trim().toLowerCase();
-                const toVal   = (gf.toVal   || '').trim().toLowerCase();
+                const _fvs = (gf.fromVals?.length ? gf.fromVals : (gf.fromVal ? [gf.fromVal] : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
+                const _tvs = (gf.toVals?.length   ? gf.toVals   : (gf.toVal   ? [gf.toVal]   : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
                 const qualifying = new Set(
                   Object.entries(clientTypes)
                     .filter(([, types]) => {
-                      if (fromVal && toVal) return types.has(fromVal) && types.has(toVal);
-                      if (fromVal) return types.has(fromVal) && types.size > 1;
-                      if (toVal)   return types.has(toVal)   && types.size > 1;
-                      return types.size > 1;
+                      if (!_fvs.length && !_tvs.length) return types.size > 1;
+                      const hasFrom = !_fvs.length || _fvs.some(fv => types.has(fv));
+                      const hasTo   = !_tvs.length || _tvs.some(tv => types.has(tv));
+                      if (_fvs.length && _tvs.length) return hasFrom && hasTo;
+                      return (_fvs.length ? hasFrom : hasTo) && types.size > 1;
                     })
                     .map(([client]) => client)
                 );
@@ -1645,9 +1668,8 @@ export default function GenerateReport() {
                   const typeCol = cleanFieldName(p.source || '');
                   const clientColP = cleanFieldName(p.clientCol || '');
                   const dateColP = cleanFieldName(p.dateCol || '');
-                  const fv = (p.fromVal || '').trim().toLowerCase();
-                  const tv = (p.toVal || '').trim().toLowerCase();
-                  const txKey = `${clientColP}__${dateColP}__${typeCol}__${fv}__${tv}`;
+                  const { fromVals: _pfv, toVals: _ptv } = _normTX(p);
+                  const txKey = _txKey(clientColP, dateColP, typeCol, _pfv, _ptv);
                   const txCtx = transitionContext[txKey];
                   const client = String(getMasterValue(fr[0], clientColP) || '').trim();
                   const info = txCtx ? txCtx[client] : null;
@@ -1785,15 +1807,16 @@ export default function GenerateReport() {
                       if (!clientTypes[client]) clientTypes[client] = new Set();
                       clientTypes[client].add(typeVal);
                     });
-                    const fromVal = (gf.fromVal || '').trim().toLowerCase();
-                    const toVal   = (gf.toVal   || '').trim().toLowerCase();
+                    const _fvs2 = (gf.fromVals?.length ? gf.fromVals : (gf.fromVal ? [gf.fromVal] : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
+                    const _tvs2 = (gf.toVals?.length   ? gf.toVals   : (gf.toVal   ? [gf.toVal]   : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
                     const qualifying = new Set(
                       Object.entries(clientTypes)
                         .filter(([, types]) => {
-                          if (fromVal && toVal) return types.has(fromVal) && types.has(toVal);
-                          if (fromVal) return types.has(fromVal) && types.size > 1;
-                          if (toVal)   return types.has(toVal)   && types.size > 1;
-                          return types.size > 1;
+                          if (!_fvs2.length && !_tvs2.length) return types.size > 1;
+                          const hasFrom = !_fvs2.length || _fvs2.some(fv => types.has(fv));
+                          const hasTo   = !_tvs2.length || _tvs2.some(tv => types.has(tv));
+                          if (_fvs2.length && _tvs2.length) return hasFrom && hasTo;
+                          return (_fvs2.length ? hasFrom : hasTo) && types.size > 1;
                         })
                         .map(([client]) => client)
                     );

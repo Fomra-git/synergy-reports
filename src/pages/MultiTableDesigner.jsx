@@ -686,15 +686,15 @@ export default function MultiTableDesigner() {
                                   </div>
                                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                                     <div className="form-group">
-                                      <label style={labelSty}>From Type (optional)</label>
-                                      <input type="text" placeholder="e.g. Outpatient" value={col.fromVal || ''} onChange={e => updatePivotCol(col.id, 'fromVal', e.target.value)} style={{ padding: '8px', fontSize: '12px' }} />
+                                      <label style={labelSty}>From Type(s) (optional)</label>
+                                      <MultiSelectDropdown options={masterUniqueValues[col.source] || []} selectedValues={col.fromVals || []} onChange={vals => updatePivotCol(col.id, 'fromVals', vals)} placeholder="Any from type (or add constant)..." />
                                     </div>
                                     <div className="form-group">
-                                      <label style={labelSty}>To Type (optional)</label>
-                                      <input type="text" placeholder="e.g. House Visit" value={col.toVal || ''} onChange={e => updatePivotCol(col.id, 'toVal', e.target.value)} style={{ padding: '8px', fontSize: '12px' }} />
+                                      <label style={labelSty}>To Type(s) (optional)</label>
+                                      <MultiSelectDropdown options={masterUniqueValues[col.source] || []} selectedValues={col.toVals || []} onChange={vals => updatePivotCol(col.id, 'toVals', vals)} placeholder="Any to type (or add constant)..." />
                                     </div>
                                   </div>
-                                  <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Leave From/To blank to detect any type change. Uses the first qualifying transition sorted by date.</p>
+                                  <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Leave From/To blank to detect any type change. Use "Add Custom" for constant values. Uses the first qualifying transition sorted by date.</p>
                                 </div>
                               )}
 
@@ -861,9 +861,9 @@ export default function MultiTableDesigner() {
                                           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Appointment Type Column</label><SearchableDropdown options={masterHeaders} value={f.conditionCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'conditionCol', v)} placeholder="e.g. Appt Type..." /></div>
                                             <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Client / Patient ID Column</label><SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'clientCol', v)} placeholder="Select client column..." /></div>
-                                            <input placeholder="From type (e.g. Outpatient) — optional" value={f.fromVal || ''} onChange={e => updateColRowFilter(col.id, fi, 'fromVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
-                                            <input placeholder="To type (e.g. House Visit) — optional" value={f.toVal || ''} onChange={e => updateColRowFilter(col.id, fi, 'toVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
-                                            <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change.</span>
+                                            <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>From Type(s) — optional</label><MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.fromVals || []} onChange={vals => updateColRowFilter(col.id, fi, 'fromVals', vals)} placeholder="Any from type (or add constant)..." /></div>
+                                            <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label><MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.toVals || []} onChange={vals => updateColRowFilter(col.id, fi, 'toVals', vals)} placeholder="Any to type (or add constant)..." /></div>
+                                            <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change. Use "Add Custom" for constant values.</span>
                                           </div>
                                         ) : (
                                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 1fr', gap: '6px', alignItems: 'end' }}>
@@ -1088,9 +1088,15 @@ function FilterRow({ f, masterHeaders, masterUniqueValues, onChange, onRemove })
           ) : f.operator === 'value_deviation' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => onChange('clientCol', v)} placeholder="Client / Patient ID Column..." />
-              <input placeholder="From type (e.g. Outpatient) — optional" value={f.fromVal || ''} onChange={e => onChange('fromVal', e.target.value)} style={{ padding: '7px', fontSize: '12px' }} />
-              <input placeholder="To type (e.g. House Visit) — optional" value={f.toVal || ''} onChange={e => onChange('toVal', e.target.value)} style={{ padding: '7px', fontSize: '12px' }} />
-              <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field = Appt Type column. Leave From/To blank to match any type change.</span>
+              <div>
+                <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>From Type(s) — optional</label>
+                <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.fromVals || []} onChange={vals => onChange('fromVals', vals)} placeholder="Any from type (or add constant)..." />
+              </div>
+              <div>
+                <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label>
+                <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.toVals || []} onChange={vals => onChange('toVals', vals)} placeholder="Any to type (or add constant)..." />
+              </div>
+              <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field = Appt Type column. Leave blank for any change. Use "Add Custom" for constant values.</span>
             </div>
           ) : f.operator === 'between' ? (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>

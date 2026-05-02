@@ -726,9 +726,15 @@ export default function PivotTemplateManager() {
                               ) : f.operator === 'value_deviation' ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                   <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updateFilter('globalFilters', i, 'clientCol', v)} placeholder="Client / Patient ID Column..." />
-                                  <input placeholder="From type (e.g. Outpatient) — optional" value={f.fromVal || ''} onChange={e => updateFilter('globalFilters', i, 'fromVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
-                                  <input placeholder="To type (e.g. House Visit) — optional" value={f.toVal || ''} onChange={e => updateFilter('globalFilters', i, 'toVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
-                                  <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field above = Appt Type column. Leave From/To blank to match any change.</span>
+                                  <div>
+                                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>From Type(s) — optional</label>
+                                    <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.fromVals || []} onChange={vals => updateFilter('globalFilters', i, 'fromVals', vals)} placeholder="Any from type (or add constant)..." />
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label>
+                                    <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.toVals || []} onChange={vals => updateFilter('globalFilters', i, 'toVals', vals)} placeholder="Any to type (or add constant)..." />
+                                  </div>
+                                  <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field above = Appt Type column. Leave blank for any change. Use "Add Custom" for constant values.</span>
                                 </div>
                               ) : (<>
                               <div style={{ position: 'absolute', top: '-18px', right: '0', display: 'flex', gap: '8px' }}>
@@ -1226,15 +1232,15 @@ export default function PivotTemplateManager() {
                                </div>
                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                                  <div className="form-group">
-                                   <label style={{ fontSize: '11px' }}>From Type (optional)</label>
-                                   <input type="text" placeholder="e.g. Outpatient" value={col.fromVal || ''} onChange={e => updatePivotColumn(col.id, 'fromVal', e.target.value)} style={{ padding: '8px', fontSize: '12px' }} />
+                                   <label style={{ fontSize: '11px' }}>From Type(s) (optional)</label>
+                                   <MultiSelectDropdown options={masterUniqueValues[col.source] || []} selectedValues={col.fromVals || []} onChange={vals => updatePivotColumn(col.id, 'fromVals', vals)} placeholder="Any from type (or add constant)..." />
                                  </div>
                                  <div className="form-group">
-                                   <label style={{ fontSize: '11px' }}>To Type (optional)</label>
-                                   <input type="text" placeholder="e.g. House Visit" value={col.toVal || ''} onChange={e => updatePivotColumn(col.id, 'toVal', e.target.value)} style={{ padding: '8px', fontSize: '12px' }} />
+                                   <label style={{ fontSize: '11px' }}>To Type(s) (optional)</label>
+                                   <MultiSelectDropdown options={masterUniqueValues[col.source] || []} selectedValues={col.toVals || []} onChange={vals => updatePivotColumn(col.id, 'toVals', vals)} placeholder="Any to type (or add constant)..." />
                                  </div>
                                </div>
-                               <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Leave From/To blank to detect any type change. Uses the first qualifying transition sorted by date.</p>
+                               <p style={{ fontSize: '10px', color: 'var(--text-muted)', margin: 0 }}>Leave From/To blank to detect any type change. Use "Add Custom" to enter constant values. Uses the first qualifying transition sorted by date.</p>
                              </div>
                            )}
 
@@ -1501,9 +1507,15 @@ export default function PivotTemplateManager() {
                                         <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Client / Patient ID Column</label>
                                         <SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'clientCol', v)} placeholder="Select client column..." />
                                       </div>
-                                      <input placeholder="From type (e.g. Outpatient) — optional" value={f.fromVal || ''} onChange={e => updateColRowFilter(col.id, fi, 'fromVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
-                                      <input placeholder="To type (e.g. House Visit) — optional" value={f.toVal || ''} onChange={e => updateColRowFilter(col.id, fi, 'toVal', e.target.value)} style={{ padding: '6px', fontSize: '11px' }} />
-                                      <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change.</span>
+                                      <div>
+                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>From Type(s) — optional</label>
+                                        <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.fromVals || []} onChange={vals => updateColRowFilter(col.id, fi, 'fromVals', vals)} placeholder="Any from type (or add constant)..." />
+                                      </div>
+                                      <div>
+                                        <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label>
+                                        <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.toVals || []} onChange={vals => updateColRowFilter(col.id, fi, 'toVals', vals)} placeholder="Any to type (or add constant)..." />
+                                      </div>
+                                      <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change. Use "Add Custom" for constant values.</span>
                                     </div>
                                   ) : f.type === 'expr_compare' ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
