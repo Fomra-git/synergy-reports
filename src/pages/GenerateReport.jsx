@@ -1233,6 +1233,55 @@ export default function GenerateReport() {
             });
           }
           const visPCols = pCols.filter(p => !p.hideInReport);
+          // Deduplicate flat list rows when a value_deviation condition is in play.
+          // With deviation filter, ALL rows for qualifying clients are in sectionData,
+          // causing each client to appear under every physio/doctor they visited.
+          const _sDevCol = visPCols.find(p => p.type === 'deviation_change_date' || p.type === 'deviation_prev_type');
+          if (_sDevCol) {
+            // Has deviation columns: source transition-event row from masterData (correct doctor)
+            const _sdType   = cleanFieldName(_sDevCol.source || '');
+            const _sdClient = cleanFieldName(_sDevCol.clientCol || '');
+            const _sdDate   = cleanFieldName(_sDevCol.dateCol || '');
+            const { fromVals: _sdFV, toVals: _sdTV } = _normTX(_sDevCol);
+            const _sdCtx = transitionContext[_txKey(_sdClient, _sdDate, _sdType, _sdFV, _sdTV)];
+            if (_sdCtx && _sdDate) {
+              const _sdayMs = (v) => { const dt = v instanceof Date ? v : parseReportDate(v); if (!dt || isNaN(dt.getTime())) return NaN; const d = new Date(dt); d.setHours(0, 0, 0, 0); return d.getTime(); };
+              const _sdTxRow = {};
+              masterData.forEach(r => {
+                const cl = String(getMasterValue(r, _sdClient) || '').trim();
+                if (_sdTxRow[cl]) return;
+                const info = _sdCtx[cl];
+                if (!info || !info.changeDate) return;
+                const rowMs = _sdayMs(getMasterValue(r, _sdDate));
+                if (isNaN(rowMs) || rowMs !== _sdayMs(info.changeDate)) return;
+                if (_sdTV.length > 0) { const rt = String(getMasterValue(r, _sdType) || '').trim().toLowerCase(); if (!_sdTV.includes(rt)) return; }
+                _sdTxRow[cl] = r;
+              });
+              const _sdSeen = new Set();
+              const _sdOther = flatRows.filter(r => {
+                const cl = String(getMasterValue(r, _sdClient) || '').trim();
+                if (_sdTxRow[cl]) return false;
+                if (_sdSeen.has(cl)) return false;
+                _sdSeen.add(cl); return true;
+              });
+              flatRows = [...Object.values(_sdTxRow), ..._sdOther].sort((a, b) =>
+                String(getMasterValue(a, rowField) || '').trim().localeCompare(String(getMasterValue(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
+              );
+            }
+          } else {
+            // No deviation columns: find clientCol from any value_deviation condition and dedup by client
+            const _vdF = (section.globalFilters || []).find(f => (f.operator === 'value_deviation' || f.type === 'value_deviation') && f.clientCol)
+              || pCols.flatMap(p => p.rowFilters || []).find(f => f.type === 'value_deviation' && f.clientCol);
+            if (_vdF) {
+              const _vdCC = cleanFieldName(_vdF.clientCol);
+              const _vdSeen = new Set();
+              flatRows = flatRows.filter(r => {
+                const cl = String(getMasterValue(r, _vdCC) || '').trim();
+                if (!cl || _vdSeen.has(cl)) return false;
+                _vdSeen.add(cl); return true;
+              });
+            }
+          }
           const flatHeaders = [section.rowFieldDisplayName || rowField, ...visPCols.map(p => p.displayName || p.source || 'Untitled')];
           const flatAOA = [flatHeaders];
           flatRows.forEach(r => {
