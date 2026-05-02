@@ -484,17 +484,15 @@ export default function GenerateReport() {
           const result = {};
           Object.entries(clientHistory).forEach(([client, visits]) => {
             visits.sort((a, b) => a.d - b.d);
-            let prevType = visits[0]?.tv || '';
-            for (let i = 1; i < visits.length; i++) {
-              const curType = visits[i].tv;
-              if (curType === prevType) continue;
-              const matchFrom = fromVals.length === 0 || fromVals.includes(prevType);
-              const matchTo   = toVals.length === 0   || toVals.includes(curType);
-              if (matchFrom && matchTo) {
-                result[client] = { changeDate: visits[i].d, prevType };
-                break;
-              }
-              prevType = curType;
+            // Use seenFrom/lastFromType (same logic as strict vdRowContext) so intermediate
+            // appointment types between the last "from" visit and the "to" visit don't corrupt
+            // prevType — we always record the actual last "from" type, not the immediate predecessor.
+            let lastFromType = '', seenFrom = false;
+            for (const { d, tv } of visits) {
+              const isFrom = fromVals.length === 0 || fromVals.includes(tv);
+              const isTo   = toVals.length === 0   || toVals.includes(tv);
+              if (isTo && seenFrom) { result[client] = { changeDate: d, prevType: lastFromType }; break; }
+              if (isFrom) { lastFromType = tv; seenFrom = true; }
             }
           });
           transitionContext[key] = result;
