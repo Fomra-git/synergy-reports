@@ -1232,6 +1232,23 @@ export default function GenerateReport() {
               return true;
             });
           }
+          // Apply per-column row filters to flat list rows so that conditions like
+          // no_deviation + CNF + calesthenic set on columns also filter which rows appear.
+          // Each visible column contributes its row filters; a row must pass ALL of them (AND).
+          const _allColFilters = pCols.flatMap(p => (p.rowFilters || []).filter(f => {
+            if (f.type === 'repeat_visit' || f.type === 'value_deviation' || f.type === 'no_deviation') return true;
+            if (f.type === 'expr_compare') return true;
+            if (f.type === 'time_range') return !!(f.conditionCol);
+            return !!(f.conditionCol) && f.operator !== 'unique';
+          }));
+          if (_allColFilters.length > 0) {
+            flatRows = flatRows.filter(r => _allColFilters.every(f => {
+              if (f.type === 'repeat_visit' || f.type === 'value_deviation' || f.type === 'no_deviation') return evaluateCondition(r, f);
+              if (f.type !== 'expr_compare' && !f.conditionCol) return true;
+              if (f.operator === 'unique') return true;
+              return evaluateCondition(r, f);
+            }));
+          }
           const visPCols = pCols.filter(p => !p.hideInReport);
           // Deduplicate flat list rows when a value_deviation condition is in play.
           // With deviation filter, ALL rows for qualifying clients are in sectionData,
@@ -1685,6 +1702,21 @@ export default function GenerateReport() {
                   seen.add(key);
                   return true;
                 });
+              }
+              // Apply per-column row filters to flat list rows (same AND logic as pivot aggregation).
+              const _pivAllColFilters = pCols.flatMap(p => (p.rowFilters || []).filter(f => {
+                if (f.type === 'repeat_visit' || f.type === 'value_deviation' || f.type === 'no_deviation') return true;
+                if (f.type === 'expr_compare') return true;
+                if (f.type === 'time_range') return !!(f.conditionCol);
+                return !!(f.conditionCol) && f.operator !== 'unique';
+              }));
+              if (_pivAllColFilters.length > 0) {
+                flatRows = flatRows.filter(r => _pivAllColFilters.every(f => {
+                  if (f.type === 'repeat_visit' || f.type === 'value_deviation' || f.type === 'no_deviation') return evaluateCondition(r, f);
+                  if (f.type !== 'expr_compare' && !f.conditionCol) return true;
+                  if (f.operator === 'unique') return true;
+                  return evaluateCondition(r, f);
+                }));
               }
               const visiblePCols = pCols.filter(p => !p.hideInReport);
               // When deviation columns are present, replace filteredMD rows for each qualifying client
