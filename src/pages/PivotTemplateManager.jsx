@@ -734,6 +734,16 @@ export default function PivotTemplateManager() {
                                     <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label>
                                     <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.toVals || []} onChange={vals => updateFilter('globalFilters', i, 'toVals', vals)} placeholder="Any to type (or add constant)..." />
                                   </div>
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '9px', color: f.strictFromTo ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                    <input type="checkbox" checked={!!f.strictFromTo} onChange={e => updateFilter('globalFilters', i, 'strictFromTo', e.target.checked)} />
+                                    Strict date-order (From must occur before To)
+                                  </label>
+                                  {f.strictFromTo && (
+                                    <div>
+                                      <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Date Column (for ordering)</label>
+                                      <SearchableDropdown options={masterHeaders} value={f.dateCol || ''} onChange={v => updateFilter('globalFilters', i, 'dateCol', v)} placeholder="Select date column..." />
+                                    </div>
+                                  )}
                                   <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field above = Appt Type column. Leave blank for any change. Use "Add Custom" for constant values.</span>
                                 </div>
                               ) : (<>
@@ -1515,6 +1525,16 @@ export default function PivotTemplateManager() {
                                         <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label>
                                         <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.toVals || []} onChange={vals => updateColRowFilter(col.id, fi, 'toVals', vals)} placeholder="Any to type (or add constant)..." />
                                       </div>
+                                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '9px', color: f.strictFromTo ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                        <input type="checkbox" checked={!!f.strictFromTo} onChange={e => updateColRowFilter(col.id, fi, 'strictFromTo', e.target.checked)} />
+                                        Strict date-order (From must occur before To)
+                                      </label>
+                                      {f.strictFromTo && (
+                                        <div>
+                                          <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Date Column (for ordering)</label>
+                                          <SearchableDropdown options={masterHeaders} value={f.dateCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'dateCol', v)} placeholder="Select date column..." />
+                                        </div>
+                                      )}
                                       <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change. Use "Add Custom" for constant values.</span>
                                     </div>
                                   ) : f.type === 'expr_compare' ? (

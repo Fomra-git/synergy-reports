@@ -863,6 +863,13 @@ export default function MultiTableDesigner() {
                                             <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Client / Patient ID Column</label><SearchableDropdown options={masterHeaders} value={f.clientCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'clientCol', v)} placeholder="Select client column..." /></div>
                                             <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>From Type(s) — optional</label><MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.fromVals || []} onChange={vals => updateColRowFilter(col.id, fi, 'fromVals', vals)} placeholder="Any from type (or add constant)..." /></div>
                                             <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label><MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.toVals || []} onChange={vals => updateColRowFilter(col.id, fi, 'toVals', vals)} placeholder="Any to type (or add constant)..." /></div>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '9px', color: f.strictFromTo ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                              <input type="checkbox" checked={!!f.strictFromTo} onChange={e => updateColRowFilter(col.id, fi, 'strictFromTo', e.target.checked)} />
+                                              Strict date-order (From must occur before To)
+                                            </label>
+                                            {f.strictFromTo && (
+                                              <div><label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Date Column (for ordering)</label><SearchableDropdown options={masterHeaders} value={f.dateCol || ''} onChange={v => updateColRowFilter(col.id, fi, 'dateCol', v)} placeholder="Select date column..." /></div>
+                                            )}
                                             <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change. Use "Add Custom" for constant values.</span>
                                           </div>
                                         ) : (
@@ -1096,6 +1103,16 @@ function FilterRow({ f, masterHeaders, masterUniqueValues, onChange, onRemove })
                 <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label>
                 <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.toVals || []} onChange={vals => onChange('toVals', vals)} placeholder="Any to type (or add constant)..." />
               </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '9px', color: f.strictFromTo ? 'var(--primary)' : 'var(--text-muted)' }}>
+                <input type="checkbox" checked={!!f.strictFromTo} onChange={e => onChange('strictFromTo', e.target.checked)} />
+                Strict date-order (From must occur before To)
+              </label>
+              {f.strictFromTo && (
+                <div>
+                  <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Date Column (for ordering)</label>
+                  <SearchableDropdown options={masterHeaders} value={f.dateCol || ''} onChange={v => onChange('dateCol', v)} placeholder="Select date column..." />
+                </div>
+              )}
               <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field = Appt Type column. Leave blank for any change. Use "Add Custom" for constant values.</span>
             </div>
           ) : f.operator === 'between' ? (

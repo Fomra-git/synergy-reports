@@ -785,6 +785,16 @@ export default function VisualExcelMapping() {
                                 <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label>
                                 <MultiSelectDropdown options={masterUniqueValues[filter.conditionCol] || []} selectedValues={filter.toVals || []} onChange={vals => handleGlobalFilterChange(index, 'toVals', vals)} placeholder="Any to type (or add constant)..." />
                               </div>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '9px', color: filter.strictFromTo ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                <input type="checkbox" checked={!!filter.strictFromTo} onChange={e => handleGlobalFilterChange(index, 'strictFromTo', e.target.checked)} />
+                                Strict date-order (From must occur before To)
+                              </label>
+                              {filter.strictFromTo && (
+                                <div>
+                                  <label style={{ fontSize: '9px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Date Column (for ordering)</label>
+                                  <SearchableDropdown options={masterHeaders} value={filter.dateCol || ''} onChange={v => handleGlobalFilterChange(index, 'dateCol', v)} placeholder="Select date column..." />
+                                </div>
+                              )}
                               <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Field = Appt Type column. Leave blank for any change. Use "Add Custom" for constant values.</span>
                             </div>
                           ) : filter.operator !== 'unique' && (
@@ -1906,6 +1916,16 @@ export default function VisualExcelMapping() {
                              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>To Type(s) — optional</label>
                              <MultiSelectDropdown options={masterUniqueValues[f.conditionCol] || []} selectedValues={f.toVals || []} onChange={vals => updCF('toVals', vals)} placeholder="Any to type (or add constant)..." />
                            </div>
+                           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '11px', color: f.strictFromTo ? 'var(--primary)' : 'var(--text-muted)' }}>
+                             <input type="checkbox" checked={!!f.strictFromTo} onChange={e => updCF('strictFromTo', e.target.checked)} />
+                             Strict date-order (From must occur before To)
+                           </label>
+                           {f.strictFromTo && (
+                             <div>
+                               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Date Column (for ordering)</label>
+                               <SearchableDropdown options={masterHeaders} value={f.dateCol || ''} onChange={v => updCF('dateCol', v)} placeholder="Select date column..." zIndex={1200} />
+                             </div>
+                           )}
                            <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>Leave From/To blank to match any type change. Use "Add Custom" for constant values.</span>
                          </div>
                        ) : f.type === 'expr_compare' ? (

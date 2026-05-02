@@ -387,7 +387,7 @@ export default function GenerateReport() {
         const collectVD = (filters) => (filters || []).forEach(f => {
           if (f.type === 'value_deviation' && f.clientCol && f.conditionCol) {
             const { fromVals, toVals } = normVD(f);
-            vdPairs.push({ clientCol: cleanFieldName(f.clientCol), typeCol: cleanFieldName(f.conditionCol), fromVals, toVals });
+            vdPairs.push({ clientCol: cleanFieldName(f.clientCol), typeCol: cleanFieldName(f.conditionCol), fromVals, toVals, dateCol: cleanFieldName(f.dateCol || ''), strictFromTo: !!f.strictFromTo });
           }
         });
         targetTemplates.forEach(t => {
@@ -395,30 +395,55 @@ export default function GenerateReport() {
           (t.pivotColumns || []).forEach(p => collectVD(p.rowFilters));
           (t.sections || []).forEach(s => (s.pivotColumns || []).forEach(p => collectVD(p.rowFilters)));
         });
-        vdPairs.forEach(({ clientCol, typeCol, fromVals, toVals }) => {
-          const key = `${clientCol}__${typeCol}__${[...fromVals].sort().join('|')}__${[...toVals].sort().join('|')}`;
+        vdPairs.forEach(({ clientCol, typeCol, fromVals, toVals, dateCol, strictFromTo }) => {
+          const key = `${clientCol}__${typeCol}__${[...fromVals].sort().join('|')}__${[...toVals].sort().join('|')}__${dateCol}__${strictFromTo ? '1' : '0'}`;
           if (vdRowContext[key]) return;
-          const clientTypes = {};
-          masterData.forEach(row => {
-            const client = String(getMasterValue(row, clientCol) || '').trim();
-            const typeVal = String(getMasterValue(row, typeCol) || '').trim().toLowerCase();
-            if (!client || !typeVal) return;
-            if (!clientTypes[client]) clientTypes[client] = new Set();
-            clientTypes[client].add(typeVal);
-          });
           const anyFrom = fromVals.length > 0, anyTo = toVals.length > 0;
-          const qualifying = new Set(
-            Object.entries(clientTypes)
-              .filter(([, types]) => {
-                if (!anyFrom && !anyTo) return types.size > 1;
-                const hasFrom = !anyFrom || fromVals.some(fv => types.has(fv));
-                const hasTo   = !anyTo   || toVals.some(tv => types.has(tv));
-                if (anyFrom && anyTo) return hasFrom && hasTo;
-                return (anyFrom ? hasFrom : hasTo) && types.size > 1;
-              })
-              .map(([client]) => client)
-          );
-          vdRowContext[key] = qualifying;
+          if (strictFromTo && dateCol) {
+            const clientRows = {};
+            masterData.forEach(row => {
+              const client = String(getMasterValue(row, clientCol) || '').trim();
+              const typeVal = String(getMasterValue(row, typeCol) || '').trim().toLowerCase();
+              const dateRaw = getMasterValue(row, dateCol);
+              const dateMs = dateRaw instanceof Date ? dateRaw.getTime() : (dateRaw ? new Date(dateRaw).getTime() : NaN);
+              if (!client || !typeVal || isNaN(dateMs)) return;
+              if (!clientRows[client]) clientRows[client] = [];
+              clientRows[client].push({ dateMs, typeVal });
+            });
+            const qualifying = new Set();
+            Object.entries(clientRows).forEach(([client, rows]) => {
+              rows.sort((a, b) => a.dateMs - b.dateMs);
+              let seenFrom = false;
+              for (const { typeVal } of rows) {
+                const isFrom = !anyFrom || fromVals.includes(typeVal);
+                const isTo   = !anyTo   || toVals.includes(typeVal);
+                if (isTo && seenFrom) { qualifying.add(client); break; }
+                if (isFrom) seenFrom = true;
+              }
+            });
+            vdRowContext[key] = qualifying;
+          } else {
+            const clientTypes = {};
+            masterData.forEach(row => {
+              const client = String(getMasterValue(row, clientCol) || '').trim();
+              const typeVal = String(getMasterValue(row, typeCol) || '').trim().toLowerCase();
+              if (!client || !typeVal) return;
+              if (!clientTypes[client]) clientTypes[client] = new Set();
+              clientTypes[client].add(typeVal);
+            });
+            const qualifying = new Set(
+              Object.entries(clientTypes)
+                .filter(([, types]) => {
+                  if (!anyFrom && !anyTo) return types.size > 1;
+                  const hasFrom = !anyFrom || fromVals.some(fv => types.has(fv));
+                  const hasTo   = !anyTo   || toVals.some(tv => types.has(tv));
+                  if (anyFrom && anyTo) return hasFrom && hasTo;
+                  return (anyFrom ? hasFrom : hasTo) && types.size > 1;
+                })
+                .map(([client]) => client)
+            );
+            vdRowContext[key] = qualifying;
+          }
         });
       }
 
@@ -495,7 +520,9 @@ export default function GenerateReport() {
           if (!clientCol || !typeCol) return true;
           const fromVals = (mapping.fromVals?.length ? mapping.fromVals : (mapping.fromVal ? [mapping.fromVal] : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
           const toVals   = (mapping.toVals?.length   ? mapping.toVals   : (mapping.toVal   ? [mapping.toVal]   : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
-          const ctx = vdRowContext[`${clientCol}__${typeCol}__${[...fromVals].sort().join('|')}__${[...toVals].sort().join('|')}`];
+          const dateCol = cleanFieldName(mapping.dateCol || '');
+          const strictFromTo = !!mapping.strictFromTo;
+          const ctx = vdRowContext[`${clientCol}__${typeCol}__${[...fromVals].sort().join('|')}__${[...toVals].sort().join('|')}__${dateCol}__${strictFromTo ? '1' : '0'}`];
           if (!ctx) return true;
           const client = String(getMasterValue(row, clientCol) || '').trim();
           return ctx.has(client);
@@ -1497,27 +1524,48 @@ export default function GenerateReport() {
                   return (rvGroups[client + '\x00' + date] || 0) >= minN;
                 });
               } else if (gf.operator === 'value_deviation' && gf.clientCol && gf.conditionCol) {
-                const clientTypes = {};
-                masterData.forEach(r => {
-                  const client = String(getMasterValue(r, gf.clientCol) || '').trim();
-                  const typeVal = String(getMasterValue(r, gf.conditionCol) || '').trim().toLowerCase();
-                  if (!client || !typeVal) return;
-                  if (!clientTypes[client]) clientTypes[client] = new Set();
-                  clientTypes[client].add(typeVal);
-                });
                 const _fvs = (gf.fromVals?.length ? gf.fromVals : (gf.fromVal ? [gf.fromVal] : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
                 const _tvs = (gf.toVals?.length   ? gf.toVals   : (gf.toVal   ? [gf.toVal]   : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
-                const qualifying = new Set(
-                  Object.entries(clientTypes)
-                    .filter(([, types]) => {
-                      if (!_fvs.length && !_tvs.length) return types.size > 1;
-                      const hasFrom = !_fvs.length || _fvs.some(fv => types.has(fv));
-                      const hasTo   = !_tvs.length || _tvs.some(tv => types.has(tv));
-                      if (_fvs.length && _tvs.length) return hasFrom && hasTo;
-                      return (_fvs.length ? hasFrom : hasTo) && types.size > 1;
-                    })
-                    .map(([client]) => client)
-                );
+                const _gfDC = cleanFieldName(gf.dateCol || '');
+                const qualifying = new Set();
+                if (gf.strictFromTo && _gfDC) {
+                  const clientRows = {};
+                  masterData.forEach(r => {
+                    const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                    const typeVal = String(getMasterValue(r, gf.conditionCol) || '').trim().toLowerCase();
+                    const dateRaw = getMasterValue(r, _gfDC);
+                    const dateMs = dateRaw instanceof Date ? dateRaw.getTime() : (dateRaw ? new Date(dateRaw).getTime() : NaN);
+                    if (!client || !typeVal || isNaN(dateMs)) return;
+                    if (!clientRows[client]) clientRows[client] = [];
+                    clientRows[client].push({ dateMs, typeVal });
+                  });
+                  Object.entries(clientRows).forEach(([client, rows]) => {
+                    rows.sort((a, b) => a.dateMs - b.dateMs);
+                    let seenFrom = false;
+                    for (const { typeVal } of rows) {
+                      const isFrom = !_fvs.length || _fvs.includes(typeVal);
+                      const isTo   = !_tvs.length || _tvs.includes(typeVal);
+                      if (isTo && seenFrom) { qualifying.add(client); break; }
+                      if (isFrom) seenFrom = true;
+                    }
+                  });
+                } else {
+                  const clientTypes = {};
+                  masterData.forEach(r => {
+                    const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                    const typeVal = String(getMasterValue(r, gf.conditionCol) || '').trim().toLowerCase();
+                    if (!client || !typeVal) return;
+                    if (!clientTypes[client]) clientTypes[client] = new Set();
+                    clientTypes[client].add(typeVal);
+                  });
+                  Object.entries(clientTypes).forEach(([client, types]) => {
+                    if (!_fvs.length && !_tvs.length) { if (types.size > 1) qualifying.add(client); return; }
+                    const hasFrom = !_fvs.length || _fvs.some(fv => types.has(fv));
+                    const hasTo   = !_tvs.length || _tvs.some(tv => types.has(tv));
+                    if (_fvs.length && _tvs.length) { if (hasFrom && hasTo) qualifying.add(client); return; }
+                    if ((_fvs.length ? hasFrom : hasTo) && types.size > 1) qualifying.add(client);
+                  });
+                }
                 filteredMD = filteredMD.filter(r => qualifying.has(String(getMasterValue(r, gf.clientCol) || '').trim()));
               } else {
                 filteredMD = filteredMD.filter(r => evaluateCondition(r, gf));
@@ -1814,28 +1862,49 @@ export default function GenerateReport() {
                       return (rvGroups[client + '\x00' + date] || 0) >= minN;
                     });
                   } else if (gf.operator === 'value_deviation' && gf.clientCol && gf.conditionCol) {
-                    const clientTypes = {};
-                    masterData.forEach(r => {
-                      const client = String(getMasterValue(r, gf.clientCol) || '').trim();
-                      const typeVal = String(getMasterValue(r, gf.conditionCol) || '').trim().toLowerCase();
-                      if (!client || !typeVal) return;
-                      if (!clientTypes[client]) clientTypes[client] = new Set();
-                      clientTypes[client].add(typeVal);
-                    });
                     const _fvs2 = (gf.fromVals?.length ? gf.fromVals : (gf.fromVal ? [gf.fromVal] : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
                     const _tvs2 = (gf.toVals?.length   ? gf.toVals   : (gf.toVal   ? [gf.toVal]   : [])).map(s => String(s).trim().toLowerCase()).filter(Boolean);
-                    const qualifying = new Set(
-                      Object.entries(clientTypes)
-                        .filter(([, types]) => {
-                          if (!_fvs2.length && !_tvs2.length) return types.size > 1;
-                          const hasFrom = !_fvs2.length || _fvs2.some(fv => types.has(fv));
-                          const hasTo   = !_tvs2.length || _tvs2.some(tv => types.has(tv));
-                          if (_fvs2.length && _tvs2.length) return hasFrom && hasTo;
-                          return (_fvs2.length ? hasFrom : hasTo) && types.size > 1;
-                        })
-                        .map(([client]) => client)
-                    );
-                    sectionData = sectionData.filter(r => qualifying.has(String(getMasterValue(r, gf.clientCol) || '').trim()));
+                    const _gfDC2 = cleanFieldName(gf.dateCol || '');
+                    const qualifying2 = new Set();
+                    if (gf.strictFromTo && _gfDC2) {
+                      const clientRows2 = {};
+                      masterData.forEach(r => {
+                        const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                        const typeVal = String(getMasterValue(r, gf.conditionCol) || '').trim().toLowerCase();
+                        const dateRaw = getMasterValue(r, _gfDC2);
+                        const dateMs = dateRaw instanceof Date ? dateRaw.getTime() : (dateRaw ? new Date(dateRaw).getTime() : NaN);
+                        if (!client || !typeVal || isNaN(dateMs)) return;
+                        if (!clientRows2[client]) clientRows2[client] = [];
+                        clientRows2[client].push({ dateMs, typeVal });
+                      });
+                      Object.entries(clientRows2).forEach(([client, rows]) => {
+                        rows.sort((a, b) => a.dateMs - b.dateMs);
+                        let seenFrom = false;
+                        for (const { typeVal } of rows) {
+                          const isFrom = !_fvs2.length || _fvs2.includes(typeVal);
+                          const isTo   = !_tvs2.length || _tvs2.includes(typeVal);
+                          if (isTo && seenFrom) { qualifying2.add(client); break; }
+                          if (isFrom) seenFrom = true;
+                        }
+                      });
+                    } else {
+                      const clientTypes2 = {};
+                      masterData.forEach(r => {
+                        const client = String(getMasterValue(r, gf.clientCol) || '').trim();
+                        const typeVal = String(getMasterValue(r, gf.conditionCol) || '').trim().toLowerCase();
+                        if (!client || !typeVal) return;
+                        if (!clientTypes2[client]) clientTypes2[client] = new Set();
+                        clientTypes2[client].add(typeVal);
+                      });
+                      Object.entries(clientTypes2).forEach(([client, types]) => {
+                        if (!_fvs2.length && !_tvs2.length) { if (types.size > 1) qualifying2.add(client); return; }
+                        const hasFrom = !_fvs2.length || _fvs2.some(fv => types.has(fv));
+                        const hasTo   = !_tvs2.length || _tvs2.some(tv => types.has(tv));
+                        if (_fvs2.length && _tvs2.length) { if (hasFrom && hasTo) qualifying2.add(client); return; }
+                        if ((_fvs2.length ? hasFrom : hasTo) && types.size > 1) qualifying2.add(client);
+                      });
+                    }
+                    sectionData = sectionData.filter(r => qualifying2.has(String(getMasterValue(r, gf.clientCol) || '').trim()));
                   } else { sectionData = sectionData.filter(r => evaluateCondition(r, gf)); }
                 });
               }
