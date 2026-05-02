@@ -1637,6 +1637,35 @@ export default function GenerateReport() {
                 });
               }
               const visiblePCols = pCols.filter(p => !p.hideInReport);
+              // When deviation columns are present, filter flatRows to only the actual transition-event
+              // row per client (date = changeDate AND type in toVals). Without this, a client who visited
+              // multiple doctors appears once per doctor with the same transition date/category.
+              const _devColFL = visiblePCols.find(p => p.type === 'deviation_change_date' || p.type === 'deviation_prev_type');
+              if (_devColFL) {
+                const _dpType   = cleanFieldName(_devColFL.source || '');
+                const _dpClient = cleanFieldName(_devColFL.clientCol || '');
+                const _dpDate   = cleanFieldName(_devColFL.dateCol || '');
+                const { fromVals: _dpFV, toVals: _dpTV } = _normTX(_devColFL);
+                const _dpCtx = transitionContext[_txKey(_dpClient, _dpDate, _dpType, _dpFV, _dpTV)];
+                if (_dpCtx && _dpDate) {
+                  flatRows = flatRows.filter(r => {
+                    const _dpCl = String(getMasterValue(r, _dpClient) || '').trim();
+                    const _dpInfo = _dpCtx[_dpCl];
+                    if (!_dpInfo || !_dpInfo.changeDate) return true; // no transition info, keep
+                    const rowDateRaw = getMasterValue(r, _dpDate);
+                    const rowDate = rowDateRaw instanceof Date ? rowDateRaw : (rowDateRaw ? new Date(String(rowDateRaw)) : null);
+                    if (!rowDate || isNaN(rowDate.getTime())) return false;
+                    const rd = new Date(rowDate); rd.setHours(0, 0, 0, 0);
+                    const cd = new Date(_dpInfo.changeDate); cd.setHours(0, 0, 0, 0);
+                    if (rd.getTime() !== cd.getTime()) return false;
+                    if (_dpTV.length > 0) {
+                      const rowType = String(getMasterValue(r, _dpType) || '').trim().toLowerCase();
+                      return _dpTV.includes(rowType);
+                    }
+                    return true;
+                  });
+                }
+              }
               const flatHdrs = [rowField || 'Group', ...visiblePCols.map(p => p.displayName || p.source || 'Untitled')];
               const flatAOA = [flatHdrs, ...flatRows.map(r => {
                 const gk = cleanValue(getMasterValue(r, rowField), rowTx, rowField) || String(getMasterValue(r, rowField) || '').trim();
