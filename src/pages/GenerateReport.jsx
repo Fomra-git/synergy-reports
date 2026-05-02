@@ -404,8 +404,8 @@ export default function GenerateReport() {
             masterData.forEach(row => {
               const client = String(getMasterValue(row, clientCol) || '').trim();
               const typeVal = String(getMasterValue(row, typeCol) || '').trim().toLowerCase();
-              const dateRaw = getMasterValue(row, dateCol);
-              const dateMs = dateRaw instanceof Date ? dateRaw.getTime() : (dateRaw ? new Date(dateRaw).getTime() : NaN);
+              const _pd = parseReportDate(getMasterValue(row, dateCol));
+              const dateMs = _pd ? _pd.getTime() : NaN;
               if (!client || !typeVal || isNaN(dateMs)) return;
               if (!clientRows[client]) clientRows[client] = [];
               clientRows[client].push({ dateMs, typeVal });
@@ -1533,8 +1533,8 @@ export default function GenerateReport() {
                   masterData.forEach(r => {
                     const client = String(getMasterValue(r, gf.clientCol) || '').trim();
                     const typeVal = String(getMasterValue(r, gf.conditionCol) || '').trim().toLowerCase();
-                    const dateRaw = getMasterValue(r, _gfDC);
-                    const dateMs = dateRaw instanceof Date ? dateRaw.getTime() : (dateRaw ? new Date(dateRaw).getTime() : NaN);
+                    const _pd = parseReportDate(getMasterValue(r, _gfDC));
+                    const dateMs = _pd ? _pd.getTime() : NaN;
                     if (!client || !typeVal || isNaN(dateMs)) return;
                     if (!clientRows[client]) clientRows[client] = [];
                     clientRows[client].push({ dateMs, typeVal });
@@ -1921,8 +1921,8 @@ export default function GenerateReport() {
                       masterData.forEach(r => {
                         const client = String(getMasterValue(r, gf.clientCol) || '').trim();
                         const typeVal = String(getMasterValue(r, gf.conditionCol) || '').trim().toLowerCase();
-                        const dateRaw = getMasterValue(r, _gfDC2);
-                        const dateMs = dateRaw instanceof Date ? dateRaw.getTime() : (dateRaw ? new Date(dateRaw).getTime() : NaN);
+                        const _pd2 = parseReportDate(getMasterValue(r, _gfDC2));
+                        const dateMs = _pd2 ? _pd2.getTime() : NaN;
                         if (!client || !typeVal || isNaN(dateMs)) return;
                         if (!clientRows2[client]) clientRows2[client] = [];
                         clientRows2[client].push({ dateMs, typeVal });
