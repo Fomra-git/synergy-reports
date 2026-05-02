@@ -1669,13 +1669,19 @@ export default function GenerateReport() {
                     }
                     _txEventRow[cl] = r;
                   });
-                  // Replace flatRows: qualifying clients → their transition-event row from masterData;
-                  // clients with no transition info → keep their existing flatRows entries unchanged.
-                  const _noTxRows = flatRows.filter(r => {
+                  // Replace flatRows:
+                  // - Clients with a found transition-event row → that single masterData row (correct doctor)
+                  // - All other clients (no transition context OR no matching event row found) →
+                  //   deduplicate by clientId so each appears only once (prevents multi-doctor duplicates)
+                  const _seenOther = new Set();
+                  const _otherRows = flatRows.filter(r => {
                     const cl = String(getMasterValue(r, _dpClient) || '').trim();
-                    return !_dpCtx[cl];
+                    if (_txEventRow[cl]) return false; // handled by event rows above
+                    if (_seenOther.has(cl)) return false;
+                    _seenOther.add(cl);
+                    return true;
                   });
-                  flatRows = [...Object.values(_txEventRow), ..._noTxRows].sort((a, b) =>
+                  flatRows = [...Object.values(_txEventRow), ..._otherRows].sort((a, b) =>
                     String(getMasterValue(a, rowField) || '').trim()
                       .localeCompare(String(getMasterValue(b, rowField) || '').trim(), undefined, { sensitivity: 'base' })
                   );
