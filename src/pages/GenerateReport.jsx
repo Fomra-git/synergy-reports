@@ -1530,9 +1530,283 @@ export default function GenerateReport() {
         return [hdr, ...dataRows];
       };
 
+      const generateFitnessScoreboardReport = async (template) => {
+        const fsBranchCol   = cleanFieldName(template.branchCol   || '');
+        const fsClientCol   = cleanFieldName(template.clientCol   || '');
+        const fsTimeCol     = cleanFieldName(template.timeCol     || '');
+        const fsCategoryCol = cleanFieldName(template.categoryCol || '');
+        const fsDateCol     = cleanFieldName(template.dateCol     || '');
+        const fsTimeSlots   = template.timeSlots  || [];
+        const fsPeriods     = template.periods    || [];
+        const fsAltPrefix   = (template.alternateDayPrefix || '3/').toLowerCase();
+        const fsDlyPrefix   = (template.dailyDayPrefix    || '5/').toLowerCase();
+        const fsTitle       = template.reportTitle || 'Fitness report';
+
+        const parseHHMM = (s) => {
+          if (!s) return 0;
+          const [h, m] = String(s).split(':').map(Number);
+          return ((h || 0) * 60 + (m || 0)) * 60000;
+        };
+
+        const fsDateKey = (rawVal) => {
+          const d = parseReportDate(rawVal);
+          if (!d || isNaN(d.getTime())) return null;
+          return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        };
+
+        // Pre-filter helper
+        const fsEvalFilter = (val, operator, conditionVals = []) => {
+          const tv = String(val ?? '').toLowerCase().trim();
+          const cvs = (conditionVals || []).map(v => String(v || '').toLowerCase().trim());
+          if (operator === '==')          return cvs.length ? cvs.some(c => tv === c) : true;
+          if (operator === '!=')          return cvs.length ? cvs.every(c => tv !== c) : true;
+          if (operator === 'contains')    return cvs.length ? cvs.some(c => tv.includes(c)) : true;
+          if (operator === 'not_contains') return cvs.length ? cvs.every(c => !tv.includes(c)) : true;
+          if (operator === 'between') {
+            const n = parseFloat(tv);
+            return !isNaN(n) && n >= parseFloat(cvs[0] || '-Infinity') && n <= parseFloat(cvs[1] || 'Infinity');
+          }
+          return true;
+        };
+
+        // Apply pre-filters to master data
+        let fsMasterData = [...masterData];
+        (template.preFilters || []).forEach(f => {
+          if (!f.conditionCol) return;
+          const col = cleanFieldName(f.conditionCol);
+          fsMasterData = fsMasterData.filter(r => fsEvalFilter(getMasterValue(r, col), f.operator, f.conditionVals));
+        });
+
+        // Collect unique branches in order of appearance (from pre-filtered data)
+        const fsBranchOrder = [];
+        const fsBranchSeen  = new Set();
+        fsMasterData.forEach(r => {
+          const b = String(getMasterValue(r, fsBranchCol) || '').trim();
+          if (b && !fsBranchSeen.has(b)) { fsBranchOrder.push(b); fsBranchSeen.add(b); }
+        });
+
+        // Build lookup: key = "branch|||periodId|||slotId|||type" → { total: Set, dateMap: {} }
+        const fsLookup = {};
+        fsMasterData.forEach(row => {
+          const branch   = String(getMasterValue(row, fsBranchCol)   || '').trim();
+          const client   = String(getMasterValue(row, fsClientCol)   || '').trim();
+          const category = String(getMasterValue(row, fsCategoryCol) || '').trim().toLowerCase();
+          const rawTime  = getMasterValue(row, fsTimeCol);
+          const rawDate  = getMasterValue(row, fsDateCol);
+          if (!branch || !client || !fsBranchCol || !fsClientCol || !fsCategoryCol || !fsTimeCol) return;
+
+          const timeMs = parseTimeValue(rawTime);
+          if (timeMs === null) return;
+
+          const matchedPeriod = fsPeriods.find(p => category.includes((p.keyword || '').toLowerCase()));
+          if (!matchedPeriod) return;
+
+          let fsType = null;
+          if (category.includes(fsAltPrefix)) fsType = 'A';
+          else if (category.includes(fsDlyPrefix)) fsType = 'D';
+          if (!fsType) return;
+
+          const matchedSlot = fsTimeSlots.find(ts => {
+            const fromMs = parseHHMM(ts.from);
+            const toMs   = parseHHMM(ts.to);
+            return timeMs >= fromMs && timeMs < toMs;
+          });
+          if (!matchedSlot) return;
+
+          const key = `${branch}|||${matchedPeriod.id}|||${matchedSlot.id}|||${fsType}`;
+          if (!fsLookup[key]) fsLookup[key] = { total: new Set(), dateMap: {} };
+          const cell = fsLookup[key];
+          cell.total.add(client);
+          const dk = fsDateKey(rawDate);
+          if (dk) {
+            if (!cell.dateMap[dk]) cell.dateMap[dk] = new Set();
+            cell.dateMap[dk].add(client);
+          }
+        });
+
+        const fsCellValue = (branch, periodId, slotId, type) => {
+          const key = `${branch}|||${periodId}|||${slotId}|||${type}`;
+          const cell = fsLookup[key];
+          if (!cell || cell.total.size === 0) return '0(0)';
+          const total = cell.total.size;
+          const dates  = Object.keys(cell.dateMap).sort();
+          const latest = dates[dates.length - 1];
+          const current = latest ? cell.dateMap[latest].size : 0;
+          return `${current}(${total})`;
+        };
+
+        // Apply post-filters to branch list
+        let fsFilteredBranches = [...fsBranchOrder];
+        (template.postFilters || []).forEach(f => {
+          if (!(f.conditionVals || []).length) return;
+          fsFilteredBranches = fsFilteredBranches.filter(branch =>
+            fsEvalFilter(branch, f.operator, f.conditionVals)
+          );
+        });
+        if (template.hideEmptyBranches) {
+          fsFilteredBranches = fsFilteredBranches.filter(branch =>
+            fsPeriods.some(period =>
+              fsTimeSlots.some(ts =>
+                fsCellValue(branch, period.id, ts.id, 'A') !== '0(0)' ||
+                fsCellValue(branch, period.id, ts.id, 'D') !== '0(0)'
+              )
+            )
+          );
+        }
+
+        // Find latest date across filtered master data (for title)
+        let fsLatestDateMs = 0;
+        let fsLatestDateStr = '';
+        if (fsDateCol) {
+          fsMasterData.forEach(row => {
+            const d = parseReportDate(getMasterValue(row, fsDateCol));
+            if (d && !isNaN(d.getTime()) && d.getTime() > fsLatestDateMs) {
+              fsLatestDateMs = d.getTime();
+              fsLatestDateStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+            }
+          });
+        }
+        const fsTitleFinal = fsLatestDateStr ? `${fsTitle} - ${fsLatestDateStr}` : fsTitle;
+
+        // Build workbook
+        const fsWb = new ExcelJS.Workbook();
+        const fsWs = fsWb.addWorksheet('Fitness Scoreboard');
+
+        const TOTAL_COLS = 2 + fsTimeSlots.length * 2;
+
+        const thin   = { top: { style: 'thin' },   left: { style: 'thin' },   bottom: { style: 'thin' },   right: { style: 'thin' }   };
+        const medium = { top: { style: 'medium' },  left: { style: 'medium' },  bottom: { style: 'medium' },  right: { style: 'medium' }  };
+
+        const applyFsStyle = (cell, s) => {
+          if (!s) return;
+          if (s.font)      cell.font      = s.font;
+          if (s.alignment) cell.alignment = s.alignment;
+          if (s.fill)      cell.fill      = s.fill;
+          if (s.border)    cell.border    = s.border;
+        };
+
+        // Dark blue title
+        const titleStyle = {
+          font:      { bold: true, size: 14, color: { argb: 'FFFFFFFF' } },
+          alignment: { horizontal: 'center', vertical: 'middle' },
+          fill:      { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A237E' } },
+          border:    medium,
+        };
+        // Green header rows (same green for both row 2 and row 3)
+        const hdrStyle = {
+          font:      { bold: true, size: 10, color: { argb: 'FFFFFFFF' } },
+          alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+          fill:      { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E7D32' } },
+          border:    thin,
+        };
+        // No fill for data cells — only borders
+        const branchStyle = {
+          font:      { bold: true, size: 10 },
+          alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+          border:    medium,
+        };
+        const periodStyle = {
+          font:      { bold: true, size: 9 },
+          alignment: { horizontal: 'left', vertical: 'middle' },
+          border:    thin,
+        };
+        const cellStyle = {
+          font:      { size: 9 },
+          alignment: { horizontal: 'center', vertical: 'middle' },
+          border:    thin,
+        };
+
+        // Row 1: Title with date
+        const titleRow = fsWs.addRow([fsTitleFinal, ...Array(TOTAL_COLS - 1).fill(null)]);
+        fsWs.mergeCells(1, 1, 1, TOTAL_COLS);
+        applyFsStyle(titleRow.getCell(1), titleStyle);
+        titleRow.height = 28;
+
+        // Row 2: Header (Branch | Period | slot labels merged over A+D)
+        const hdrVals = ['Branch', 'Period'];
+        fsTimeSlots.forEach(ts => { hdrVals.push(ts.label); hdrVals.push(null); });
+        const hdrRow = fsWs.addRow(hdrVals);
+        hdrRow.height = 22;
+        applyFsStyle(hdrRow.getCell(1), hdrStyle);
+        applyFsStyle(hdrRow.getCell(2), hdrStyle);
+        fsTimeSlots.forEach((_, si) => {
+          const col = 3 + si * 2;
+          applyFsStyle(hdrRow.getCell(col),     hdrStyle);
+          applyFsStyle(hdrRow.getCell(col + 1), hdrStyle);
+          if (TOTAL_COLS >= col + 1) fsWs.mergeCells(2, col, 2, col + 1);
+        });
+
+        // Row 3: Sub-header A | D — same green as row 2
+        const subVals = [null, null];
+        fsTimeSlots.forEach(() => { subVals.push('A'); subVals.push('D'); });
+        const subRow = fsWs.addRow(subVals);
+        subRow.height = 18;
+        applyFsStyle(subRow.getCell(1), hdrStyle);
+        applyFsStyle(subRow.getCell(2), hdrStyle);
+        fsTimeSlots.forEach((_, si) => {
+          applyFsStyle(subRow.getCell(3 + si * 2),     hdrStyle);
+          applyFsStyle(subRow.getCell(3 + si * 2 + 1), hdrStyle);
+        });
+
+        // Data rows
+        let excelDataRow = 4; // 1-indexed, rows 1-3 used above
+        fsFilteredBranches.forEach(branch => {
+          // Determine which period rows to emit (respecting hideEmptyRows)
+          const visiblePeriods = fsPeriods.filter(period => {
+            if (!template.hideEmptyRows) return true;
+            return fsTimeSlots.some(ts =>
+              fsCellValue(branch, period.id, ts.id, 'A') !== '0(0)' ||
+              fsCellValue(branch, period.id, ts.id, 'D') !== '0(0)'
+            );
+          });
+          if (visiblePeriods.length === 0) return;
+
+          const branchStartRow = excelDataRow;
+          const branchEndRow   = excelDataRow + visiblePeriods.length - 1;
+
+          visiblePeriods.forEach((period, pIdx) => {
+            const rowVals = [pIdx === 0 ? branch : null, period.label];
+            fsTimeSlots.forEach(ts => {
+              rowVals.push(fsCellValue(branch, period.id, ts.id, 'A'));
+              rowVals.push(fsCellValue(branch, period.id, ts.id, 'D'));
+            });
+            const dataRow = fsWs.addRow(rowVals);
+            dataRow.height = 18;
+            applyFsStyle(dataRow.getCell(1), branchStyle);
+            applyFsStyle(dataRow.getCell(2), periodStyle);
+            fsTimeSlots.forEach((_, si) => {
+              applyFsStyle(dataRow.getCell(3 + si * 2),     cellStyle);
+              applyFsStyle(dataRow.getCell(3 + si * 2 + 1), cellStyle);
+            });
+            excelDataRow++;
+          });
+
+          // Merge branch column across visible period rows
+          if (visiblePeriods.length > 1) fsWs.mergeCells(branchStartRow, 1, branchEndRow, 1);
+        });
+
+        // Column widths
+        fsWs.getColumn(1).width = 20;
+        fsWs.getColumn(2).width = 14;
+        fsTimeSlots.forEach((_, si) => {
+          fsWs.getColumn(3 + si * 2).width     = 10;
+          fsWs.getColumn(3 + si * 2 + 1).width = 10;
+        });
+
+        return await fsWb.xlsx.writeBuffer();
+      };
+
       for (const template of targetTemplates) {
         try {
           setStatus(`Generating ${template.name || 'Untitled'}...`);
+          if (template.type === 'fitness_scoreboard') {
+            const fsBuffer   = await generateFitnessScoreboardReport(template);
+            const fsFileName = `${(template.name || 'FitnessScoreboard').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`;
+            const excelMime  = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            if (isSingle) saveAs(new Blob([fsBuffer], { type: excelMime }), fsFileName);
+            else zip.file(fsFileName, fsBuffer);
+            continue;
+          }
           if (template.type === 'scoreboard') {
             const sbBuffer = await generateScoreboardReport(template);
             const sbFileName = `${(template.name || 'ScoreBoard').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`;

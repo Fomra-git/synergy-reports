@@ -14,7 +14,8 @@ import {
   BarChart4,
   Trophy,
   Layers,
-  Eye
+  Eye,
+  Activity
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
@@ -94,6 +95,10 @@ export default function Layout() {
               <NavLink to="/multi-table-designer" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                 <Layers size={20} />
                 Multi-Table
+              </NavLink>
+              <NavLink to="/fitness-scoreboard-designer" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                <Activity size={20} />
+                Fitness Board
               </NavLink>
             </>
           )}
