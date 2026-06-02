@@ -1595,8 +1595,21 @@ export default function GenerateReport() {
           const rawDate  = getMasterValue(row, fsDateCol);
           if (!branch || !client || !fsBranchCol || !fsClientCol || !fsCategoryCol || !fsTimeCol) return;
 
-          const timeMs = parseTimeValue(rawTime);
+          let timeMs = parseTimeValue(rawTime);
           if (timeMs === null) return;
+          // Normalize to time-of-day ms (0–86399999).
+          // parseTimeValue returns raw Excel serial (e.g. 45799.25) unchanged for datetime
+          // cells (number >= 1), which is far smaller than slot thresholds in ms.
+          // For datetime strings it returns a Unix timestamp (>> 86400000).
+          const _rawNum = typeof rawTime === 'number' ? rawTime : Number(rawTime);
+          if (!isNaN(_rawNum) && _rawNum >= 1) {
+            // Excel datetime serial: fractional part is the time-of-day fraction
+            timeMs = (_rawNum % 1) * 86400000;
+          } else if (timeMs >= 86400000) {
+            // Datetime string parsed as Unix ms: extract local time-of-day
+            const _td = new Date(timeMs);
+            timeMs = _td.getHours() * 3600000 + _td.getMinutes() * 60000 + _td.getSeconds() * 1000;
+          }
 
           const matchedPeriod = fsPeriods.find(p => category.includes((p.keyword || '').toLowerCase()));
           if (!matchedPeriod) return;
