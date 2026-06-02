@@ -1592,15 +1592,24 @@ export default function GenerateReport() {
           if (b && !fsBranchSeen.has(b)) { fsBranchOrder.push(b); fsBranchSeen.add(b); }
         });
 
-        // Build lookup: key = "branch|||periodId|||slotId|||type" → { total: Set, dateMap: {} }
+        // Step 1: find the global max date across the entire pre-filtered dataset
+        let fsGlobalMaxDk = '';
+        if (fsDateCol) {
+          fsMasterData.forEach(row => {
+            const dk = fsDateKey(getMasterValue(row, fsDateCol));
+            if (dk && dk > fsGlobalMaxDk) fsGlobalMaxDk = dk;
+          });
+        }
+
+        // Step 2: build lookup with plain row counters (no deduplication)
+        // key = "branch|||periodId|||slotId|||type" → { total: number, currentCount: number }
         const fsLookup = {};
         fsMasterData.forEach(row => {
           const branch   = String(getMasterValue(row, fsBranchCol)   || '').trim();
-          const client   = String(getMasterValue(row, fsClientCol)   || '').trim();
           const category = String(getMasterValue(row, fsCategoryCol) || '').trim().toLowerCase();
           const rawTime  = getMasterValue(row, fsTimeCol);
           const rawDate  = getMasterValue(row, fsDateCol);
-          if (!branch || !client || !fsBranchCol || !fsClientCol || !fsCategoryCol || !fsTimeCol) return;
+          if (!branch || !fsBranchCol || !fsCategoryCol || !fsTimeCol) return;
 
           let timeMs = parseTimeValue(rawTime);
           if (timeMs === null) return;
@@ -1610,10 +1619,8 @@ export default function GenerateReport() {
           // For datetime strings it returns a Unix timestamp (>> 86400000).
           const _rawNum = typeof rawTime === 'number' ? rawTime : Number(rawTime);
           if (!isNaN(_rawNum) && _rawNum >= 1) {
-            // Excel datetime serial: fractional part is the time-of-day fraction
             timeMs = (_rawNum % 1) * 86400000;
           } else if (timeMs >= 86400000) {
-            // Datetime string parsed as Unix ms: extract local time-of-day
             const _td = new Date(timeMs);
             timeMs = _td.getHours() * 3600000 + _td.getMinutes() * 60000 + _td.getSeconds() * 1000;
           }
@@ -1633,26 +1640,20 @@ export default function GenerateReport() {
           });
           if (!matchedSlot) return;
 
-          const key = `${branch}|||${matchedPeriod.id}|||${matchedSlot.id}|||${fsType}`;
-          if (!fsLookup[key]) fsLookup[key] = { total: new Set(), dateMap: {} };
-          const cell = fsLookup[key];
-          cell.total.add(client);
           const dk = fsDateKey(rawDate);
-          if (dk) {
-            if (!cell.dateMap[dk]) cell.dateMap[dk] = new Set();
-            cell.dateMap[dk].add(client);
-          }
+          const isCurrentDate = dk && dk === fsGlobalMaxDk;
+
+          const key = `${branch}|||${matchedPeriod.id}|||${matchedSlot.id}|||${fsType}`;
+          if (!fsLookup[key]) fsLookup[key] = { total: 0, currentCount: 0 };
+          fsLookup[key].total += 1;
+          if (isCurrentDate) fsLookup[key].currentCount += 1;
         });
 
         const fsCellValue = (branch, periodId, slotId, type) => {
           const key = `${branch}|||${periodId}|||${slotId}|||${type}`;
           const cell = fsLookup[key];
-          if (!cell || cell.total.size === 0) return '0(0)';
-          const total = cell.total.size;
-          const dates  = Object.keys(cell.dateMap).sort();
-          const latest = dates[dates.length - 1];
-          const current = latest ? cell.dateMap[latest].size : 0;
-          return `${current}(${total})`;
+          if (!cell || cell.total === 0) return '0(0)';
+          return `${cell.currentCount}(${cell.total})`;
         };
 
         // Apply post-filters to branch list
@@ -1674,19 +1675,13 @@ export default function GenerateReport() {
           );
         }
 
-        // Find latest date across filtered master data (for title)
-        let fsLatestDateMs = 0;
-        let fsLatestDateStr = '';
-        if (fsDateCol) {
-          fsMasterData.forEach(row => {
-            const d = parseReportDate(getMasterValue(row, fsDateCol));
-            if (d && !isNaN(d.getTime()) && d.getTime() > fsLatestDateMs) {
-              fsLatestDateMs = d.getTime();
-              fsLatestDateStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-            }
-          });
+        // Format title date from the global max date already computed above
+        let fsTitleDateStr = '';
+        if (fsGlobalMaxDk) {
+          const [gy, gm, gd] = fsGlobalMaxDk.split('-').map(Number);
+          fsTitleDateStr = `${String(gd).padStart(2,'0')}/${String(gm).padStart(2,'0')}/${gy}`;
         }
-        const fsTitleFinal = fsLatestDateStr ? `${fsTitle} - ${fsLatestDateStr}` : fsTitle;
+        const fsTitleFinal = fsTitleDateStr ? `${fsTitle} - ${fsTitleDateStr}` : fsTitle;
 
         // Build workbook
         const fsWb = new ExcelJS.Workbook();
