@@ -1538,8 +1538,15 @@ export default function GenerateReport() {
         const fsDateCol     = cleanFieldName(template.dateCol     || '');
         const fsTimeSlots   = template.timeSlots  || [];
         const fsPeriods     = template.periods    || [];
-        const fsAltPrefix   = (template.alternateDayPrefix || '3/').toLowerCase();
-        const fsDlyPrefix   = (template.dailyDayPrefix    || '5/').toLowerCase();
+        // Support both old single-string and new array prefix formats
+        const fsAltPrefixes = (
+          Array.isArray(template.alternateDayPrefixes) ? template.alternateDayPrefixes :
+          template.alternateDayPrefix ? [template.alternateDayPrefix] : ['3/']
+        ).map(p => p.toLowerCase());
+        const fsDlyPrefixes = (
+          Array.isArray(template.dailyDayPrefixes) ? template.dailyDayPrefixes :
+          template.dailyDayPrefix ? [template.dailyDayPrefix] : ['5/']
+        ).map(p => p.toLowerCase());
         const fsTitle       = template.reportTitle || 'Fitness report';
 
         const parseHHMM = (s) => {
@@ -1615,8 +1622,8 @@ export default function GenerateReport() {
           if (!matchedPeriod) return;
 
           let fsType = null;
-          if (category.includes(fsAltPrefix)) fsType = 'A';
-          else if (category.includes(fsDlyPrefix)) fsType = 'D';
+          if (fsAltPrefixes.some(p => category.includes(p))) fsType = 'A';
+          else if (fsDlyPrefixes.some(p => category.includes(p))) fsType = 'D';
           if (!fsType) return;
 
           const matchedSlot = fsTimeSlots.find(ts => {

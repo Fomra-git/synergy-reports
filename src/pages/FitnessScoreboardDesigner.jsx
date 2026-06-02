@@ -38,8 +38,8 @@ const DEFAULT_FORM = {
   timeCol: '',
   categoryCol: '',
   dateCol: '',
-  alternateDayPrefix: '3/',
-  dailyDayPrefix: '5/',
+  alternateDayPrefixes: ['3/'],
+  dailyDayPrefixes: ['5/'],
   timeSlots: DEFAULT_TIME_SLOTS,
   periods: DEFAULT_PERIODS,
   preFilters: [],
@@ -64,6 +64,8 @@ export default function FitnessScoreboardDesigner() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
   const [rightTab, setRightTab] = useState('columns');
+  const [newAltPrefix, setNewAltPrefix] = useState('');
+  const [newDlyPrefix, setNewDlyPrefix] = useState('');
   const fileRef = useRef(null);
 
   const [modal, setModal] = useState({
@@ -97,7 +99,15 @@ export default function FitnessScoreboardDesigner() {
   const loadTemplate = (id) => {
     const t = templates.find(t => t.id === id);
     if (!t) return;
-    setFormData({ ...DEFAULT_FORM, ...t });
+    // Backward-compat: migrate old single-string prefix fields to arrays
+    const merged = { ...DEFAULT_FORM, ...t };
+    if (!Array.isArray(merged.alternateDayPrefixes)) {
+      merged.alternateDayPrefixes = merged.alternateDayPrefix ? [merged.alternateDayPrefix] : ['3/'];
+    }
+    if (!Array.isArray(merged.dailyDayPrefixes)) {
+      merged.dailyDayPrefixes = merged.dailyDayPrefix ? [merged.dailyDayPrefix] : ['5/'];
+    }
+    setFormData(merged);
     setMasterHeaders(t.masterHeaders || []);
     setMasterColumnValues(t.masterColumnValues || {});
     setSelectedCategoryId(categories.find(c => (c.templateIds || []).includes(id))?.id || '');
@@ -316,23 +326,53 @@ export default function FitnessScoreboardDesigner() {
 
             <div style={{ padding: '14px', background: 'var(--glass-subtle)', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <p style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--secondary)' }}>Category Prefixes</p>
-              <div className="form-group" style={{ marginBottom: 0 }}>
+
+              {/* Alternate Days Prefixes */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ background: 'var(--primary)', color: '#fff', padding: '1px 7px', borderRadius: '4px', fontSize: '10px', fontWeight: '700' }}>A</span>
-                  Alternate Days Prefix
+                  Alternate Days Prefixes
                 </label>
-                <input value={formData.alternateDayPrefix} onChange={e => setFormData(p => ({ ...p, alternateDayPrefix: e.target.value }))}
-                  placeholder="e.g. 3/" style={{ fontFamily: 'monospace', fontSize: '13px' }} />
-                <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>Categories containing this prefix (3/12, 3/36, …) → A column.</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', minHeight: '28px' }}>
+                  {(formData.alternateDayPrefixes || []).map((pfx, i) => (
+                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '6px', padding: '2px 8px', fontSize: '12px', fontFamily: 'monospace', fontWeight: '600', color: 'var(--primary)' }}>
+                      {pfx}
+                      <X size={10} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => setFormData(p => ({ ...p, alternateDayPrefixes: p.alternateDayPrefixes.filter((_, j) => j !== i) }))} />
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input value={newAltPrefix} onChange={e => setNewAltPrefix(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && newAltPrefix.trim()) { setFormData(p => ({ ...p, alternateDayPrefixes: [...(p.alternateDayPrefixes || []), newAltPrefix.trim()] })); setNewAltPrefix(''); } }}
+                    placeholder="e.g. 6/" style={{ fontFamily: 'monospace', fontSize: '12px', flex: 1 }} />
+                  <button onClick={() => { if (newAltPrefix.trim()) { setFormData(p => ({ ...p, alternateDayPrefixes: [...(p.alternateDayPrefixes || []), newAltPrefix.trim()] })); setNewAltPrefix(''); } }}
+                    className="btn-secondary" style={{ padding: '6px 10px', fontSize: '11px' }}>+ Add</button>
+                </div>
+                <p style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Categories containing any of these prefixes → A column.</p>
               </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
+
+              {/* Daily Days Prefixes */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ background: 'var(--secondary)', color: '#fff', padding: '1px 7px', borderRadius: '4px', fontSize: '10px', fontWeight: '700' }}>D</span>
-                  Daily Days Prefix
+                  Daily Days Prefixes
                 </label>
-                <input value={formData.dailyDayPrefix} onChange={e => setFormData(p => ({ ...p, dailyDayPrefix: e.target.value }))}
-                  placeholder="e.g. 5/" style={{ fontFamily: 'monospace', fontSize: '13px' }} />
-                <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>Categories containing this prefix (5/12, 5/36, …) → D column.</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', minHeight: '28px' }}>
+                  {(formData.dailyDayPrefixes || []).map((pfx, i) => (
+                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '6px', padding: '2px 8px', fontSize: '12px', fontFamily: 'monospace', fontWeight: '600', color: 'var(--secondary)' }}>
+                      {pfx}
+                      <X size={10} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => setFormData(p => ({ ...p, dailyDayPrefixes: p.dailyDayPrefixes.filter((_, j) => j !== i) }))} />
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input value={newDlyPrefix} onChange={e => setNewDlyPrefix(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && newDlyPrefix.trim()) { setFormData(p => ({ ...p, dailyDayPrefixes: [...(p.dailyDayPrefixes || []), newDlyPrefix.trim()] })); setNewDlyPrefix(''); } }}
+                    placeholder="e.g. 7/" style={{ fontFamily: 'monospace', fontSize: '12px', flex: 1 }} />
+                  <button onClick={() => { if (newDlyPrefix.trim()) { setFormData(p => ({ ...p, dailyDayPrefixes: [...(p.dailyDayPrefixes || []), newDlyPrefix.trim()] })); setNewDlyPrefix(''); } }}
+                    className="btn-secondary" style={{ padding: '6px 10px', fontSize: '11px' }}>+ Add</button>
+                </div>
+                <p style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Categories containing any of these prefixes → D column.</p>
               </div>
             </div>
 
