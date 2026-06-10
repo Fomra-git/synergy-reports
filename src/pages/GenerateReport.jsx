@@ -686,8 +686,25 @@ export default function GenerateReport() {
           }
         }
         if (config.simplifyTime) {
-          const parts = cleaned.split(',').map(s => s.trim()).filter(Boolean);
-          if (parts.length >= 2) cleaned = parts[parts.length - 1];
+          // If the raw value is a numeric Excel time/datetime fraction, convert to "H:MM AM/PM".
+          // (Excel stores time-only cells as fractions 0–1; datetime cells as serial+fraction.)
+          // For non-numeric strings like "Tue, Apr 15, 6:30 PM" keep the comma-split fallback.
+          const _tv = typeof val === 'number' && !isNaN(val) ? val : parseFloat(cleaned);
+          if (!isNaN(_tv) && _tv >= 0) {
+            const _frac = _tv >= 1 ? _tv % 1 : _tv;       // extract time-of-day fraction
+            if (_frac > 0 || _tv < 1) {                    // has a time component (skip pure integers ≥ 1)
+              const _mins = Math.round(_frac * 1440);
+              const _h24  = Math.floor(_mins / 60) % 24;
+              const _m    = _mins % 60;
+              cleaned = `${(_h24 % 12) || 12}:${String(_m).padStart(2, '0')} ${_h24 >= 12 ? 'PM' : 'AM'}`;
+            } else {
+              const parts = cleaned.split(',').map(s => s.trim()).filter(Boolean);
+              if (parts.length >= 2) cleaned = parts[parts.length - 1];
+            }
+          } else {
+            const parts = cleaned.split(',').map(s => s.trim()).filter(Boolean);
+            if (parts.length >= 2) cleaned = parts[parts.length - 1];
+          }
         }
         if (config.normalizeMonth && dateObj) cleaned = dateObj.toLocaleString('default', { month: 'short' });
         if (config.normalizeWeek && dateObj && colName && minDateMap[colName]) {
