@@ -28,6 +28,7 @@ import SearchableDropdown from '../components/SearchableDropdown';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import ChartConfigPanel from '../components/ChartConfigPanel';
 import ConstantCheckPanel from '../components/ConstantCheckPanel';
+import CustomFieldsEditor from '../components/CustomFieldsEditor';
 import FormulaBuilder from '../components/FormulaBuilder';
 import { ArrowLeft } from 'lucide-react';
 import ModernModal from '../components/ModernModal';
@@ -94,6 +95,7 @@ export default function VisualExcelMapping() {
     mappings: [],
     sortConfig: { enabled: false, column: '', direction: 'asc', type: 'auto' },
     chartConfigs: [],
+    customFields: [], // [{ id, label, column }] — prompts shown during Custom Report generation
   });
 
   const fileInputRef = useRef(null);
@@ -184,6 +186,7 @@ export default function VisualExcelMapping() {
         headerConfig: t.headerConfig || { type: 'custom', text: '', sourceCol: '' },
         sortConfig: t.sortConfig || { enabled: false, column: '', direction: 'asc', type: 'auto' },
         chartConfigs: t.chartConfigs || [],
+        customFields: t.customFields || [],
       });
       setSelectedCategoryId(categories.find(c => (c.templateIds || []).includes(id))?.id || '');
     }
@@ -1036,6 +1039,12 @@ export default function VisualExcelMapping() {
                     masterHeaders={masterHeaders}
                     showExpected={formData.constantShowExpected || false}
                     onShowExpectedChange={v => setFormData(prev => ({ ...prev, constantShowExpected: v }))}
+                  />
+
+                  <CustomFieldsEditor
+                    customFields={formData.customFields || []}
+                    onChange={cf => setFormData(prev => ({ ...prev, customFields: cf }))}
+                    columns={masterHeaders}
                   />
                 </div>
               )}

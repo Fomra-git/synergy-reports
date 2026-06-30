@@ -12,6 +12,7 @@ import {
 import ModernModal from '../components/ModernModal';
 import SearchableDropdown from '../components/SearchableDropdown';
 import MultiSelectCheckboxDropdown from '../components/MultiSelectCheckboxDropdown';
+import CustomFieldsEditor from '../components/CustomFieldsEditor';
 
 const DEFAULT_FORM = {
   name: '',
@@ -37,6 +38,7 @@ const DEFAULT_FORM = {
   branchFooterCurFormula: '',
   branchFooterActualFormula: '',
   branchFooterTargetFormula: '',
+  customFields: [], // [{ id, label, column }] — prompts shown during Custom Report generation
 };
 
 export default function ScoreboardDesigner() {
@@ -1043,6 +1045,15 @@ export default function ScoreboardDesigner() {
                   Example: <code>(&#123;&#123;G1:C1:total&#125;&#125; / &#123;&#123;G1:C2:total&#125;&#125;) * 100</code>
                 </p>
               </div>
+            </div>
+
+            {/* ===================== CUSTOM FIELDS (Custom Report prompts) ===================== */}
+            <div style={{ padding: '24px', paddingTop: 0 }}>
+              <CustomFieldsEditor
+                customFields={formData.customFields || []}
+                onChange={cf => setFormData(p => ({ ...p, customFields: cf }))}
+                columns={masterHeaders}
+              />
             </div>
 
           </div>

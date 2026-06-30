@@ -40,6 +40,7 @@ import FormulaBuilder from '../components/FormulaBuilder';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import ChartConfigPanel from '../components/ChartConfigPanel';
 import ConstantCheckPanel from '../components/ConstantCheckPanel';
+import CustomFieldsEditor from '../components/CustomFieldsEditor';
 
 export default function PivotTemplateManager() {
   const navigate = useNavigate();
@@ -79,6 +80,7 @@ export default function PivotTemplateManager() {
     mergeByCol: '',
     sortConfig: { enabled: false, column: '', direction: 'asc', type: 'auto' },
     chartConfigs: [],
+    customFields: [], // [{ id, label, column }] — prompts shown during Custom Report generation
   });
 
   const [modal, setModal] = useState({
@@ -205,6 +207,7 @@ export default function PivotTemplateManager() {
         mergeByCol: t.mergeByCol || '',
         sortConfig: t.sortConfig || { enabled: false, column: '', direction: 'asc', type: 'auto' },
         chartConfigs: t.chartConfigs || [],
+        customFields: t.customFields || [],
         // Initialize isManual for old templates
         globalFilters: (t.globalFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
         outputFilters: (t.outputFilters || []).map(f => ({ ...f, isManual: f.isManual || false })),
@@ -1763,6 +1766,12 @@ export default function PivotTemplateManager() {
              masterHeaders={masterHeaders}
              showExpected={formData.constantShowExpected || false}
              onShowExpectedChange={v => setFormData(prev => ({ ...prev, constantShowExpected: v }))}
+           />
+
+           <CustomFieldsEditor
+             customFields={formData.customFields || []}
+             onChange={cf => setFormData(prev => ({ ...prev, customFields: cf }))}
+             columns={masterHeaders}
            />
 
           </div>

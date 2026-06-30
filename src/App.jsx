@@ -12,6 +12,7 @@ const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const TemplateManager = lazy(() => import('./pages/TemplateManager'));
 const GenerateReport = lazy(() => import('./pages/GenerateReport'));
 const MultiMasterReport = lazy(() => import('./pages/MultiMasterReport'));
+const CustomReport = lazy(() => import('./pages/CustomReport'));
 const VisualExcelMapping = lazy(() => import('./pages/VisualExcelMapping'));
 const PivotTemplateManager = lazy(() => import('./pages/PivotTemplateManager'));
 const ScoreboardDesigner = lazy(() => import('./pages/ScoreboardDesigner'));
@@ -40,6 +41,7 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="generate" element={<GenerateReport />} />
             <Route path="multi-master-report" element={<MultiMasterReport />} />
+            <Route path="custom-report" element={<CustomReport />} />
             <Route path="view-report" element={<ViewReport />} />
             <Route path="templates" element={<AdminRoute><TemplateManager /></AdminRoute>} />
             <Route path="admin" element={

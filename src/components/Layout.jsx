@@ -16,7 +16,8 @@ import {
   Layers,
   Eye,
   Activity,
-  Files
+  Files,
+  MessageCircleQuestion
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
@@ -70,6 +71,10 @@ export default function Layout() {
           <NavLink to="/multi-master-report" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <Files size={20} />
             Multi Master Report
+          </NavLink>
+          <NavLink to="/custom-report" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            <MessageCircleQuestion size={20} />
+            Custom Report
           </NavLink>
           <NavLink to="/view-report" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <Eye size={20} />

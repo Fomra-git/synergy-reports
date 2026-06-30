@@ -11,6 +11,7 @@ import {
 import ModernModal from '../components/ModernModal';
 import SearchableDropdown from '../components/SearchableDropdown';
 import MultiSelectCheckboxDropdown from '../components/MultiSelectCheckboxDropdown';
+import CustomFieldsEditor from '../components/CustomFieldsEditor';
 
 const DEFAULT_TIME_SLOTS = [
   { id: 'ts_1', label: '6am - 7am',  from: '06:00', to: '07:00' },
@@ -46,6 +47,7 @@ const DEFAULT_FORM = {
   postFilters: [],
   hideEmptyBranches: false,
   hideEmptyRows: false,
+  customFields: [], // [{ id, label, column }] — prompts shown during Custom Report generation
 };
 
 export default function FitnessScoreboardDesigner() {
@@ -729,6 +731,13 @@ export default function FitnessScoreboardDesigner() {
         </div>
 
       </div>
+
+      {/* CUSTOM FIELDS (Custom Report prompts) */}
+      <CustomFieldsEditor
+        customFields={formData.customFields || []}
+        onChange={cf => setFormData(p => ({ ...p, customFields: cf }))}
+        columns={masterHeaders}
+      />
 
       <ModernModal modal={modal} setModal={setModal} />
     </div>

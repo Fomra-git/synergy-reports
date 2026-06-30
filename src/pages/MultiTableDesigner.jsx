@@ -14,6 +14,7 @@ import ModernModal from '../components/ModernModal';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import ChartConfigPanel from '../components/ChartConfigPanel';
 import ConstantCheckPanel from '../components/ConstantCheckPanel';
+import CustomFieldsEditor from '../components/CustomFieldsEditor';
 
 const OPERATORS = ['==', '!=', 'contains', 'not_contains', '>', '<', '>=', '<=', 'between', 'unique'];
 
@@ -46,6 +47,7 @@ const emptyForm = () => ({
   headerConfig: { type: 'custom', text: '', sourceCol: '' },
   sections: [emptySection()],
   chartConfigs: [],
+  customFields: [], // [{ id, label, column }] — prompts shown during Custom Report generation
 });
 
 function normaliseSection(s) {
@@ -494,6 +496,13 @@ export default function MultiTableDesigner() {
               masterHeaders={masterHeaders}
               showExpected={formData.constantShowExpected || false}
               onShowExpectedChange={v => setFormData(p => ({ ...p, constantShowExpected: v }))}
+            />
+
+            {/* CUSTOM FIELDS (Custom Report prompts) */}
+            <CustomFieldsEditor
+              customFields={formData.customFields || []}
+              onChange={cf => setFormData(p => ({ ...p, customFields: cf }))}
+              columns={masterHeaders}
             />
 
           </div>
