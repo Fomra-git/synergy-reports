@@ -15,7 +15,8 @@ import {
   Trophy,
   Layers,
   Eye,
-  Activity
+  Activity,
+  Files
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useConfig } from '../context/ConfigContext';
@@ -65,6 +66,10 @@ export default function Layout() {
           <NavLink to="/generate" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <FilePlus size={20} />
             Generate Report
+          </NavLink>
+          <NavLink to="/multi-master-report" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            <Files size={20} />
+            Multi Master Report
           </NavLink>
           <NavLink to="/view-report" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <Eye size={20} />
