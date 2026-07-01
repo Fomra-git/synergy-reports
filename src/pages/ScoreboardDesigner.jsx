@@ -13,6 +13,8 @@ import ModernModal from '../components/ModernModal';
 import SearchableDropdown from '../components/SearchableDropdown';
 import MultiSelectCheckboxDropdown from '../components/MultiSelectCheckboxDropdown';
 import CustomFieldsEditor from '../components/CustomFieldsEditor';
+import DualFileConfig from '../components/DualFileConfig';
+import ScoreboardFormulaBuilder from '../components/ScoreboardFormulaBuilder';
 
 const DEFAULT_FORM = {
   name: '',
@@ -269,6 +271,13 @@ export default function ScoreboardDesigner() {
     if (mode === 'cumulative') return '3(12)';
     return '3';
   };
+
+  // Referenceable columns for the formula chip builder, labelled by friendly name.
+  // Optionally exclude a column's own ref so a calculated column can't reference itself.
+  const getFormulaColumns = (excludeRef) =>
+    formData.groups.flatMap(g =>
+      (g.columns || []).map(c => ({ ref: `${g.id}:${c.id}`, label: `${g.name || 'Group'} ▸ ${c.name || 'Column'}` }))
+    ).filter(c => c.ref !== excludeRef);
 
   if (loading) {
     return (
@@ -667,31 +676,25 @@ export default function ScoreboardDesigner() {
                                     {col.isCalculated ? (
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
                                         <div className="form-group" style={{ marginBottom: 0 }}>
-                                          <label style={{ fontSize: '10px', display: 'flex', justifyContent: 'space-between' }}>
-                                            Current Formula
-                                            <span style={{ fontSize: '9px', fontWeight: 'normal', opacity: 0.7 }}>e.g. &#123;&#123;G1:C1:cur&#125;&#125; + &#123;&#123;G2:C1:cur&#125;&#125;</span>
-                                          </label>
-                                          <input
-                                            value={col.formulaCur || ''}
-                                            onChange={e => updateColumn(group.id, col.id, { formulaCur: e.target.value })}
-                                            placeholder="Formula for Current value..."
-                                            style={{ padding: '8px', fontSize: '12px', width: '100%', fontFamily: 'monospace', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-main)' }}
+                                          <label style={{ fontSize: '10px', display: 'block', marginBottom: '4px' }}>Current Formula</label>
+                                          <ScoreboardFormulaBuilder
+                                            formula={col.formulaCur || ''}
+                                            onChange={val => updateColumn(group.id, col.id, { formulaCur: val })}
+                                            columns={getFormulaColumns(`${group.id}:${col.id}`)}
+                                            defaultSuffix="cur"
                                           />
                                         </div>
                                         <div className="form-group" style={{ marginBottom: 0 }}>
-                                          <label style={{ fontSize: '10px', display: 'flex', justifyContent: 'space-between' }}>
-                                            Total Formula
-                                            <span style={{ fontSize: '9px', fontWeight: 'normal', opacity: 0.7 }}>e.g. &#123;&#123;G1:C1:total&#125;&#125; + &#123;&#123;G2:C1:total&#125;&#125;</span>
-                                          </label>
-                                          <input
-                                            value={col.formula || ''}
-                                            onChange={e => updateColumn(group.id, col.id, { formula: e.target.value })}
-                                            placeholder="Formula for Total value..."
-                                            style={{ padding: '8px', fontSize: '12px', width: '100%', fontFamily: 'monospace', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-main)' }}
+                                          <label style={{ fontSize: '10px', display: 'block', marginBottom: '4px' }}>Total Formula</label>
+                                          <ScoreboardFormulaBuilder
+                                            formula={col.formula || ''}
+                                            onChange={val => updateColumn(group.id, col.id, { formula: val })}
+                                            columns={getFormulaColumns(`${group.id}:${col.id}`)}
+                                            defaultSuffix="total"
                                           />
                                         </div>
                                         <p style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                          💡 Output will automatically display as <strong>Current(Total)</strong>. Use IDs like <strong>G1:C1</strong> found below.
+                                          💡 Output will automatically display as <strong>Current(Total)</strong>. Pick columns by name — no need to copy IDs.
                                         </p>
                                       </div>
                                     ) : (
@@ -1045,6 +1048,16 @@ export default function ScoreboardDesigner() {
                   Example: <code>(&#123;&#123;G1:C1:total&#125;&#125; / &#123;&#123;G1:C2:total&#125;&#125;) * 100</code>
                 </p>
               </div>
+            </div>
+
+            {/* ===================== TWO EXCEL FILES ===================== */}
+            <div style={{ padding: '24px', paddingTop: 0 }}>
+              <DualFileConfig
+                formData={formData}
+                setFormData={setFormData}
+                masterHeaders={masterHeaders}
+                setMasterHeaders={setMasterHeaders}
+              />
             </div>
 
             {/* ===================== CUSTOM FIELDS (Custom Report prompts) ===================== */}

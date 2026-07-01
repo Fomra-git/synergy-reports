@@ -15,6 +15,7 @@ import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import ChartConfigPanel from '../components/ChartConfigPanel';
 import ConstantCheckPanel from '../components/ConstantCheckPanel';
 import CustomFieldsEditor from '../components/CustomFieldsEditor';
+import DualFileConfig from '../components/DualFileConfig';
 
 const OPERATORS = ['==', '!=', 'contains', 'not_contains', '>', '<', '>=', '<=', 'between', 'unique'];
 
@@ -496,6 +497,14 @@ export default function MultiTableDesigner() {
               masterHeaders={masterHeaders}
               showExpected={formData.constantShowExpected || false}
               onShowExpectedChange={v => setFormData(p => ({ ...p, constantShowExpected: v }))}
+            />
+
+            {/* TWO EXCEL FILES */}
+            <DualFileConfig
+              formData={formData}
+              setFormData={setFormData}
+              masterHeaders={masterHeaders}
+              setMasterHeaders={setMasterHeaders}
             />
 
             {/* CUSTOM FIELDS (Custom Report prompts) */}

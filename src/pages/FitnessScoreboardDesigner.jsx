@@ -12,6 +12,7 @@ import ModernModal from '../components/ModernModal';
 import SearchableDropdown from '../components/SearchableDropdown';
 import MultiSelectCheckboxDropdown from '../components/MultiSelectCheckboxDropdown';
 import CustomFieldsEditor from '../components/CustomFieldsEditor';
+import DualFileConfig from '../components/DualFileConfig';
 
 const DEFAULT_TIME_SLOTS = [
   { id: 'ts_1', label: '6am - 7am',  from: '06:00', to: '07:00' },
@@ -731,6 +732,14 @@ export default function FitnessScoreboardDesigner() {
         </div>
 
       </div>
+
+      {/* TWO EXCEL FILES */}
+      <DualFileConfig
+        formData={formData}
+        setFormData={setFormData}
+        masterHeaders={masterHeaders}
+        setMasterHeaders={setMasterHeaders}
+      />
 
       {/* CUSTOM FIELDS (Custom Report prompts) */}
       <CustomFieldsEditor

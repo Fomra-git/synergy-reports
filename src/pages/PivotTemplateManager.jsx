@@ -41,6 +41,7 @@ import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import ChartConfigPanel from '../components/ChartConfigPanel';
 import ConstantCheckPanel from '../components/ConstantCheckPanel';
 import CustomFieldsEditor from '../components/CustomFieldsEditor';
+import DualFileConfig from '../components/DualFileConfig';
 
 export default function PivotTemplateManager() {
   const navigate = useNavigate();
@@ -1766,6 +1767,13 @@ export default function PivotTemplateManager() {
              masterHeaders={masterHeaders}
              showExpected={formData.constantShowExpected || false}
              onShowExpectedChange={v => setFormData(prev => ({ ...prev, constantShowExpected: v }))}
+           />
+
+           <DualFileConfig
+             formData={formData}
+             setFormData={setFormData}
+             masterHeaders={masterHeaders}
+             setMasterHeaders={setMasterHeaders}
            />
 
            <CustomFieldsEditor

@@ -32,12 +32,14 @@ export default function GenerateReport() {
   const [step, setStep] = useState(0); // 0 = category selection, 1 = upload & generate
   const [selectedCategory, setSelectedCategory] = useState(null); // null = all templates
   const [masterFile, setMasterFile] = useState(null);
+  const [secondFile, setSecondFile] = useState(null); // optional second Excel file (dual-file templates)
   const [isDragging, setIsDragging] = useState(false);
   const [templateSearchTerm, setTemplateSearchTerm] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
+  const secondFileInputRef = useRef(null);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -70,6 +72,7 @@ export default function GenerateReport() {
     setSelectedTemplates([]);
     setTemplateSearchTerm('');
     setMasterFile(null);
+    setSecondFile(null);
     setError(null);
     setStatus('');
   };
@@ -82,6 +85,93 @@ export default function GenerateReport() {
     } else {
       setError('Please upload a valid Excel or CSV file.');
     }
+  };
+
+  const handleSecondFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file && (file.type === 'text/csv' || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+      setSecondFile(file);
+      setError('');
+    } else {
+      setError('Please upload a valid Excel or CSV file for the second file.');
+    }
+  };
+
+  // Does the given set of templates require a second Excel file?
+  const needsSecondFileFor = (tpls) => tpls.some(t => t && t.isDualFile);
+  // The dual-file merge config that applies to a run (first dual template wins).
+  const dualConfigFor = (tpls) => tpls.find(t => t && t.isDualFile) || null;
+
+  // Read an Excel/CSV file into cleaned row objects (merged-cell fill-down + header cleanup).
+  const readMasterRows = async (file) => {
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data, { type: 'array' });
+    const ws = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    if (ws['!merges'] && rows.length > 0) {
+      const headers = Object.keys(rows[0]);
+      ws['!merges'].forEach(range => {
+        const { s, e } = range;
+        for (let c = s.c; c <= e.c; c++) {
+          const headerName = headers[c];
+          if (!headerName) continue;
+          const firstDataRowIdx = s.r - 1;
+          if (firstDataRowIdx < 0) continue;
+          const sourceRow = rows[firstDataRowIdx];
+          if (!sourceRow) return;
+          const val = sourceRow[headerName];
+          if (val === undefined || val === null || val === '') return;
+          for (let r = s.r; r <= e.r; r++) {
+            const targetRowIdx = r - 1;
+            if (targetRowIdx >= 0 && targetRowIdx < rows.length && rows[targetRowIdx][headerName] === '') {
+              rows[targetRowIdx][headerName] = val;
+            }
+          }
+        }
+      });
+    }
+    const clean = (str) => String(str || '').trim().replace(/^["'\s]+|["'\s]+$/g, '').replace(/[​-‍﻿]/g, '').trim();
+    rows.forEach(row => {
+      Object.keys(row).forEach(key => {
+        const c = clean(key);
+        if (c !== key) { row[c] = row[key]; delete row[key]; }
+      });
+    });
+    return rows;
+  };
+
+  // Combine primary + secondary rows according to the template's merge mode.
+  const mergeDualData = (primaryRows, secondaryRows, cfg) => {
+    const mode = cfg.dualMergeMode || 'join';
+    const getVal = (row, col) => {
+      if (!col || !row) return '';
+      const c = String(col).trim();
+      if (row[c] !== undefined) return row[c];
+      const n = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const k = Object.keys(row).find(key => n(key) === n(c));
+      return k ? row[k] : '';
+    };
+    if (mode === 'append' || mode === 'sections') {
+      const tag = (rows, label) => mode === 'sections' ? rows.map(r => ({ ...r, 'Source File': label })) : rows;
+      return [...tag(primaryRows, cfg.firstFileLabel || 'File 1'), ...tag(secondaryRows, cfg.secondFileLabel || 'File 2')];
+    }
+    // join: enrich each primary row with the matching secondary row's columns
+    const pk = cfg.joinPrimaryKey, sk = cfg.joinSecondaryKey;
+    if (!pk || !sk) return primaryRows;
+    const norm = (v) => String(v ?? '').trim().toLowerCase();
+    const secMap = new Map();
+    secondaryRows.forEach(r => { const k = norm(getVal(r, sk)); if (k && !secMap.has(k)) secMap.set(k, r); });
+    return primaryRows.map(pr => {
+      const k = norm(getVal(pr, pk));
+      const match = k ? secMap.get(k) : null;
+      const merged = { ...pr };
+      if (match) {
+        Object.keys(match).forEach(key => {
+          if (merged[key] === undefined || merged[key] === '' || merged[key] === null) merged[key] = match[key];
+        });
+      }
+      return merged;
+    });
   };
 
   const toggleTemplateSelection = (id) => {
@@ -113,16 +203,23 @@ export default function GenerateReport() {
       : templates.filter(t => selectedTemplates.includes(t.id));
 
     if (!masterFile || targetTemplates.length === 0) return;
-    
+
+    // Dual-file templates require a second Excel file
+    const dualCfg = dualConfigFor(targetTemplates);
+    if (dualCfg && !secondFile) {
+      setError('This report is built from two Excel files. Please upload the second file as well.');
+      return;
+    }
+
     setIsGenerating(true);
     setStatus('Reading master file...');
-    
+
     try {
       const data = await masterFile.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
-      const masterData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+      let masterData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
       if (worksheet['!merges'] && masterData.length > 0) {
          const headers = Object.keys(masterData[0]);
@@ -174,6 +271,11 @@ export default function GenerateReport() {
              return null;
           }
           let s = String(rawVal).trim();
+          // Numeric strings that are actually Excel date serials (e.g. "46094.00012")
+          if (/^\d+(?:\.\d+)?$/.test(s)) {
+             const _sn = parseFloat(s);
+             if (_sn > 20000 && _sn < 100000) return new Date(Math.round((_sn - 25569) * 86400 * 1000));
+          }
           const longMatch = s.match(/.*,\s+(.*?)\s+,\s+.*/);
           if (longMatch) s = longMatch[1];
           const d = new Date(s);
@@ -230,6 +332,13 @@ export default function GenerateReport() {
             }
           });
         });
+      }
+
+      // ── Dual-file: read the second file and merge per the template's mode ─────
+      if (dualCfg && secondFile) {
+        setStatus('Reading & merging second file...');
+        const secondaryData = await readMasterRows(secondFile);
+        masterData = mergeDualData(masterData, secondaryData, dualCfg);
       }
 
       const getMasterValue = (row, source) => {
@@ -2740,6 +2849,38 @@ export default function GenerateReport() {
                   </>
                 )}
              </div>
+
+             {/* Second file upload — shown when this category has dual-file templates */}
+             {needsSecondFileFor(filteredTemplates) && (
+               <div style={{ marginTop: '20px' }}>
+                 <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                   <FileSpreadsheet size={15} /> Second File (required for two-file templates)
+                 </p>
+                 <div
+                   className={`upload-zone ${secondFile ? 'has-file' : ''}`}
+                   onClick={() => secondFileInputRef.current.click()}
+                   onDragOver={(e) => { e.preventDefault(); }}
+                   onDrop={(e) => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file) handleSecondFileChange({ target: { files: [file] } }); }}
+                   style={{ padding: secondFile ? '24px' : '36px', border: '2px dashed var(--border)', borderRadius: '20px', textAlign: 'center', cursor: 'pointer', transition: '0.3s' }}
+                 >
+                   <input type="file" ref={secondFileInputRef} onChange={handleSecondFileChange} style={{ display: 'none' }} accept=".xlsx, .xls, .csv" />
+                   {secondFile ? (
+                     <div style={{ display: 'flex', alignItems: 'center', gap: '20px', textAlign: 'left' }}>
+                       <div className="login-logo-icon" style={{ width: '48px', height: '48px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}><FileSpreadsheet size={24} /></div>
+                       <div style={{ flex: 1 }}><p style={{ fontWeight: '600', fontSize: '15px' }}>{secondFile.name}</p><p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Ready to merge</p></div>
+                       <CheckCircle2 color="var(--success)" size={22} />
+                     </div>
+                   ) : (
+                     <>
+                       <div className="upload-icon"><Upload size={26} /></div>
+                       <p style={{ fontWeight: '600', fontSize: '14px' }}>Click or drag the second Excel/CSV file</p>
+                       <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>Only needed for templates built from two files.</p>
+                     </>
+                   )}
+                 </div>
+               </div>
+             )}
+
              {error && <div className="alert-error" style={{ marginTop: '20px' }}>{error}</div>}
           </div>
 

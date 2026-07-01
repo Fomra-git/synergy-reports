@@ -34,6 +34,11 @@ function parseReportDatePure(rawVal) {
     return null;
   }
   let s = String(rawVal).trim();
+  // Numeric strings that are actually Excel date serials (e.g. "46094.00012")
+  if (/^\d+(?:\.\d+)?$/.test(s)) {
+    const _sn = parseFloat(s);
+    if (_sn > 20000 && _sn < 100000) return new Date(Math.round((_sn - 25569) * 86400 * 1000));
+  }
   const longMatch = s.match(/.*,\s+(.*?)\s+,\s+.*/);
   if (longMatch) s = longMatch[1];
   const d = new Date(s);

@@ -29,6 +29,7 @@ import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import ChartConfigPanel from '../components/ChartConfigPanel';
 import ConstantCheckPanel from '../components/ConstantCheckPanel';
 import CustomFieldsEditor from '../components/CustomFieldsEditor';
+import DualFileConfig from '../components/DualFileConfig';
 import FormulaBuilder from '../components/FormulaBuilder';
 import { ArrowLeft } from 'lucide-react';
 import ModernModal from '../components/ModernModal';
@@ -1039,6 +1040,13 @@ export default function VisualExcelMapping() {
                     masterHeaders={masterHeaders}
                     showExpected={formData.constantShowExpected || false}
                     onShowExpectedChange={v => setFormData(prev => ({ ...prev, constantShowExpected: v }))}
+                  />
+
+                  <DualFileConfig
+                    formData={formData}
+                    setFormData={setFormData}
+                    masterHeaders={masterHeaders}
+                    setMasterHeaders={setMasterHeaders}
                   />
 
                   <CustomFieldsEditor
