@@ -23,6 +23,7 @@ import {
   LayoutGrid,
   AlignLeft
 } from 'lucide-react';
+import { getSecondaryFiles, mergeMultiFileData } from '../utils/multiFileMerge';
 
 export default function GenerateReport() {
   const [templates, setTemplates] = useState([]);
@@ -32,14 +33,14 @@ export default function GenerateReport() {
   const [step, setStep] = useState(0); // 0 = category selection, 1 = upload & generate
   const [selectedCategory, setSelectedCategory] = useState(null); // null = all templates
   const [masterFile, setMasterFile] = useState(null);
-  const [secondFile, setSecondFile] = useState(null); // optional second Excel file (dual-file templates)
+  const [secondFiles, setSecondFiles] = useState([]); // extra Excel files (multi-file templates), index-aligned to the template's secondaryFiles
   const [isDragging, setIsDragging] = useState(false);
   const [templateSearchTerm, setTemplateSearchTerm] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
-  const secondFileInputRef = useRef(null);
+  const secondFileRefs = useRef({});
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -72,7 +73,7 @@ export default function GenerateReport() {
     setSelectedTemplates([]);
     setTemplateSearchTerm('');
     setMasterFile(null);
-    setSecondFile(null);
+    setSecondFiles([]);
     setError(null);
     setStatus('');
   };
@@ -87,20 +88,18 @@ export default function GenerateReport() {
     }
   };
 
-  const handleSecondFileChange = (e) => {
+  const handleSecondFileChange = (idx, e) => {
     const file = e.target.files[0];
     if (file && (file.type === 'text/csv' || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
-      setSecondFile(file);
+      setSecondFiles(prev => { const next = [...prev]; next[idx] = file; return next; });
       setError('');
     } else {
-      setError('Please upload a valid Excel or CSV file for the second file.');
+      setError('Please upload a valid Excel or CSV file.');
     }
   };
 
-  // Does the given set of templates require a second Excel file?
-  const needsSecondFileFor = (tpls) => tpls.some(t => t && t.isDualFile);
-  // The dual-file merge config that applies to a run (first dual template wins).
-  const dualConfigFor = (tpls) => tpls.find(t => t && t.isDualFile) || null;
+  // The multi-file merge config that applies to a run (first template with extra files wins).
+  const dualConfigFor = (tpls) => tpls.find(t => t && getSecondaryFiles(t).length > 0) || null;
 
   // Read an Excel/CSV file into cleaned row objects (merged-cell fill-down + header cleanup).
   const readMasterRows = async (file) => {
@@ -140,40 +139,6 @@ export default function GenerateReport() {
     return rows;
   };
 
-  // Combine primary + secondary rows according to the template's merge mode.
-  const mergeDualData = (primaryRows, secondaryRows, cfg) => {
-    const mode = cfg.dualMergeMode || 'join';
-    const getVal = (row, col) => {
-      if (!col || !row) return '';
-      const c = String(col).trim();
-      if (row[c] !== undefined) return row[c];
-      const n = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const k = Object.keys(row).find(key => n(key) === n(c));
-      return k ? row[k] : '';
-    };
-    if (mode === 'append' || mode === 'sections') {
-      const tag = (rows, label) => mode === 'sections' ? rows.map(r => ({ ...r, 'Source File': label })) : rows;
-      return [...tag(primaryRows, cfg.firstFileLabel || 'File 1'), ...tag(secondaryRows, cfg.secondFileLabel || 'File 2')];
-    }
-    // join: enrich each primary row with the matching secondary row's columns
-    const pk = cfg.joinPrimaryKey, sk = cfg.joinSecondaryKey;
-    if (!pk || !sk) return primaryRows;
-    const norm = (v) => String(v ?? '').trim().toLowerCase();
-    const secMap = new Map();
-    secondaryRows.forEach(r => { const k = norm(getVal(r, sk)); if (k && !secMap.has(k)) secMap.set(k, r); });
-    return primaryRows.map(pr => {
-      const k = norm(getVal(pr, pk));
-      const match = k ? secMap.get(k) : null;
-      const merged = { ...pr };
-      if (match) {
-        Object.keys(match).forEach(key => {
-          if (merged[key] === undefined || merged[key] === '' || merged[key] === null) merged[key] = match[key];
-        });
-      }
-      return merged;
-    });
-  };
-
   const toggleTemplateSelection = (id) => {
     setSelectedTemplates(prev =>
       prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
@@ -204,10 +169,11 @@ export default function GenerateReport() {
 
     if (!masterFile || targetTemplates.length === 0) return;
 
-    // Dual-file templates require a second Excel file
+    // Multi-file templates require every additional Excel file
     const dualCfg = dualConfigFor(targetTemplates);
-    if (dualCfg && !secondFile) {
-      setError('This report is built from two Excel files. Please upload the second file as well.');
+    const secConfigs = dualCfg ? getSecondaryFiles(dualCfg) : [];
+    if (dualCfg && secConfigs.some((_, i) => !secondFiles[i])) {
+      setError(`This report is built from ${secConfigs.length + 1} Excel files. Please upload all of them.`);
       return;
     }
 
@@ -334,11 +300,14 @@ export default function GenerateReport() {
         });
       }
 
-      // ── Dual-file: read the second file and merge per the template's mode ─────
-      if (dualCfg && secondFile) {
-        setStatus('Reading & merging second file...');
-        const secondaryData = await readMasterRows(secondFile);
-        masterData = mergeDualData(masterData, secondaryData, dualCfg);
+      // ── Multi-file: read each additional file and merge per its configured mode ─────
+      if (dualCfg && secConfigs.length > 0) {
+        const secDataList = [];
+        for (let i = 0; i < secConfigs.length; i++) {
+          setStatus(`Reading & merging file ${i + 2} of ${secConfigs.length + 1}...`);
+          secDataList.push(await readMasterRows(secondFiles[i]));
+        }
+        masterData = mergeMultiFileData(masterData, secConfigs, secDataList, dualCfg.firstFileLabel);
       }
 
       const getMasterValue = (row, source) => {
@@ -2850,36 +2819,49 @@ export default function GenerateReport() {
                 )}
              </div>
 
-             {/* Second file upload — shown when this category has dual-file templates */}
-             {needsSecondFileFor(filteredTemplates) && (
-               <div style={{ marginTop: '20px' }}>
-                 <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                   <FileSpreadsheet size={15} /> Second File (required for two-file templates)
-                 </p>
-                 <div
-                   className={`upload-zone ${secondFile ? 'has-file' : ''}`}
-                   onClick={() => secondFileInputRef.current.click()}
-                   onDragOver={(e) => { e.preventDefault(); }}
-                   onDrop={(e) => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file) handleSecondFileChange({ target: { files: [file] } }); }}
-                   style={{ padding: secondFile ? '24px' : '36px', border: '2px dashed var(--border)', borderRadius: '20px', textAlign: 'center', cursor: 'pointer', transition: '0.3s' }}
-                 >
-                   <input type="file" ref={secondFileInputRef} onChange={handleSecondFileChange} style={{ display: 'none' }} accept=".xlsx, .xls, .csv" />
-                   {secondFile ? (
-                     <div style={{ display: 'flex', alignItems: 'center', gap: '20px', textAlign: 'left' }}>
-                       <div className="login-logo-icon" style={{ width: '48px', height: '48px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}><FileSpreadsheet size={24} /></div>
-                       <div style={{ flex: 1 }}><p style={{ fontWeight: '600', fontSize: '15px' }}>{secondFile.name}</p><p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Ready to merge</p></div>
-                       <CheckCircle2 color="var(--success)" size={22} />
-                     </div>
-                   ) : (
-                     <>
-                       <div className="upload-icon"><Upload size={26} /></div>
-                       <p style={{ fontWeight: '600', fontSize: '14px' }}>Click or drag the second Excel/CSV file</p>
-                       <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>Only needed for templates built from two files.</p>
-                     </>
-                   )}
+             {/* Additional file uploads — one slot per extra file the template combines */}
+             {(() => {
+               const activeDualCfg = dualConfigFor(filteredTemplates);
+               const activeSecConfigs = activeDualCfg ? getSecondaryFiles(activeDualCfg) : [];
+               if (activeSecConfigs.length === 0) return null;
+               return (
+                 <div style={{ marginTop: '20px' }}>
+                   <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                     <FileSpreadsheet size={15} /> Additional Files (required — {activeSecConfigs.length + 1} files total)
+                   </p>
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                     {activeSecConfigs.map((cfg, i) => {
+                       const uploaded = secondFiles[i];
+                       return (
+                         <div
+                           key={cfg.id}
+                           className={`upload-zone ${uploaded ? 'has-file' : ''}`}
+                           onClick={() => secondFileRefs.current[i]?.click()}
+                           onDragOver={(e) => { e.preventDefault(); }}
+                           onDrop={(e) => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file) handleSecondFileChange(i, { target: { files: [file] } }); }}
+                           style={{ padding: uploaded ? '20px' : '28px', border: '2px dashed var(--border)', borderRadius: '20px', textAlign: 'center', cursor: 'pointer', transition: '0.3s' }}
+                         >
+                           <input type="file" ref={el => { secondFileRefs.current[i] = el; }} onChange={(e) => handleSecondFileChange(i, e)} style={{ display: 'none' }} accept=".xlsx, .xls, .csv" />
+                           {uploaded ? (
+                             <div style={{ display: 'flex', alignItems: 'center', gap: '20px', textAlign: 'left' }}>
+                               <div className="login-logo-icon" style={{ width: '44px', height: '44px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)' }}><FileSpreadsheet size={22} /></div>
+                               <div style={{ flex: 1 }}><p style={{ fontWeight: '600', fontSize: '14px' }}>{uploaded.name}</p><p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{cfg.label || `File ${i + 2}`} · ready to merge</p></div>
+                               <CheckCircle2 color="var(--success)" size={20} />
+                             </div>
+                           ) : (
+                             <>
+                               <div className="upload-icon"><Upload size={22} /></div>
+                               <p style={{ fontWeight: '600', fontSize: '14px' }}>Upload {cfg.label || `File ${i + 2}`}</p>
+                               <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Click or drag this Excel/CSV file.</p>
+                             </>
+                           )}
+                         </div>
+                       );
+                     })}
+                   </div>
                  </div>
-               </div>
-             )}
+               );
+             })()}
 
              {error && <div className="alert-error" style={{ marginTop: '20px' }}>{error}</div>}
           </div>
