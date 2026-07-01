@@ -15,6 +15,9 @@ import { Plus, X } from 'lucide-react';
  *  - onChange     : (str) => void
  *  - columns      : [{ ref: 'g_1:c_2', label: 'Group ▸ Column' }]  referenceable columns
  *  - defaultSuffix: 'total' | 'cur' | 'conv'  suffix applied to newly inserted columns
+ *  - unified      : boolean  — when true, column tokens carry NO suffix ("{{g:c}}"); the
+ *                   caller expands the base expression into cur/total/conv itself. Chips show
+ *                   no suffix badge. Use this to build Current & Total from one column pick.
  *  - globalVars   : [{ ref: 'B:CUR', label: 'Branch Current' }]  optional global tokens
  */
 
@@ -46,6 +49,7 @@ export default function ScoreboardFormulaBuilder({
   onChange,
   columns = [],
   defaultSuffix = 'total',
+  unified = false,
   globalVars = [],
 }) {
   const colByRef = useMemo(() => {
@@ -67,7 +71,7 @@ export default function ScoreboardFormulaBuilder({
         out.push({
           type: known?.isGlobal ? 'var' : 'col',
           ref,
-          suffix,
+          suffix: unified ? '' : suffix,
           label: known ? known.label : ref,
           known: !!known,
         });
@@ -80,7 +84,7 @@ export default function ScoreboardFormulaBuilder({
       }
     }
     return out;
-  }, [formula, colByRef]);
+  }, [formula, colByRef, unified]);
 
   const stringify = (toks) => toks.map(t => {
     if (t.type === 'col' || t.type === 'var') return `{{${t.suffix ? `${t.ref}:${t.suffix}` : t.ref}}}`;
@@ -96,7 +100,7 @@ export default function ScoreboardFormulaBuilder({
   const handleAddColumn = (ref) => {
     if (!ref) return;
     const col = columns.find(c => c.ref === ref);
-    addToken({ type: 'col', ref, suffix: defaultSuffix, label: col ? col.label : ref, known: true });
+    addToken({ type: 'col', ref, suffix: unified ? '' : defaultSuffix, label: col ? col.label : ref, known: true });
   };
   const handleAddVar = (ref) => {
     if (!ref) return;

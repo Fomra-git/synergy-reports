@@ -279,6 +279,12 @@ export default function ScoreboardDesigner() {
       (g.columns || []).map(c => ({ ref: `${g.id}:${c.id}`, label: `${g.name || 'Group'} ▸ ${c.name || 'Column'}` }))
     ).filter(c => c.ref !== excludeRef);
 
+  // Expand a suffix-less base expression ({{g:c}} + {{g:c2}}) into a concrete
+  // formula that pulls each column's cur / total / conv value. Lets one column
+  // selection drive the Current, Total and Conversion results at once.
+  const expandSbFormula = (base, suffix) =>
+    (base || '').replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, inner) => `{{${inner.trim()}:${suffix}}}`);
+
   if (loading) {
     return (
       <div className="loading-screen">
@@ -676,25 +682,20 @@ export default function ScoreboardDesigner() {
                                     {col.isCalculated ? (
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
                                         <div className="form-group" style={{ marginBottom: 0 }}>
-                                          <label style={{ fontSize: '10px', display: 'block', marginBottom: '4px' }}>Current Formula</label>
+                                          <label style={{ fontSize: '10px', display: 'block', marginBottom: '4px' }}>Columns to Add (Current &amp; Total auto-calculated)</label>
                                           <ScoreboardFormulaBuilder
-                                            formula={col.formulaCur || ''}
-                                            onChange={val => updateColumn(group.id, col.id, { formulaCur: val })}
-                                            columns={getFormulaColumns(`${group.id}:${col.id}`)}
-                                            defaultSuffix="cur"
-                                          />
-                                        </div>
-                                        <div className="form-group" style={{ marginBottom: 0 }}>
-                                          <label style={{ fontSize: '10px', display: 'block', marginBottom: '4px' }}>Total Formula</label>
-                                          <ScoreboardFormulaBuilder
+                                            unified
                                             formula={col.formula || ''}
-                                            onChange={val => updateColumn(group.id, col.id, { formula: val })}
+                                            onChange={base => updateColumn(group.id, col.id, {
+                                              formula: expandSbFormula(base, 'total'),
+                                              formulaCur: expandSbFormula(base, 'cur'),
+                                              formulaConv: expandSbFormula(base, 'conv'),
+                                            })}
                                             columns={getFormulaColumns(`${group.id}:${col.id}`)}
-                                            defaultSuffix="total"
                                           />
                                         </div>
                                         <p style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                          💡 Output will automatically display as <strong>Current(Total)</strong>. Pick columns by name — no need to copy IDs.
+                                          💡 Pick the columns once — output shows as <strong>Current(Total)</strong>: the <strong>Current</strong> sums each column's current value and the <strong>Total</strong> sums each column's total, automatically.
                                         </p>
                                       </div>
                                     ) : (
