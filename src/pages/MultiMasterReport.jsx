@@ -1413,7 +1413,7 @@ export default function MultiMasterReport() {
               else if (p.type === 'deviation_change_date') { v = infoS.changeDate ? fmtLastVisit(infoS.changeDate) : ''; }
               else { v = infoS.prevType || ''; }
             }
-          } else { v = (!isTotal && fr.length > 0) ? getMasterValue(fr[0], p.source) : ''; }
+          } else { v = (!isTotal && fr.length > 0) ? cleanValue(getMasterValue(fr[0], p.source), p, p.source) : ''; }
           v = applyRound(v, p);
           const key = p.displayName || p.source || ''; if (key) ctx[key] = v; return v;
         };
@@ -2228,7 +2228,7 @@ export default function MultiMasterReport() {
                 }
               } else {
                 // property / grouping — never show a data value in total rows
-                v = (!isTotal && fr.length > 0) ? getMasterValue(fr[0], p.source) : '';
+                v = (!isTotal && fr.length > 0) ? cleanValue(getMasterValue(fr[0], p.source), p, p.source) : '';
               }
               v = applyRound(v, p);
               const key = p.displayName || p.source || '';
