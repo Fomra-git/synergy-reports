@@ -1222,6 +1222,10 @@ export default function GenerateReport() {
           rowContext['B:TGT'] = branchTarget;
           return { doctor, docBranchName, groupData, docBranchCur, branchActual, branchTarget, rowContext };
         });
+        const sbGrandTotal = scoreRows.reduce((sum, sr) => sum + sr.groupData.reduce((gSum, gd) => gSum + gd.colData.reduce((cSum, cd) => cSum + (cd.total || 0), 0), 0), 0);
+        if (doctorsOrdered.length > 0 && sbGrandTotal === 0) {
+          throw new Error('Scoreboard: every column came out as 0 for all doctors. The Group/Column filter values in this template likely do not match the actual values in this file (e.g. a status or category column) — check the filter values in the Scoreboard designer against this file\'s data.');
+        }
         const sbWb = new ExcelJS.Workbook();
         const ws = sbWb.addWorksheet('Score Board');
         let subColCount = 0;
