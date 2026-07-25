@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(npm uninstall *)",
+      "Bash(node -e \"const ExcelJS = require\\('exceljs'\\); const wb = new ExcelJS.Workbook\\(\\); const ws = wb.addWorksheet\\('T'\\); const r = ws.getRow\\(1\\); r.values = [null, 'A', 'B', 'C']; console.log\\('col1:', r.getCell\\(1\\).value, 'col2:', r.getCell\\(2\\).value, 'col3:', r.getCell\\(3\\).value, 'col4:', r.getCell\\(4\\).value\\);\")",
+      "Bash(npx vite *)",
+      "Bash(sed -n '1,30p' src/pages/VisualExcelMapping.jsx)",
+      "Bash(sed -n '200,260p' src/pages/VisualExcelMapping.jsx)",
+      "Bash(sed -n '88,130p' src/pages/PivotTemplateManager.jsx)",
+      "Bash(sed -n '225,280p' src/pages/PivotTemplateManager.jsx)",
+      "Bash(sed -n '88,130p' src/pages/ScoreboardDesigner.jsx)",
+      "Bash(sed -n '93,120p' src/pages/ScoreboardDesigner.jsx)",
+      "Bash(sed -n '500,530p' src/pages/PivotTemplateManager.jsx)",
+      "Bash(sed -n '276,300p' src/pages/MultiTableDesigner.jsx)",
+      "Bash(sed -n '475,500p' src/pages/VisualExcelMapping.jsx)",
+      "Bash(sed -n '111,165p' src/pages/VisualExcelMapping.jsx)",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('recharts'\\)\")",
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\('React:', p.dependencies.react\\)\")",
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\('recharts:', p.dependencies.recharts\\)\")"
+    ]
+  }
+}
