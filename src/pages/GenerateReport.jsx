@@ -1074,7 +1074,7 @@ export default function GenerateReport() {
         // Strips zero-width/invisible chars and normalizes non-breaking spaces, mirroring
         // cleanFieldName (used for headers) so real-world exports with hidden characters in
         // cell values (common in large production files) still match template filter values.
-        const cleanVal = (v) => String(v == null ? '' : v).replace(/[​-‍﻿]/g, '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+        const cleanVal = (v) => String(v == null ? '' : v).replace(/[​-‍﻿]/g, '').replace(/ /g, ' ').replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim();
         const parseSbDate = (val) => {
           if (!val && val !== 0) return null;
           if (typeof val === 'number') {

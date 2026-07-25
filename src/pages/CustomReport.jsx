@@ -1127,7 +1127,7 @@ export default function CustomReport() {
           const y = dateObj.getFullYear(), m = String(dateObj.getMonth() + 1).padStart(2, '0'), d = String(dateObj.getDate()).padStart(2, '0');
           return y + '-' + m + '-' + d;
         };
-        const cleanVal = (v) => String(v == null ? '' : v).replace(/[​-‍﻿]/g, '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+        const cleanVal = (v) => String(v == null ? '' : v).replace(/[​-‍﻿]/g, '').replace(/ /g, ' ').replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim();
         const parseSbDate = (val) => {
           if (!val && val !== 0) return null;
           if (typeof val === 'number') {
