@@ -1127,13 +1127,18 @@ export default function CustomReport() {
           const y = dateObj.getFullYear(), m = String(dateObj.getMonth() + 1).padStart(2, '0'), d = String(dateObj.getDate()).padStart(2, '0');
           return y + '-' + m + '-' + d;
         };
+        const cleanVal = (v) => String(v == null ? '' : v).replace(/[​-‍﻿]/g, '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
         const parseSbDate = (val) => {
           if (!val && val !== 0) return null;
           if (typeof val === 'number') {
             if (val > 20000 && val < 100000) return toLocalISO(new Date(Math.round((val - 25569) * 86400 * 1000)));
             return null;
           }
-          let s = String(val).trim();
+          let s = cleanVal(val);
+          if (/^\d+(?:\.\d+)?$/.test(s)) {
+            const sn = parseFloat(s);
+            if (sn > 20000 && sn < 100000) return toLocalISO(new Date(Math.round((sn - 25569) * 86400 * 1000)));
+          }
           const longMatch = s.match(/.*,\s+(.*?)\s+,\s+.*/);
           if (longMatch) s = longMatch[1];
           const dmy = s.match(/^(\d\d?)[./](\d\d?)[./](\d\d\d\d)$/);
@@ -1148,9 +1153,9 @@ export default function CustomReport() {
           return null;
         };
         const sbEvalRule = (targetVal, operator, conditionVals = []) => {
-          const tv = String(targetVal || '').toLowerCase().trim();
+          const tv = cleanVal(targetVal).toLowerCase();
           const evalSingle = (cv) => {
-            const c = String(cv || '').toLowerCase().trim();
+            const c = cleanVal(cv).toLowerCase();
             if (operator === '==') return tv === c;
             if (operator === '!=') return tv !== c;
             if (operator === 'contains') return tv.includes(c);
@@ -1203,21 +1208,21 @@ export default function CustomReport() {
         const doctorsOrdered = [];
         const docSeen = new Set();
         sbMasterData.forEach(r => {
-          const name = String(getMasterValue(r, nameCol) || '').trim();
+          const name = cleanVal(getMasterValue(r, nameCol));
           if (name && !docSeen.has(name)) { doctorsOrdered.push(name); docSeen.add(name); }
         });
         const groups = template.groups || [];
         const aptNoCol = template.aptNoColumn;
         const appNoCol = template.appNoColumn;
         const scoreRows = doctorsOrdered.map(doctor => {
-          const docRows = sbMasterData.filter(r => String(getMasterValue(r, nameCol) || '').trim() === doctor);
+          const docRows = sbMasterData.filter(r => cleanVal(getMasterValue(r, nameCol)) === doctor);
           const rowContext = {};
           const groupData = groups.map(group => {
             let gRows = docRows;
             if (group.filterColumn && (group.filterValues && group.filterValues.length > 0 || group.filterValue)) {
-              const fvs = group.filterValues && group.filterValues.length > 0 ? group.filterValues.map(v => v.toLowerCase().trim()) : [String(group.filterValue || '').toLowerCase().trim()];
+              const fvs = group.filterValues && group.filterValues.length > 0 ? group.filterValues.map(v => cleanVal(v).toLowerCase()) : [cleanVal(group.filterValue).toLowerCase()];
               gRows = docRows.filter(r => {
-                const val = String(getMasterValue(r, group.filterColumn) || '').toLowerCase().trim();
+                const val = cleanVal(getMasterValue(r, group.filterColumn)).toLowerCase();
                 return fvs.some(fv => val === fv || val.includes(fv));
               });
             }
@@ -1225,9 +1230,9 @@ export default function CustomReport() {
               if (col.isCalculated) return { id: col.id, mode: 'cumulative', isCalculated: true, originalCol: col };
               let cRows = gRows;
               if (col.filterColumn && (col.filterValues && col.filterValues.length > 0 || col.filterValue)) {
-                const cfvs = col.filterValues && col.filterValues.length > 0 ? col.filterValues.map(v => v.toLowerCase().trim()) : [String(col.filterValue || '').toLowerCase().trim()];
+                const cfvs = col.filterValues && col.filterValues.length > 0 ? col.filterValues.map(v => cleanVal(v).toLowerCase()) : [cleanVal(col.filterValue).toLowerCase()];
                 cRows = gRows.filter(r => {
-                  const val = String(getMasterValue(r, col.filterColumn) || '').toLowerCase().trim();
+                  const val = cleanVal(getMasterValue(r, col.filterColumn)).toLowerCase();
                   return cfvs.some(fv => val === fv || val.includes(fv));
                 });
               }
@@ -1256,10 +1261,10 @@ export default function CustomReport() {
               rowContext[gd.groupId + ':' + col.id + ':conv'] = cd.conv;
             });
           });
-          const docBranchName = String(getMasterValue(docRows[0], template.branchColumn) || '').trim();
+          const docBranchName = cleanVal(getMasterValue(docRows[0], template.branchColumn));
           let branchTarget = 0;
           if (template.branches && template.branches.length > 0 && docBranchName) {
-            const matchedBranch = template.branches.find(b => docBranchName.toLowerCase().includes(String(b.nameContains || '').toLowerCase()));
+            const matchedBranch = template.branches.find(b => docBranchName.toLowerCase().includes(cleanVal(b.nameContains).toLowerCase()));
             if (matchedBranch) branchTarget = parseSafeNum(matchedBranch.target);
           }
           let docBranchCur = template.branchCurFormula ? evaluateSbFormula(template.branchCurFormula, rowContext) : groupData.reduce((acc, gd) => acc + gd.colData.filter(c => c.isConsultation).reduce((a, c) => a + c.total, 0), 0);
