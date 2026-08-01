@@ -345,10 +345,10 @@ async function processTemplateForView(template, masterFile) {
         const p = parseDateForMonth(targetVal);
         return !!p && p.year === ctx.prevYear && p.month === ctx.prevMonth;
       }
-      const tv = String(targetVal ?? '').toLowerCase().trim();
+      const tv = String(targetVal ?? '').replace(/[\[\]]/g, '').toLowerCase().trim();
       const tvNum = toNum(tv);
       const evalSingle = cv => {
-        const c = String(cv ?? '').toLowerCase().trim();
+        const c = String(cv ?? '').replace(/[\[\]]/g, '').toLowerCase().trim();
         if (operator === '==') return tv === c;
         if (operator === '!=') return tv !== c;
         if (operator === 'contains') return tv.includes(c);
@@ -447,7 +447,7 @@ async function processTemplateForView(template, masterFile) {
     if (!col?.valueFilters?.length) return rows;
     const toNum = s => parseFloat(String(s ?? '').replace(/,/g, '').trim());
     return rows.filter(row => col.valueFilters.every(vf => {
-      const raw = getMV(row, col.source); const tv = String(raw ?? '').toLowerCase().trim(); const tvNum = toNum(tv); const val = String(vf.value ?? '').toLowerCase().trim();
+      const raw = getMV(row, col.source); const tv = String(raw ?? '').replace(/[\[\]]/g, '').toLowerCase().trim(); const tvNum = toNum(tv); const val = String(vf.value ?? '').replace(/[\[\]]/g, '').toLowerCase().trim();
       if (vf.operator === '==') return tv === val;
       if (vf.operator === '!=') return tv !== val;
       if (vf.operator === 'contains') return tv.includes(val);
@@ -509,7 +509,7 @@ async function processTemplateForView(template, masterFile) {
   console.log('[ConstantCheck] active checks (with column set):', activeChecks);
   if (activeChecks.length > 0) {
     const cmp = (actual, expected, op) => {
-      const a = String(actual).toLowerCase(), e = String(expected).toLowerCase();
+      const a = String(actual).replace(/[\[\]]/g, '').toLowerCase(), e = String(expected).replace(/[\[\]]/g, '').toLowerCase();
       if (op === 'eq')           return a === e;
       if (op === 'neq')          return a !== e;
       if (op === 'contains')     return a.includes(e);
@@ -534,8 +534,8 @@ async function processTemplateForView(template, masterFile) {
         const expected = String(expectedValue).trim();
         const hasFilter = filterColumn.trim() && filterValue.trim();
         if (hasFilter) {
-          const fActual = String(getMV(row, filterColumn) ?? '').trim();
-          if (fActual.toLowerCase() !== filterValue.trim().toLowerCase()) return false;
+          const fActual = String(getMV(row, filterColumn) ?? '').replace(/[\[\]]/g, '').trim();
+          if (fActual.toLowerCase() !== filterValue.replace(/[\[\]]/g, '').trim().toLowerCase()) return false;
         }
         const actual = String(getMV(row, column) ?? '').trim();
         return !cmp(actual, expected, operator);
@@ -942,7 +942,7 @@ function runConstantChecks(masterData, constantChecks, getMVFn, cleanFn) {
   const masterKeys = Object.keys(masterData[0] || {});
 
   const compareStr = (actual, expected, operator) => {
-    const a = actual.toLowerCase(), e = expected.toLowerCase();
+    const a = actual.replace(/[\[\]]/g, '').toLowerCase(), e = expected.replace(/[\[\]]/g, '').toLowerCase();
     if (operator === 'eq')           return a === e;
     if (operator === 'neq')          return a !== e;
     if (operator === 'contains')     return a.includes(e);
@@ -960,8 +960,8 @@ function runConstantChecks(masterData, constantChecks, getMVFn, cleanFn) {
 
     masterData.forEach((row, idx) => {
       if (hasFilter) {
-        const fActual = String(getMVFn(row, cleanFn(filterColumn)) ?? '').trim();
-        if (fActual.toLowerCase() !== filterValue.trim().toLowerCase()) return;
+        const fActual = String(getMVFn(row, cleanFn(filterColumn)) ?? '').replace(/[\[\]]/g, '').trim();
+        if (fActual.toLowerCase() !== filterValue.replace(/[\[\]]/g, '').trim().toLowerCase()) return;
       }
       const actual = String(getMVFn(row, cleanFn(column)) ?? '').trim();
       if (!compareStr(actual, expected, operator)) {

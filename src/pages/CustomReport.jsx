@@ -710,10 +710,10 @@ export default function CustomReport() {
             const p = parseDateForMonth(targetVal);
             return !!p && p.year === ctx.prevYear && p.month === ctx.prevMonth;
           }
-          const tv = String(targetVal ?? '').toLowerCase().trim();
+          const tv = String(targetVal ?? '').replace(/[\[\]]/g, '').toLowerCase().trim();
           const tvNum = toNum(tv);
           const evalSingle = (cv) => {
-            const c = String(cv ?? '').toLowerCase().trim();
+            const c = String(cv ?? '').replace(/[\[\]]/g, '').toLowerCase().trim();
             if (operator === '==') return tv === c;
             if (operator === '!=') return tv !== c;
             if (operator === 'contains') return tv.includes(c);
@@ -779,9 +779,9 @@ export default function CustomReport() {
         const toNum = (s) => parseFloat(String(s ?? '').replace(/,/g, '').trim());
         return rows.filter(row => col.valueFilters.every(vf => {
           const raw = getMasterValue(row, col.source);
-          const tv = String(raw ?? '').toLowerCase().trim();
+          const tv = String(raw ?? '').replace(/[\[\]]/g, '').toLowerCase().trim();
           const tvNum = toNum(tv);
-          const val = String(vf.value ?? '').toLowerCase().trim();
+          const val = String(vf.value ?? '').replace(/[\[\]]/g, '').toLowerCase().trim();
           if (vf.operator === '==') return tv === val;
           if (vf.operator === '!=') return tv !== val;
           if (vf.operator === 'contains') return tv.includes(val);
@@ -1723,8 +1723,8 @@ export default function CustomReport() {
 
         // Pre-filter helper
         const fsEvalFilter = (val, operator, conditionVals = []) => {
-          const tv = String(val ?? '').toLowerCase().trim();
-          const cvs = (conditionVals || []).map(v => String(v || '').toLowerCase().trim());
+          const tv = String(val ?? '').replace(/[\[\]]/g, '').toLowerCase().trim();
+          const cvs = (conditionVals || []).map(v => String(v || '').replace(/[\[\]]/g, '').toLowerCase().trim());
           if (operator === '==')          return cvs.length ? cvs.some(c => tv === c) : true;
           if (operator === '!=')          return cvs.length ? cvs.every(c => tv !== c) : true;
           if (operator === 'contains')    return cvs.length ? cvs.some(c => tv.includes(c)) : true;
@@ -2094,7 +2094,7 @@ export default function CustomReport() {
           const _activeChecks = (template.constantChecks || []).filter(c => c.column);
           if (_activeChecks.length > 0) {
             const _cmp = (actual, expected, op) => {
-              const a = String(actual).toLowerCase(), e = String(expected).toLowerCase();
+              const a = String(actual).replace(/[\[\]]/g, '').toLowerCase(), e = String(expected).replace(/[\[\]]/g, '').toLowerCase();
               if (op === 'eq')           return a === e;
               if (op === 'neq')          return a !== e;
               if (op === 'contains')     return a.includes(e);
@@ -2109,8 +2109,8 @@ export default function CustomReport() {
                 const expected = String(expectedValue).trim();
                 const hasFilter = filterColumn.trim() && filterValue.trim();
                 if (hasFilter) {
-                  const fActual = String(getMasterValue(row, filterColumn) ?? '').trim();
-                  if (fActual.toLowerCase() !== filterValue.trim().toLowerCase()) return false;
+                  const fActual = String(getMasterValue(row, filterColumn) ?? '').replace(/[\[\]]/g, '').trim();
+                  if (fActual.toLowerCase() !== filterValue.replace(/[\[\]]/g, '').trim().toLowerCase()) return false;
                 }
                 const actual = String(getMasterValue(row, column) ?? '').trim();
                 return !_cmp(actual, expected, operator);
