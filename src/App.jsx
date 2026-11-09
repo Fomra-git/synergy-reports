@@ -18,6 +18,7 @@ const PivotTemplateManager = lazy(() => import('./pages/PivotTemplateManager'));
 const ScoreboardDesigner = lazy(() => import('./pages/ScoreboardDesigner'));
 const MultiTableDesigner = lazy(() => import('./pages/MultiTableDesigner'));
 const FitnessScoreboardDesigner = lazy(() => import('./pages/FitnessScoreboardDesigner'));
+const ConsultationScheduleDesigner = lazy(() => import('./pages/ConsultationScheduleDesigner'));
 const ViewReport = lazy(() => import('./pages/ViewReport'));
 
 // Components
@@ -72,6 +73,11 @@ function App() {
             <Route path="fitness-scoreboard-designer" element={
               <AdminRoute>
                 <FitnessScoreboardDesigner />
+              </AdminRoute>
+            } />
+            <Route path="consultation-schedule-designer" element={
+              <AdminRoute>
+                <ConsultationScheduleDesigner />
               </AdminRoute>
             } />
           </Route>

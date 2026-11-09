@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { db } from '../firebase/config';
 import { collection, query, getDocs, addDoc } from 'firebase/firestore';
 import XLSX from 'xlsx-js-style';
@@ -24,6 +24,7 @@ import {
   AlignLeft
 } from 'lucide-react';
 import { getSecondaryFiles, mergeMultiFileData } from '../utils/multiFileMerge';
+import { getConsultationOptions, buildConsultationScheduleWorkbook, formatMonthKey } from '../utils/consultationSchedule';
 
 export default function GenerateReport() {
   const [templates, setTemplates] = useState([]);
@@ -41,6 +42,9 @@ export default function GenerateReport() {
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
   const secondFileRefs = useRef({});
+  // Daily Doctor Schedule templates: rows of the uploaded file (for the doctor/date dropdowns) and the user's picks per template
+  const [csRows, setCsRows] = useState([]);
+  const [csSel, setCsSel] = useState({}); // templateId → { doctor, date }
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -161,6 +165,25 @@ export default function GenerateReport() {
       (t.description || '').toLowerCase().includes(templateSearchTerm.toLowerCase())
     );
 
+  // Load the uploaded file's rows only when a Doctor Schedule template is on screen (needed for the doctor dropdown)
+  const hasCsTemplate = filteredTemplates.some(t => t.type === 'consultation_schedule');
+  useEffect(() => {
+    let cancelled = false;
+    setCsSel({});
+    if (!masterFile || !hasCsTemplate) { setCsRows([]); return; }
+    readMasterRows(masterFile)
+      .then(rows => { if (!cancelled) setCsRows(rows); })
+      .catch(err => { console.error('Doctor list read failed:', err); if (!cancelled) setCsRows([]); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [masterFile, hasCsTemplate]);
+
+  const csOptions = useMemo(() => {
+    const out = {};
+    templates.filter(t => t.type === 'consultation_schedule').forEach(t => { out[t.id] = getConsultationOptions(csRows, t); });
+    return out;
+  }, [csRows, templates]);
+
   const processFile = async (explicitTemplateId = null) => {
     const isSingle = !!explicitTemplateId;
     const targetTemplates = isSingle 
@@ -168,6 +191,13 @@ export default function GenerateReport() {
       : templates.filter(t => selectedTemplates.includes(t.id));
 
     if (!masterFile || targetTemplates.length === 0) return;
+
+    // Doctor Schedule templates need a doctor picked from the dropdown
+    const csMissing = targetTemplates.find(t => t.type === 'consultation_schedule' && !csSel[t.id]?.doctor);
+    if (csMissing) {
+      setError(`Please select a doctor for "${csMissing.name}" before generating.`);
+      return;
+    }
 
     // Multi-file templates require every additional Excel file
     const dualCfg = dualConfigFor(targetTemplates);
@@ -1922,6 +1952,19 @@ export default function GenerateReport() {
       for (const template of targetTemplates) {
         try {
           setStatus(`Generating ${template.name || 'Untitled'}...`);
+          if (template.type === 'consultation_schedule') {
+            const csPick = csSel[template.id] || {};
+            const { buffer: csBuffer, schedule: csSched } = await buildConsultationScheduleWorkbook(masterData, template, csPick.doctor, csPick.month);
+            if (csSched.matched === 0) {
+              templateErrors.push(`${template.name || 'Doctor Schedule'}: no appointments found for ${csPick.doctor}${csSched.usedMonth ? ' in ' + formatMonthKey(csSched.usedMonth) : ''}. Check the column mapping and keywords in the template.`);
+            }
+            const csSafe = (v) => String(v || '').replace(/[^a-zA-Z0-9]/g, '_');
+            const csFileName = `${csSafe(template.name || 'DoctorSchedule')}_${csSafe(csPick.doctor)}_${csSched.usedMonth || new Date().toISOString().slice(0, 7)}.xlsx`;
+            const csMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            if (isSingle) saveAs(new Blob([csBuffer], { type: csMime }), csFileName);
+            else zip.file(csFileName, csBuffer);
+            continue;
+          }
           if (template.type === 'fitness_scoreboard') {
             const fsBuffer   = await generateFitnessScoreboardReport(template);
             const fsFileName = `${(template.name || 'FitnessScoreboard').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`;
@@ -2914,11 +2957,30 @@ export default function GenerateReport() {
                     <div style={{ flex: 1 }}>
                        <p style={{ fontWeight: '600' }}>{template.name}</p>
                        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                         {template.type === 'pivot' 
+                         {template.type === 'consultation_schedule'
+                           ? 'Monthly doctor schedule (dates x time slots)'
+                           : template.type === 'pivot' 
                            ? `${(template.pivotColumns?.length || template.valueFields?.length || 0)} Pivot Columns` 
                            : `${(template.mappings?.length || 0)} Column Mappings`
                          }
                        </p>
+                       {template.type === 'consultation_schedule' && (() => {
+                         const opts = csOptions[template.id] || { doctors: [], dates: [] };
+                         const pick = csSel[template.id] || {};
+                         const setPick = (patch) => setCsSel(prev => ({ ...prev, [template.id]: { ...(prev[template.id] || {}), ...patch } }));
+                         return (
+                           <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
+                             <select value={pick.doctor || ''} onChange={e => { setPick({ doctor: e.target.value }); setError(null); }} disabled={!masterFile} style={{ minWidth: '220px', padding: '8px 10px' }}>
+                               <option value="">{!masterFile ? 'Upload a file to choose a doctor' : (opts.doctors.length ? 'Select doctor *' : 'No doctors found in file')}</option>
+                               {opts.doctors.map(d => <option key={d} value={d}>{d}</option>)}
+                             </select>
+                             <select value={pick.month || ''} onChange={e => setPick({ month: e.target.value })} disabled={!masterFile || opts.months.length === 0} style={{ minWidth: '160px', padding: '8px 10px' }}>
+                               <option value="">Latest month in file</option>
+                               {opts.months.map(m => <option key={m} value={m}>{formatMonthKey(m)}</option>)}
+                             </select>
+                           </div>
+                         );
+                       })()}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       {masterFile && (

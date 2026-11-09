@@ -16,6 +16,7 @@ import {
   Layers,
   Eye,
   Activity,
+  Stethoscope,
   Files,
   MessageCircleQuestion
 } from 'lucide-react';
@@ -109,6 +110,10 @@ export default function Layout() {
               <NavLink to="/fitness-scoreboard-designer" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                 <Activity size={20} />
                 Fitness Board
+              </NavLink>
+              <NavLink to="/consultation-schedule-designer" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                <Stethoscope size={20} />
+                Doctor Schedule
               </NavLink>
             </>
           )}

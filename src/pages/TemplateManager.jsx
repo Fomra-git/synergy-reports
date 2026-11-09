@@ -36,6 +36,7 @@ const TYPE_META = {
   pivot:       { label: 'Pivot',         color: 'var(--secondary)', Icon: BarChart2 },
   multi_table: { label: 'Multi-Table',   color: '#a78bfa',          Icon: Table2 },
   scoreboard:  { label: 'Scoreboard',    color: 'var(--warning)',    Icon: Award },
+  consultation_schedule: { label: 'Doctor Schedule', color: '#14b8a6', Icon: Award },
   default:     { label: 'Visual Mapper', color: 'var(--primary)',    Icon: LayoutGrid },
 };
 
@@ -47,6 +48,7 @@ function getEditRoute(template) {
   if (template.type === 'pivot')       return `/pivot-designer?id=${template.id}`;
   if (template.type === 'multi_table') return `/multi-table-designer?id=${template.id}`;
   if (template.type === 'scoreboard')  return `/scoreboard-designer?id=${template.id}`;
+  if (template.type === 'consultation_schedule') return `/consultation-schedule-designer?id=${template.id}`;
   return `/visual-mapper?id=${template.id}`;
 }
 

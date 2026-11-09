@@ -117,6 +117,7 @@ export default function MultiMasterReport() {
 
   // Filter by selected category then by search term
   const filteredTemplates = templates
+    .filter(t => t.type !== 'consultation_schedule') // Doctor Schedule runs from Generate Report only
     .filter(t => !selectedCategory || (selectedCategory.templateIds || []).includes(t.id))
     .filter(t =>
       t.name.toLowerCase().includes(templateSearchTerm.toLowerCase()) ||
