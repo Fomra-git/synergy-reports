@@ -267,8 +267,28 @@ export async function buildConsultationScheduleWorkbook(rows, template, doctor, 
   ws.mergeCells(tot.number, 1, tot.number, 2);
   for (let c = 1; c <= totalCols; c++) style(tot.getCell(c), { font: { bold: true, size: 10 }, alignment: { horizontal: 'center', vertical: 'middle' }, fill: solid('FFE8EAF6'), border: thin });
 
+  // Summary table: appointments per type for the month
   ws.addRow([]);
-  const legend = ws.addRow(['Legend:', '', types.map(t => `${t.code} = ${t.label}`).join('   |   ') + `   |   ${freeLabel} = no work`]);
+  const typeTotals = types.map(t => ({ t, n: days.reduce((a, d) => a + d.cells.reduce((b, c) => b + (c[t.code] || 0), 0), 0) }));
+  const grand = typeTotals.reduce((a, x) => a + x.n, 0);
+  const activeDays = days.filter(d => d.total > 0).length;
+  const sh = ws.addRow(['Summary', '', 'Count', '% Share']);
+  ws.mergeCells(sh.number, 1, sh.number, 2);
+  for (let c = 1; c <= 4; c++) style(sh.getCell(c), { font: { bold: true, size: 10, color: { argb: 'FFFFFFFF' } }, alignment: { horizontal: 'center', vertical: 'middle' }, fill: solid('FF1A237E'), border: thin });
+  typeTotals.forEach(({ t, n }) => {
+    const r = ws.addRow([`${t.code} - ${t.label}`, '', n, grand ? `${((n / grand) * 100).toFixed(1)}%` : '0.0%']);
+    ws.mergeCells(r.number, 1, r.number, 2);
+    for (let c = 1; c <= 4; c++) style(r.getCell(c), { font: { size: 9, bold: c === 1 }, alignment: { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle' }, fill: solid(c === 1 ? (t.color || FREE_COLOR) : 'FFFFFFFF'), border: thin });
+  });
+  const gt = ws.addRow(['Total appointments', '', grand, grand ? '100.0%' : '0.0%']);
+  ws.mergeCells(gt.number, 1, gt.number, 2);
+  for (let c = 1; c <= 4; c++) style(gt.getCell(c), { font: { bold: true, size: 10 }, alignment: { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle' }, fill: solid('FFE8EAF6'), border: thin });
+  const ad = ws.addRow(['Days with appointments', '', activeDays, '']);
+  ws.mergeCells(ad.number, 1, ad.number, 2);
+  for (let c = 1; c <= 4; c++) style(ad.getCell(c), { font: { size: 9, bold: c === 1 }, alignment: { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle' }, fill: solid('FFFFFFFF'), border: thin });
+
+  ws.addRow([]);
+  const legend =ws.addRow(['Legend:', '', types.map(t => `${t.code} = ${t.label}`).join('   |   ') + `   |   ${freeLabel} = no work`]);
   legend.getCell(1).font = { bold: true, size: 9 };
   legend.getCell(3).font = { size: 9 };
   const notes = [];
@@ -280,8 +300,8 @@ export async function buildConsultationScheduleWorkbook(rows, template, doctor, 
     n.getCell(1).font = { italic: true, size: 9, color: { argb: 'FFB71C1C' } };
   });
 
-  ws.getColumn(1).width = 7;
-  ws.getColumn(2).width = 12;
+  ws.getColumn(1).width = 9;
+  ws.getColumn(2).width = 14;
   slots.forEach((_, i) => { ws.getColumn(3 + i).width = 13; });
   ws.getColumn(totalCols).width = 8;
   ws.views = [{ state: 'frozen', xSplit: 2, ySplit: 2 }];
